@@ -1,0 +1,108 @@
+name: Phong do
+
+# ==========================================================================
+# PHONG DO - do cong cu quet tren bo do DOC LAP Juliet C# 1.3 cua NIST.
+#
+# Tra loi bang so cho cau hoi: "loi da biet trong code bi bat bao nhieu phan?"
+# Moi test case Juliet co ham loi (bad) va ham an toan (good), viet theo nhieu
+# duong di cua du lieu (qua bien, qua ham, qua tep, qua collection, ke thua...).
+#
+# Chay khi:
+#   - bam tay (Actions -> Phong do -> Run workflow), chon CWE can do
+#   - moi lan sua rule o semgrep-rules/ hoac bo cham diem -> chong hoi quy
+#
+# KHONG day ket qua len Code Scanning cua repo nay (hang nghin canh bao tren
+# ma mau se lam rac tab Security). Ket qua nam o artifact + trang Summary.
+# ==========================================================================
+
+on:
+  workflow_dispatch:
+    inputs:
+      cwe:
+        description: 'CWE can do, cach nhau dau phay'
+        default: '89,78,90,643,23,36,80,81,83,601,113,209,327,328,338,259,321,614,117,319,470'
+  push:
+    branches: [main]
+    paths:
+      - 'semgrep-rules/**'
+      - 'tools/cham_diem.py'
+      - '.github/workflows/phong-do.yml'
+
+permissions:
+  contents: read
+  actions: read
+  security-events: write   # codeql-action can quyen nay ke ca khi upload: never
+
+env:
+  JULIET_URL: https://samate.nist.gov/SARD/downloads/test-suites/2020-08-01-juliet-test-suite-for-csharp-v1-3.zip
+  CWE_MAC_DINH: '89,78,90,643,23,36,80,81,83,601,113,209,327,328,338,259,321,614,117,319,470'
+
+jobs:
+  juliet:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tai Juliet C# 1.3 tu NIST SARD
+        run: |
+          curl -fsSL --retry 3 -o juliet.zip "$JULIET_URL"
+          sha256sum juliet.zip | tee juliet.sha256
+          unzip -q juliet.zip -d juliet_raw
+          TC=$(find juliet_raw -type d -name testcases | head -1)
+          SUP=$(find juliet_raw -type d -name testcasesupport | head -1)
+          echo "testcases: $TC"; echo "testcasesupport: $SUP"
+          test -n "$TC" || { echo "Khong tim thay thu muc testcases trong zip"; find juliet_raw -maxdepth 3 -type d | head -30; exit 1; }
+          mkdir -p bench/src ket-qua
+          python tools/cham_diem.py chon --goc "$TC" --cwe "${{ inputs.cwe || env.CWE_MAC_DINH }}" --dich bench/src/testcases
+          if [ -n "$SUP" ]; then cp -r "$SUP" bench/src/; fi
+          cp juliet.sha256 ket-qua/
+
+      - name: Semgrep - rule du an (dang co quyen chan trong pipeline)
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src semgrep/semgrep \
+            semgrep scan --config semgrep-rules/sast-detect.yaml \
+            --no-git-ignore --disable-nosem --metrics=off \
+            --sarif --output ket-qua/semgrep-du-an.sarif bench/src
+
+      - name: Semgrep - rule cong dong (p/csharp, p/security-audit)
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src semgrep/semgrep \
+            semgrep scan --config p/csharp --config p/security-audit \
+            --no-git-ignore --disable-nosem --metrics=off \
+            --sarif --output ket-qua/semgrep-cong-dong.sarif bench/src
+
+      - name: CodeQL - khoi tao (C#, khong can build, security-extended)
+        uses: github/codeql-action/init@v4
+        with:
+          languages: csharp
+          build-mode: none
+          queries: security-extended
+          source-root: bench/src
+
+      - name: CodeQL - phan tich (khong upload)
+        uses: github/codeql-action/analyze@v4
+        with:
+          upload: never
+          output: ket-qua/codeql
+          category: phong-do-juliet
+
+      - name: Cham diem
+        run: |
+          CQ=$(ls ket-qua/codeql/*.sarif 2>/dev/null | head -1)
+          python tools/cham_diem.py juliet --goc bench/src/testcases \
+            --sarif semgrep-du-an=ket-qua/semgrep-du-an.sarif \
+            --sarif semgrep-cong-dong=ket-qua/semgrep-cong-dong.sarif \
+            --sarif codeql="$CQ" \
+            --chan "pipeline-hien-tai=semgrep-du-an:level=error" \
+            --chan "pipeline-muc-tieu=semgrep-du-an:level=error" \
+            --chan "pipeline-muc-tieu=codeql:sev>=7" \
+            --out ket-qua/juliet.json --md ket-qua/juliet.md
+          cat ket-qua/juliet.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Luu ket qua
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phong-do-juliet
+          path: ket-qua/
