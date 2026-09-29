@@ -11,9 +11,9 @@ name: Bao mat
 #
 # AI CHAN MERGE: GitHub, khong phai job nay. Sau lan chay dau tren main, vao
 # Settings -> Rules -> Rulesets: "Require code scanning results" voi
-# Semgrep-du-an (Alerts=Errors, Security>=High) va OWASP-ZAP (Security>=High,
-# chi khi DAST chay duoc), required check "security / dependency-review",
-# 1 approve, bypass trong.
+# Semgrep-du-an (Alerts=Errors, Security>=High), CodeQL (Alerts=Errors,
+# Security>=Medium) va OWASP-ZAP (Security>=High, chi khi DAST chay duoc),
+# required check "security / dependency-review", 1 approve, bypass trong.
 # ==========================================================================
 
 # Chi quet khi MO PR va khi push vao main: mot PR - mot check - mot moc so sanh.

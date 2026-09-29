@@ -25,12 +25,13 @@ Pipeline **không tự chặn**. Nó đưa kết quả từng scanner lên GitHu
 | Nguồn | Chặn merge khi | Ngưỡng ruleset |
 |---|---|---|
 | **Semgrep-du-an** — 31 rule tự viết, tin cậy cao | cảnh báo mức ERROR **mới** trong PR | Alerts = Errors, Security ≥ High |
+| **CodeQL** — lần theo luồng dữ liệu qua biến, hàm, tệp; mọi ngôn ngữ tự nhận | cảnh báo Medium trở lên **mới** trong PR | Alerts = Errors, Security ≥ Medium |
 | **OWASP-ZAP** — quét toàn bộ app dựng từ code PR | alert risk High **mới** | Security ≥ High |
 | **dependency-review** — job riêng của GitHub | PR **thêm hoặc nâng** gói dính CVE ≥ High | required check |
 | **Push protection** của GitHub | secret trong commit — chặn ngay lúc `git push` | bật trong Settings |
 | Semgrep-cong-dong, Trivy, Gitleaks | không chặn | tham khảo / theo dõi |
 
-Bốn nguồn chặn **cộng dồn** — không nguồn nào gạt được nguồn khác. Cho qua chỉ theo hai cách, cả hai để lại dấu vết:
+Năm nguồn chặn **cộng dồn** — không nguồn nào gạt được nguồn khác. Cho qua chỉ theo hai cách, cả hai để lại dấu vết:
 
 - **Dismiss alert** trong tab Security, chọn lý do (false positive / won't fix / used in tests) và ghi chú. GitHub ghi audit log; lần chạy sau không báo lại. Không sửa code để né, không `nosemgrep`.
 - **Hạ rule** xuống WARNING ở cấp bộ công cụ, khi một rule bị dismiss quá ~10% (ngưỡng Google dùng để tắt analyzer). Sửa ở nguồn, không sửa từng PR.
@@ -45,7 +46,8 @@ Dev chỉ thấy hai trạng thái: **CHẶN** — tệp:dòng, lỗi gì, cách
 |---|---|---|---|
 | 0 | Gitleaks | toàn bộ tệp | secret lộ trong mã nguồn |
 | 1 | `sca.py` + dotnet; dependency-review | `*.csproj` | CVE trong gói NuGet; gói mới dính CVE |
-| 2 | Semgrep — rule dự án + rule cộng đồng | `*.cs`, `*.cshtml` | cảnh báo theo CWE, tách hai mức tin cậy |
+| 2 | Semgrep — rule dự án + rule cộng đồng | mọi ngôn ngữ tự nhận | cảnh báo theo **hình dạng** dòng code, tách hai mức tin cậy |
+| 2b | CodeQL `security-extended` — job riêng, chạy song song | mọi ngôn ngữ CodeQL hỗ trợ (C#, JS/TS, Python, Java, Go, Actions...) | cảnh báo theo **luồng dữ liệu**: từ tham số request tới câu SQL, `innerHTML`, lệnh hệ điều hành... qua biến, hàm, tệp |
 | 3 | `gen_routes_map.py` | Controller, Razor Pages | bản đồ (URL, tham số) và **phạm vi DAST tới được** |
 | 4 | Trivy | Dockerfile, manifest | lỗi cấu hình, SBOM, CVE trong image |
 | 5 | `dast_scan.py` + OWASP ZAP | app dựng từ code PR, chạy trong máy ảo tạm | alert DAST, **ánh xạ về Controller:dòng** qua bản đồ route |
@@ -106,7 +108,7 @@ Chỉ quét khi **mở PR** và khi push vào `main` — mỗi PR một check, m
 
 Rồi bật cổng phía GitHub — Settings của repo:
 
-1. **Rules → Rulesets** → ruleset cho `main`: *Require a pull request* (1 approval) · *Require code scanning results* → thêm `Semgrep-du-an` (Alerts: Errors, Security: High or higher) và `OWASP-ZAP` (Security: High or higher) · *Require status checks* → `security / dependency-review` · bypass list **để trống**.
+1. **Rules → Rulesets** → ruleset cho `main`: *Require a pull request* (1 approval) · *Require code scanning results* → thêm `Semgrep-du-an` (Alerts: Errors, Security: High or higher), `CodeQL` (Alerts: Errors, Security: **Medium** or higher) và `OWASP-ZAP` (Security: High or higher) · *Require status checks* → `security / dependency-review` · bypass list **để trống**.
 2. **Code security** → bật *Secret scanning* + *Push protection*, *Dependabot alerts* + *security updates*.
 
 Tên công cụ trong ruleset chỉ xuất hiện sau khi pipeline đã chạy ít nhất một lần trên `main` — push một lần trước rồi mới cấu hình.

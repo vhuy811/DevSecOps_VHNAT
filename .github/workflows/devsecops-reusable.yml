@@ -23,6 +23,7 @@ name: DevSecOps - nam tang kiem thu (dung chung)
 # trong PR, hien chu thich dung dong, va ruleset "Require code scanning
 # results" tren main khoa merge theo nguong tung cong cu:
 #   Semgrep-du-an  : Alerts = Errors, Security >= High   (rule tu viet, tin cay cao)
+#   CodeQL         : Alerts = Errors, Security >= Medium (lan theo luong du lieu - job codeql)
 #   OWASP-ZAP      : Security >= High                   (DAST tren app dung tu PR)
 #   dependency-review (job rieng): required check      (goi MOI dinh CVE >= High)
 # Rule cong dong, Trivy, Gitleaks day len de tham khao/theo doi. Bao nham xu ly
@@ -318,9 +319,13 @@ jobs:
           # Nen truoc khi quet, doi "nosem" thanh "no_sem" trong ban checkout TAM
           # cua CI (repo khong bi dong toi). Giu nguyen so dong -> vi tri canh bao
           # khong lech. sarif_tools.py con xoa suppressions lan nua.
-          N_NOSEM=$(grep -rIilZ --exclude-dir=.git --exclude-dir="$TOOLKIT" --exclude-dir=.devsecops 'nosem' . | tr -cd '\0' | wc -c)
+          # Tai lieu (.md, .txt...) Semgrep khong quet nen khong dem - tranh bao dong
+          # gia khi README chi NHAC toi nosemgrep.
+          NOSEM_BO="--exclude-dir=.git --exclude-dir=$TOOLKIT --exclude-dir=.devsecops --exclude-dir=kiem-thu-rule"
+          NOSEM_BO="$NOSEM_BO --exclude=*.md --exclude=*.markdown --exclude=*.txt --exclude=*.rst --exclude=*.adoc"
+          N_NOSEM=$(grep -rIilZ $NOSEM_BO 'nosem' . | tr -cd '\0' | wc -c)
           if [ "$N_NOSEM" -gt 0 ]; then
-            grep -rIilZ --exclude-dir=.git --exclude-dir="$TOOLKIT" --exclude-dir=.devsecops 'nosem' . \
+            grep -rIilZ $NOSEM_BO 'nosem' . \
               | xargs -0 sed -i -E 's/([Nn][Oo])([Ss][Ee][Mm])/\1_\2/g'
             echo "::warning::$N_NOSEM tep co chu thich nosemgrep - pipeline KHONG ton trong. Bao nham: Dismiss + ly do trong tab Security."
             echo "> ⚠ $N_NOSEM tệp có chú thích \`nosemgrep\` — pipeline không tôn trọng; báo nhầm xử lý bằng Dismiss + lý do." >> $GITHUB_STEP_SUMMARY
@@ -581,35 +586,35 @@ jobs:
       # ===============================================================
       - name: Code Scanning - Semgrep rule du an (co quyen chan)
         if: always() && hashFiles('reports/semgrep-du-an.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: reports/semgrep-du-an.sarif
           category: semgrep-du-an
 
       - name: Code Scanning - Semgrep rule cong dong (tham khao)
         if: always() && hashFiles('reports/semgrep-cong-dong.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: reports/semgrep-cong-dong.sarif
           category: semgrep-cong-dong
 
       - name: Code Scanning - OWASP ZAP (co quyen chan o muc High)
         if: always() && hashFiles('reports/zap.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: reports/zap.sarif
           category: zap
 
       - name: Code Scanning - secret
         if: always() && hashFiles('reports/gitleaks.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: reports/gitleaks.sarif
           category: secret
 
       - name: Code Scanning - cau hinh ha tang
         if: always() && hashFiles('reports/trivy-config.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: reports/trivy-config.sarif
           category: ha-tang
@@ -624,6 +629,131 @@ jobs:
       - name: Nhat ky ZAP khi co su co
         if: failure()
         run: docker logs zap 2>/dev/null | tail -50 || true
+
+  # =====================================================================
+  # SAST THEO LUONG DU LIEU - CodeQL (job rieng, chay song song voi scan)
+  #
+  # Semgrep-du-an bat theo HINH DANG dong code: `CommandText = "..." + x` bi
+  # bat, nhung `var cauLenh = "..." + x; cmd.CommandText = cauLenh;` hay du
+  # lieu di qua mot ham khac, mot tep khac thi lot. CodeQL dung CSDL cua toan
+  # bo ma nguon va lan theo du lieu tu NGUON (tham so request, URL, header...)
+  # toi DICH (cau SQL, innerHTML, lenh he dieu hanh, duong dan tep...) qua
+  # bien, ham, tep. Bo truy van security-extended.
+  #
+  # Ngon ngu TU NHAN (tools/nhan_ngon_ngu.py): moi ngon ngu CodeQL ho tro la
+  # mot job trong ma tran; thu vien nhung san (wwwroot/lib, vendor/...) bo qua.
+  # Ket qua len Code Scanning voi ten cong cu "CodeQL". Ruleset chan canh bao
+  # MOI tu muc Medium. Do tren Juliet C# (Phong do): chuyen huong mo (6.1),
+  # lo thong tin qua loi (5.4), cookie thieu Secure (5.0) duoc CodeQL bat voi
+  # 0-3% bao nham nhung deu duoi 7 - dat nguong High thi ca ba loai lot cong.
+  # =====================================================================
+  nhan-dien:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      codeql: ${{ steps.nn.outputs.codeql_matrix }}
+      nhung: ${{ steps.nn.outputs.thu_muc_nhung }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Keo bo cong cu DevSecOps ve
+        uses: actions/checkout@v4
+        with:
+          repository: vhuy811/DevSecOps_VHNAT
+          ref: ${{ inputs.toolkit-ref }}
+          path: .devsecops-toolkit
+
+      - name: Nhan ngon ngu cho CodeQL
+        id: nn
+        run: python .devsecops-toolkit/tools/nhan_ngon_ngu.py --root . --github-output
+
+  codeql:
+    needs: nhan-dien
+    if: needs.nhan-dien.outputs.codeql != '' && needs.nhan-dien.outputs.codeql != '[]'
+    name: codeql (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      security-events: write   # day ket qua len Code Scanning
+    strategy:
+      fail-fast: false         # mot ngon ngu hong khong keo ngon ngu khac
+      matrix:
+        include: ${{ fromJSON(needs.nhan-dien.outputs.codeql) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Tep cau hinh phai nam TRONG workspace (codeql-action tu choi duong dan
+      # ngoai workspace). Tep tam cua CI, repo khong bi dong toi.
+      - name: Cau hinh CodeQL - bo qua thu vien nhung san
+        env:
+          NHUNG: ${{ needs.nhan-dien.outputs.nhung }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          bo = json.loads(os.environ.get("NHUNG") or "[]") + ["**/kiem-thu-rule"]
+          with open(".devsecops-codeql.yml", "w", encoding="utf-8") as f:
+              f.write("name: devsecops\npaths-ignore:\n")
+              for p in bo:
+                  f.write(f"  - {json.dumps(p)}\n")
+          PY
+          cat .devsecops-codeql.yml
+
+      - name: CodeQL - khoi tao (${{ matrix.language }}, build-mode ${{ matrix.build-mode }})
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          queries: security-extended
+          config-file: ./.devsecops-codeql.yml
+
+      - name: CodeQL - phan tich va day len Code Scanning
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:${{ matrix.language }}
+          output: codeql-sarif
+
+      - name: Tom tat CodeQL
+        if: always()
+        env:
+          NN: ${{ matrix.language }}
+        run: |
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import glob, json, os
+          from collections import Counter
+          nn = os.environ["NN"]
+          tep = glob.glob("codeql-sarif/*.sarif")
+          if not tep:
+              print(f"### CodeQL `{nn}`: KHÔNG có kết quả\n")
+              print("> Bước phân tích không sinh SARIF — xem log. Đây là *không có kết quả*, không phải *sạch*.\n")
+              raise SystemExit(0)
+          rules, res = {}, []
+          for f in tep:
+              for run in json.load(open(f, encoding="utf-8")).get("runs", []):
+                  for c in [run["tool"]["driver"]] + run["tool"].get("extensions", []):
+                      for r in c.get("rules", []):
+                          rules[r["id"]] = r
+                  res += run.get("results", [])
+          def rid(r):
+              return r.get("ruleId") or (r.get("rule") or {}).get("id", "?")
+          def sev(r):
+              try:
+                  return float((rules.get(rid(r), {}).get("properties") or {}).get("security-severity", 0))
+              except ValueError:
+                  return 0.0
+          muc = Counter("Critical" if sev(r) >= 9 else "High" if sev(r) >= 7 else "Medium" if sev(r) >= 4 else "thấp/không điểm" for r in res)
+          print(f"### CodeQL `{nn}`: {len(res)} kết quả trên toàn repo\n")
+          print(" · ".join(f"{k} {muc.get(k, 0)}" for k in ("Critical", "High", "Medium", "thấp/không điểm")) + "\n")
+          print("Ruleset chỉ chặn cảnh báo **MỚI** trong PR, từ mức Medium (security-severity ≥ 4.0). "
+                "Cái mới xem ở check *Code scanning results / CodeQL*.\n")
+          dem = Counter((rid(r), sev(r)) for r in res)
+          if dem:
+              print("| Truy vấn | Số | security-severity |"); print("|---|---|---|")
+              for (k, s), n in sorted(dem.items(), key=lambda x: (-x[0][1], -x[1]))[:15]:
+                  print(f"| `{k}` | {n} | {s:g} |")
+              print()
+          PY
 
   # =====================================================================
   # THU VIEN MOI TRONG PR - dependency-review-action cua GitHub
