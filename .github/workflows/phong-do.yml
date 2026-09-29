@@ -57,6 +57,9 @@ jobs:
           python tools/cham_diem.py chon --goc "$TC" --cwe "${{ inputs.cwe || env.CWE_MAC_DINH }}" --dich bench/src/testcases
           if [ -n "$SUP" ]; then cp -r "$SUP" bench/src/; fi
           cp juliet.sha256 ket-qua/
+          # Xoa ban giai nen day du (105 CWE). De lai thi CodeQL C# (build-mode none)
+          # doc ca 57.372 tep cua no - lan do dau mat 41 phut chi rieng buoc CodeQL.
+          rm -rf juliet_raw juliet.zip
 
       - name: Semgrep - rule du an (dang co quyen chan trong pipeline)
         run: |
@@ -96,7 +99,7 @@ jobs:
             --sarif codeql="$CQ" \
             --chan "pipeline-hien-tai=semgrep-du-an:level=error" \
             --chan "pipeline-muc-tieu=semgrep-du-an:level=error" \
-            --chan "pipeline-muc-tieu=codeql:sev>=7" \
+            --chan "pipeline-muc-tieu=codeql:sev>=4" \
             --out ket-qua/juliet.json --md ket-qua/juliet.md
           cat ket-qua/juliet.md >> "$GITHUB_STEP_SUMMARY"
 

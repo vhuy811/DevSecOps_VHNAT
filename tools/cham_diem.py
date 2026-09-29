@@ -24,6 +24,9 @@ Cach cham (theo quy uoc cua Juliet va OWASP Benchmark):
     va CWE cua canh bao cung ho voi CWE cua X (vd CWE-22 ~ CWE-23/36).
   - Ham ten chua "bad"  -> canh bao o day la BAT DUNG (TP) cho X.
     Ham ten chua "good" -> canh bao o day la BAO NHAM (FP) cho X.
+    Bien the 81 (qua lop con) de ma loi va ma an toan o TEP rieng:
+    X_81_bad.cs, X_81_goodG2B.cs, X_81_goodB2G.cs (ham ben trong ten "Action")
+    -> vai tro lay theo duoi ten tep.
   - Moi test case dem mot lan cho phan loi va mot lan cho phan an toan:
         ti le bat      = so case co it nhat 1 TP / tong case
         ti le bao nham = so case co it nhat 1 FP / tong case
@@ -63,7 +66,8 @@ HO_CWE = [
     {611, 776},                     # XXE
 ]
 CWE_RE = re.compile(r"cwe[-_/ ]?0*(\d+)", re.I)
-TEN_TEP_RE = re.compile(r"^(CWE(\d+)_[A-Za-z0-9_]+?__(.+?)_(\d{2}))([a-z])?\.cs$")
+# X_01.cs | X_54a.cs | X_81_bad.cs / X_81_goodG2B.cs / X_81_base.cs
+TEN_TEP_RE = re.compile(r"^(CWE(\d+)_[A-Za-z0-9_]+?__(.+?)_(\d{2}))(?:[a-z]|_(bad|good\w*|base))?\.cs$")
 
 # nhom flow variant cua Juliet (so cuoi ten tep)
 NHOM_FLOW = [
@@ -74,12 +78,27 @@ NHOM_FLOW = [
     (51, 54, "51–54 · qua tệp khác"),
     (61, 68, "61–68 · qua giá trị trả về / mảng / trường"),
     (71, 75, "71–75 · qua collection"),
-    (81, 84, "81–84 · qua kế thừa / đa hình"),
+    (81, 84, "81 · qua lớp con (kế thừa)"),
 ]
-# nguon du lieu trong ten tep Juliet: nguon tu xa (ke tan cong gui duoc) va nguon cuc bo
-NGUON_TU_XA = ("Connect_tcp", "Listen_tcp", "NetClient", "QueryString_Web", "Params_Get_Web",
-               "Params_Post_Web", "Cookies_Web", "Database", "Get_web", "Post_web")
-NGUON_CUC_BO = ("Console_ReadLine", "ReadLine", "Environment", "File", "Property", "Registry")
+# Nguon du lieu - lay tu ten test case that cua Juliet C# 1.3 (doc tu ket qua lan do
+# dau tien, khong doan). Phan giua ten co the co tien to "Web_" / "CWE182_Web_"
+# (case chay trong ung dung web) va duoi la ten sink ("_ExecuteNonQuery", "_addHeader").
+NGUON = {
+    "QueryString_Web": "1 · HTTP request (tham số, cookie)",
+    "Params_Get_Web": "1 · HTTP request (tham số, cookie)",
+    "Get_Cookies_Web": "1 · HTTP request (tham số, cookie)",
+    "Connect_tcp": "2 · mạng (TCP, WebClient)",
+    "Listen_tcp": "2 · mạng (TCP, WebClient)",
+    "NetClient": "2 · mạng (TCP, WebClient)",
+    "Database": "3 · CSDL (dữ liệu đã lưu)",
+    "Environment": "4 · cục bộ (console, biến môi trường, tệp)",
+    "File": "4 · cục bộ (console, biến môi trường, tệp)",
+    "ReadLine": "4 · cục bộ (console, biến môi trường, tệp)",
+}
+# CWE khong co khai niem "nguon du lieu" (mat ma, cau hinh, khoa viet cung...).
+# CWE-319 co ten "connect_tcp_..." nhung o day tcp la noi GUI di, khong phai nguon.
+KHONG_NGUON = {209, 259, 319, 321, 327, 328, 338, 614}
+KHONG_NGUON_NHAN = "5 · không có nguồn (mật mã, cấu hình)"
 
 
 def ho_cua(cwe: int) -> frozenset:
@@ -96,14 +115,14 @@ def nhom_flow(so: int) -> str:
     return f"{so:02d} · khác"
 
 
-def loai_nguon(phan_sau: str) -> tuple[str, str]:
-    for n in NGUON_TU_XA:
-        if phan_sau.startswith(n):
-            return n, "từ xa"
-    for n in NGUON_CUC_BO:
-        if phan_sau.startswith(n):
-            return n, "cục bộ"
-    return phan_sau.split("_")[0], "khác"
+def loai_nguon(cwe: int, phan_sau: str) -> tuple[str, str]:
+    if cwe in KHONG_NGUON:
+        return phan_sau, KHONG_NGUON_NHAN
+    goc = re.sub(r"^(?:CWE\d+_)?Web_", "", phan_sau)
+    for n in sorted(NGUON, key=len, reverse=True):
+        if goc.startswith(n):
+            return n, NGUON[n]
+    return goc, "6 · chưa phân loại"
 
 
 # ------------------------------------------------------------------ doc C#
@@ -192,6 +211,13 @@ def ham_chua(ds: list[tuple[str, int, int]], line: int) -> str | None:
     return tot[0] if tot else None
 
 
+def vai_tro_tep(duoi: str | None) -> str | None:
+    """Duoi ten tep bien the 81: 'bad' | 'goodG2B' | 'goodB2G' | 'base'."""
+    if not duoi or duoi == "base":
+        return None
+    return "bad" if duoi == "bad" else "good"
+
+
 def vai_tro(ten: str | None) -> str | None:
     if not ten:
         return None
@@ -205,14 +231,14 @@ def vai_tro(ten: str | None) -> str | None:
 
 # ------------------------------------------------------------------ Juliet
 def lap_chi_muc(goc: Path) -> tuple[dict, dict]:
-    """case_id -> thong tin; ten_tep -> (case_id, danh sach ham)."""
+    """case_id -> thong tin; ten_tep -> (case_id, danh sach ham, vai tro theo ten tep)."""
     cases, tep = {}, {}
     for p in sorted(goc.rglob("*.cs")):
         m = TEN_TEP_RE.match(p.name)
         if not m:
             continue
         case_id, cwe, phan_sau, flow = m.group(1), int(m.group(2)), m.group(3), int(m.group(4))
-        nguon, kieu = loai_nguon(phan_sau)
+        nguon, kieu = loai_nguon(cwe, phan_sau)
         cases.setdefault(case_id, {"cwe": cwe, "flow": flow, "nhom_flow": nhom_flow(flow),
                                    "nguon": nguon, "kieu_nguon": kieu, "tep": []})
         cases[case_id]["tep"].append(p.name)
@@ -220,7 +246,7 @@ def lap_chi_muc(goc: Path) -> tuple[dict, dict]:
             src = p.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        tep[p.name] = (case_id, cac_ham(src))
+        tep[p.name] = (case_id, cac_ham(src), vai_tro_tep(m.group(5)))
     return cases, tep
 
 
@@ -277,8 +303,9 @@ def cham(cases: dict, tep: dict, ket_qua: dict[str, list[dict]]) -> dict:
             if not t:
                 khong_gan += 1
                 continue
-            cid, hams = t
-            vt = vai_tro(ham_chua(hams, r["line"]))
+            cid, hams, vt_tep = t
+            # ham ten bad*/good* quyet dinh truoc; khong co thi theo ten tep (bien the 81)
+            vt = vai_tro(ham_chua(hams, r["line"])) or vt_tep
             if vt is None:
                 continue
             if not (r["cwes"] and ho_cua(cases[cid]["cwe"]) & set().union(*(ho_cua(c) for c in r["cwes"]))):
@@ -372,13 +399,17 @@ def lenh_juliet(a: argparse.Namespace) -> int:
         Path(a.out).write_text(json.dumps(out, ensure_ascii=False, indent=1, default=list), encoding="utf-8")
 
     md = [f"### Phòng đo — Juliet C# 1.3 (NIST), {len(cases)} test case", "",
-          "| Công cụ | Tỉ lệ bắt | Tỉ lệ báo nhầm | Youden | Cảnh báo |", "|---|---|---|---|---|"]
+          "| Công cụ | Tỉ lệ bắt | Tỉ lệ báo nhầm | Youden | Cảnh báo | Không gắn được case |",
+          "|---|---|---|---|---|---|"]
     for cc in cong_cu:
         t = tong[cc]
-        md.append(f"| {cc} | {t['ti_le_bat']:.1%} | {t['ti_le_bao_nham']:.1%} | {t['youden']:+.2f} | {t['canh_bao']} |")
+        md.append(f"| {cc} | {t['ti_le_bat']:.1%} | {t['ti_le_bao_nham']:.1%} | {t['youden']:+.2f} "
+                  f"| {t['canh_bao']} | {t['canh_bao_ngoai_bo_do']} |")
     md.append("")
     md.append("> Youden = tỉ lệ bắt − tỉ lệ báo nhầm; 0 nghĩa là không hơn đoán mò. "
-              "`pipeline-chan` = chỉ tính cảnh báo có quyền chặn merge.\n")
+              "`pipeline-*` = chỉ tính cảnh báo có quyền chặn merge. "
+              "*Không gắn được case* = cảnh báo nằm ngoài tệp test case (tệp hỗ trợ của Juliet) — "
+              "số này lớn bất thường là dấu hiệu bộ chấm đọc sai tên tệp.\n")
     md.append(md_bang("Theo CWE", bang_cwe, cong_cu))
     md.append(md_bang("Theo đường đi của dữ liệu (flow variant)", bang_flow, cong_cu))
     md.append(md_bang("Theo loại nguồn dữ liệu", bang_nguon, cong_cu))
