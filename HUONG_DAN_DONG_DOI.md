@@ -59,23 +59,29 @@ Git sẽ in ra một đường link dạng `https://github.com/vhuy811/<repo>/pu
 
 ## 3. Đọc kết quả
 
-Ở cuối trang Pull Request có ô kiểm tra tên **`security / scan`**.
+Ở cuối trang Pull Request có một danh sách check. Bốn cái quan trọng:
 
-| Bạn thấy | Nghĩa là | Làm gì |
+| Check | Nghĩa | Chặn merge? |
 |---|---|---|
-| Vòng tròn vàng đang quay | đang quét, 1–4 phút | chờ |
-| Dấu tick xanh | không có lỗ hổng **mới** nào được xác nhận | chờ người review approve rồi bấm Merge |
-| Dấu X đỏ ở `security / scan` | code bạn vừa đẩy lên **có lỗ hổng đã được chứng minh khai thác được** | xem mục 4 |
-| Nút Merge xám dù tick xanh | chưa có ai approve | nhờ một người trong nhóm review |
+| `security / scan` | pipeline chạy xong (build, quét, đẩy kết quả) | không — nó chỉ là "đã chạy" |
+| **`Code scanning results / Semgrep-du-an`** | phân tích mã nguồn bằng rule của nhóm | **có** — khi có lỗi mức ERROR mới |
+| **`Code scanning results / OWASP-ZAP`** | tấn công thử vào bản app dựng từ code của bạn | **có** — khi khai thác được lỗi mức High |
+| **`security / dependency-review`** | thư viện bạn vừa thêm/nâng | **có** — khi gói mới dính CVE ≥ High |
 
-Pipeline quét **toàn bộ** ứng dụng nhưng chỉ chặn phần **bạn vừa thêm**. Lỗi có sẵn từ trước không đổ lên đầu bạn — chúng hiện trong báo cáo với nhãn *nợ cũ* và không chặn PR của bạn.
+| Bạn thấy | Làm gì |
+|---|---|
+| Vòng tròn vàng | đang quét, ~6 phút — chờ |
+| Tất cả tick xanh, Merge xám | chưa ai approve — nhờ người trong nhóm review |
+| Một check **đỏ** | xem mục 4 |
+
+Chỉ chặn phần **bạn vừa thêm**. Lỗi có sẵn từ trước không đổ lên đầu bạn.
 
 ---
 
 ## 4. Khi bị đỏ
 
-1. Bấm vào chữ **Details** cạnh dấu X.
-2. Bấm **Summary** ở cột trái. Trang này ghi rõ: tệp nào, dòng nào, loại lỗ hổng gì, và địa chỉ URL mà nó bị khai thác.
+1. Bấm vào check `security / scan` → **Summary**. Có bảng: *ở đâu · lỗi gì · cách sửa*. Dòng có 🔥 là lỗi **đã bị khai thác thật** trên app — sửa cái đó trước.
+2. Hoặc mở tab **Files changed** — chú thích đỏ nằm ngay trên dòng code bị báo, kèm cách sửa.
 3. Sửa đúng chỗ đó. Ví dụ hay gặp nhất — SQL Injection:
 
 ```csharp
@@ -87,7 +93,7 @@ cmd.CommandText = "SELECT * FROM SanPham WHERE Ten = @ten";
 cmd.Parameters.AddWithValue("@ten", ten);
 ```
 
-4. Commit và push lại lên **cùng nhánh đó**. Pipeline tự chạy lại, không cần mở PR mới:
+4. Commit và push lại lên **cùng nhánh** — pipeline tự chạy lại:
 
 ```
 git add .
@@ -95,37 +101,45 @@ git commit -m "Sua SQL Injection o SanPham/Tim"
 git push
 ```
 
-Đỏ nghĩa là pipeline **đã bắn thử payload vào ứng dụng đang chạy và khai thác được**. Không phải phỏng đoán. Không có chuyện "chắc nó báo nhầm".
+Check đỏ vì thư viện: xem lý do trong check `dependency-review`, nâng gói lên bản đã vá (`dotnet add package <ten>`) hoặc chọn gói khác.
 
 ---
 
-## 5. Ba quy ước
+## 5. Báo nhầm thì sao
 
-**Không push lên `main`.** GitHub sẽ từ chối với lỗi `GH006`. Nếu thấy lỗi đó, bạn đang ở sai nhánh — chạy `git checkout -b ten-nhanh-moi` rồi push lại.
+Có. Không sửa code để né, không thêm `// nosemgrep`. Làm thế này:
+
+1. Tab **Security** của repo → **Code scanning** → mở alert đó.
+2. Bấm **Dismiss alert** → chọn lý do: *False positive* / *Won't fix* / *Used in tests* → ghi một câu vì sao → Dismiss.
+3. Check tự chạy lại xanh. Lần sau cùng chỗ đó không báo nữa.
+
+GitHub ghi lại ai dismiss, lý do gì, lúc nào. Người review thấy được. Dismiss không có lý do thuyết phục thì reviewer mở lại alert.
+
+Nếu một rule báo nhầm liên tục, nói với người giữ bộ công cụ — rule đó sẽ được hạ mức ở nguồn, cho cả nhóm, thay vì mỗi người dismiss một lần.
+
+---
+
+## 6. Ba quy ước
+
+**Không push lên `main`.** GitHub từ chối với lỗi `GH006`. Thấy lỗi đó là đang ở sai nhánh — `git checkout -b ten-nhanh-moi` rồi push lại.
 
 **Không tự approve PR của mình.** Nhờ người khác trong nhóm.
 
-**Muốn bỏ qua một cảnh báo thì phải ghi lý do.** Đặt ngay trên dòng bị báo:
-
-```csharp
-// nosemgrep: vulnshop-sqli-commandtext-concat -- chuoi nay la hang, khong co input nguoi dung. 26/09/2026
-```
-
-Không có lý do thì người review **có quyền từ chối**. Đừng dùng `git commit --no-verify` hay bất kỳ cách bỏ qua âm thầm nào — người review sẽ thấy, và nó vô nghĩa vì kiểm tra nằm trên GitHub chứ không nằm trên máy bạn.
+**Không commit khoá API, mật khẩu, token.** GitHub chặn ngay lúc push. Nếu là khoá thật thì phải **thu hồi** ở nhà cung cấp — xoá commit không gỡ được nó khỏi lịch sử.
 
 ---
 
-## 6. Khi được nhờ review
+## 7. Khi được nhờ review
 
 1. Mở PR, tab **Files changed**. Đọc phần đổi.
-2. Kiểm tra ba thứ: `security / scan` xanh chưa; có dòng `nosemgrep` nào không, và nếu có thì lý do có thuyết phục không; code có làm đúng việc mô tả không.
+2. Nhìn ba check chặn ở cuối trang: xanh chưa. Nếu có alert bị dismiss trong PR này, lý do có thuyết phục không.
 3. Bấm **Review changes** → **Approve** hoặc **Request changes** kèm nhận xét.
 
-Một PR xanh vẫn có thể bị từ chối. Cổng kiểm tra bảo mật; người review kiểm tra phần còn lại.
+Bạn không phải triage cảnh báo bảo mật — máy đã làm. Bạn review logic, tên biến, test, và những gì máy không thấy.
 
 ---
 
-## 7. Lỗi hay gặp
+## 8. Lỗi hay gặp
 
 | Lỗi | Nguyên nhân | Sửa |
 |---|---|---|

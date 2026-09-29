@@ -18,6 +18,16 @@ name: DevSecOps - nam tang kiem thu (dung chung)
 # tram repo tham chieu toi. Sua mot lan, ca tram repo duoc cap nhat. Neu moi
 # repo giu mot ban sao thi sau sau thang chung se troi moi noi mot kieu.
 #
+# AI CHAN MERGE? Khong phai job nay. Job nay luon xanh khi chay xong; no day
+# ket qua tung scanner len Code Scanning (SARIF). GitHub tu tinh alert MOI
+# trong PR, hien chu thich dung dong, va ruleset "Require code scanning
+# results" tren main khoa merge theo nguong tung cong cu:
+#   Semgrep-du-an  : Alerts = Errors, Security >= High   (rule tu viet, tin cay cao)
+#   OWASP-ZAP      : Security >= High                   (DAST tren app dung tu PR)
+#   dependency-review (job rieng): required check      (goi MOI dinh CVE >= High)
+# Rule cong dong, Trivy, Gitleaks day len de tham khao/theo doi. Bao nham xu ly
+# bang Dismiss + ly do trong tab Security - co audit, khong sua code de ne.
+#
 # DIEU CAN BIET: workflow duoc goi se checkout ma nguon cua REPO GOI NO, chu
 # khong phai repo chua workflow. Nen no phai TU keo bo cong cu ve, vao thu muc
 # .devsecops-toolkit/ - va moi buoc quet deu phai loai thu muc do ra, neu
@@ -62,15 +72,10 @@ on:
         type: string
         required: false
         default: 'main'
-      fail-on-confirmed:
-        description: 'true thi co CONFIRMED la chan merge. Dat false de ap dung dan o repo co san no ky thuat.'
-        type: boolean
-        required: false
-        default: true
       run-dast:
         description: >-
-          Chay tang doi sanh dong hay khong. Dat false cho repo khong khoi dong
-          duoc trong CI vi thieu CSDL hay dich vu phu. Bon tang tinh van chay
+          Chay tang dong (ZAP) hay khong. Dat false cho repo khong khoi dong
+          duoc trong CI vi thieu CSDL hay dich vu phu. Cac tang tinh van chay
           binh thuong, va trang ket qua se NOI RO la tang dong da bi bo qua -
           khong de nguoi doc hieu nham thanh "da kiem chung va sach".
         type: boolean
@@ -85,17 +90,6 @@ on:
         type: string
         required: false
         default: 'p/csharp p/security-audit'
-      fail-on-unverified:
-        description: >-
-          true thi cong cung that bai khi co canh bao tinh nam tren mot endpoint
-          kiem thu duoc nhung khong lan nao duoc hoi ZAP. Khong co dieu kien nay
-          thi dat run-dast: false se TAT HAN cong: khong chay DAST thi khong co
-          nhan CONFIRMED, khong co CONFIRMED thi job xanh, va "khong kiem tra
-          duoc" di qua y het "da kiem tra va sach" - dung cai loi ca quy trinh
-          nay dat ra de chong.
-        type: boolean
-        required: false
-        default: true
       run-image-scan:
         description: 'Quet CVE trong container image. Ton them vai phut nen mac dinh chi chay o nhanh chinh.'
         type: boolean
@@ -238,15 +232,15 @@ jobs:
           fi
 
       # ===============================================================
-      # TANG 2 - Ma nguon (SAST): CWE trong ma minh viet
-      # Hai lan quet vi hai muc dich nguoc nhau: mot tim dau hieu nguy hiem,
-      # mot tim bang chung an toan. Ca hai deu la dau vao cua buoc doi sanh.
+      # TANG 2 - Ma nguon (SAST) - Semgrep, mot lan quet
       #
-      # --exclude .devsecops-toolkit la bat buoc: khong loai ra thi Semgrep
-      # quet ca ma nguon cua bo cong cu va cua ung dung mau VulnShop di kem,
-      # roi bao cao se ghi nhan lo hong cua VulnShop nhu la cua repo dich.
+      # Ket qua duoc tach lam hai truoc khi day len Code Scanning:
+      #   Semgrep-du-an     rule tu viet, tin cay cao   -> co quyen CHAN (level error)
+      #   Semgrep-cong-dong rule cong dong              -> tham khao
+      # Khong con buoc --baseline-commit: GitHub tu tinh alert nao la MOI trong
+      # PR bang cach so voi lan quet gan nhat cua nhanh goc (cung ten cong cu).
       # ===============================================================
-      - name: Semgrep - bo rule phat hien
+      - name: Semgrep - quet ma nguon
         if: steps.pham_vi.outputs.chi_tai_lieu != 'true'
         run: |
           CFG="--config $TOOLKIT/semgrep-rules/sast-detect.yaml"
@@ -254,65 +248,15 @@ jobs:
             CFG="$CFG --config $pack"
           done
           echo "Bo rule dang dung: $CFG"
+          # --disable-nosem: bo qua moi chu thich `// nosemgrep` trong code. Bao nham
+          # duoc xu ly bang Dismiss + ly do tren GitHub (co audit), khong bang cach
+          # sua code de tat canh bao.
           docker run --rm -v "$PWD:/src" -w /src semgrep/semgrep \
             semgrep scan $CFG \
             --exclude "$TOOLKIT" \
             --exclude "kiem-thu-rule" \
+            --disable-nosem \
             --sarif --output reports/semgrep.sarif --metrics=off
-
-      - name: Semgrep - bo rule kiem sanitizer
-        if: steps.pham_vi.outputs.chi_tai_lieu != 'true'
-        run: |
-          docker run --rm -v "$PWD:/src" -w /src semgrep/semgrep \
-            semgrep scan --config "$TOOLKIT/semgrep-rules/sanitizer-check.yaml" \
-            --exclude "$TOOLKIT" \
-            --exclude "kiem-thu-rule" \
-            --sarif --output reports/sanitizers.sarif --metrics=off
-
-      # ===============================================================
-      # BASELINE - canh bao nao la MOI so voi nhanh goc?
-      #
-      # Ly do so mot khien cac doi tat cong sau mot tuan: repo co san lo hong
-      # tu truoc, moi PR deu do vi loi cua nguoi khac, va cach duy nhat de lam
-      # viec tiep la tat han cong. Buoc nay chay Semgrep lan nua voi
-      # --baseline-commit: ket qua CHI gom canh bao khong ton tai o moc.
-      #
-      # QUAN TRONG: lan quet day du o tren VAN duoc dung de bao cao. Tep nay
-      # chi di vao cong chan. Dung baseline ngay tu lan quet chinh thi no cu
-      # bien mat khoi bao cao - lai la im lang bi trinh bay thanh sach.
-      #
-      # Hong thi khong lam sap job: correlate.py khong thay tep nay se coi
-      # MOI canh bao la moi - tuc la chat hon, khong long hon.
-      # ===============================================================
-      - name: Semgrep - chi canh bao MOI so voi moc (baseline cho cong chan)
-        if: steps.pham_vi.outputs.chi_tai_lieu != 'true' && steps.pham_vi.outputs.moc != ''
-        env:
-          MOC: ${{ steps.pham_vi.outputs.moc }}
-        run: |
-          CFG="--config $TOOLKIT/semgrep-rules/sast-detect.yaml"
-          for pack in ${{ inputs.semgrep-packs }}; do
-            CFG="$CFG --config $pack"
-          done
-          echo "Moc baseline: $MOC"
-          # Ba bien GIT_CONFIG_* khai bao safe.directory cho git ben trong
-          # container ma khong phai sua tep cau hinh nao: repo duoc mount vao
-          # /src thuoc user khac, git tu choi doc neu khong co dong nay.
-          if docker run --rm -v "$PWD:/src" -w /src \
-               -e GIT_CONFIG_COUNT=1 \
-               -e GIT_CONFIG_KEY_0=safe.directory \
-               -e GIT_CONFIG_VALUE_0=/src \
-               semgrep/semgrep semgrep scan $CFG \
-               --exclude "$TOOLKIT" --exclude "kiem-thu-rule" \
-               --baseline-commit "$MOC" \
-               --sarif --output reports/semgrep-moi.sarif --metrics=off; then
-            N=$(python -c "import json;print(sum(len(r.get('results',[])) for r in json.load(open('reports/semgrep-moi.sarif')).get('runs',[])))")
-            echo "Baseline: $N canh bao MOI so voi moc. Cong se chi chan phan nay."
-          else
-            rm -f reports/semgrep-moi.sarif
-            echo "::warning::Khong tinh duoc baseline. Cong se coi MOI canh bao la moi."
-            echo "Trang thai cay lam viec (Semgrep tu choi baseline khi co tep dang theo doi bi sua):"
-            git status --porcelain | head -20
-          fi
 
       # ===============================================================
       # TANG 3 - Ha tang: cau hinh trien khai + SBOM
@@ -367,13 +311,16 @@ jobs:
             --severity CRITICAL,HIGH --quiet || true
 
       # ===============================================================
-      # TANG 4 - Doi sanh tinh x dong
+      # TANG 4 - Kiem thu dong (DAST) - DOC LAP voi SAST
+      #
+      # Truoc day ZAP chi ban vao cho SAST chi va co quyen "cho qua" canh bao
+      # SAST. Mot SQL injection that da lot qua cong vi the (PR #1 cua
+      # VulnShop-App). Gio ZAP quet TOAN BO ung dung dung tu code cua PR, ket
+      # qua di thang len Code Scanning nhu mot nguon phat hien rieng. Doi chieu
+      # SAST x DAST chi con dung de GAN NHAN "da khai thac duoc" - xep uu tien,
+      # khong bao gio dung de bo qua.
       # ===============================================================
-      # Ban do route la TANG 3, quet tinh tren Controller va Razor Page. No do
-      # pham vi ap dung cua kiem thu dong, nen van co gia tri ke ca khi tang
-      # dong bi tat - luc do no tra loi "neu chay duoc thi se phu duoc bao
-      # nhieu phan tram".
-      - name: Sinh lai ban do route
+      - name: Sinh ban do route
         if: steps.pham_vi.outputs.chi_tai_lieu != 'true'
         run: |
           python "$TOOLKIT/tools/gen_routes_map.py" \
@@ -399,7 +346,6 @@ jobs:
           echo "Ung dung khong khoi dong duoc:"; cat app.log; exit 1
 
       # Tren runner Linux dung --network host, nen ZAP goi thang localhost.
-      # Khac voi may Windows phai dung host.docker.internal.
       - name: Khoi dong OWASP ZAP dang daemon
         if: steps.pham_vi.outputs.chi_tai_lieu != 'true' && inputs.run-dast && inputs.project-file != ''
         run: |
@@ -417,183 +363,139 @@ jobs:
           done
           echo "ZAP khong khoi dong duoc:"; docker logs zap; exit 1
 
-      - name: Doi sanh SAST-DAST va quality gate
+      - name: ZAP - quet toan bo ung dung tam
         if: steps.pham_vi.outputs.chi_tai_lieu != 'true' && inputs.run-dast && inputs.project-file != ''
-        id: correlate
         run: |
-          # Dung if thay vi `[ ... ] && ...`: shell cua Actions chay voi -e, nen
-          # mot phep thu tra ve false o cuoi dong se lam sap ca buoc.
-          ARGS=""
-          if [ "${{ inputs.fail-on-confirmed }}" = "true" ]; then
-            ARGS="$ARGS --fail-on-confirmed"
-          fi
-          if [ "${{ inputs.fail-on-unverified }}" = "true" ]; then
-            ARGS="$ARGS --fail-on-unverified"
-          fi
-          python "$TOOLKIT/tools/correlate.py" \
-            --findings reports/semgrep.sarif \
-            --sanitizers reports/sanitizers.sarif \
-            --baseline-sarif reports/semgrep-moi.sarif \
+          python "$TOOLKIT/tools/dast_scan.py" \
             --routes routes_map.json \
+            --base-url "${{ inputs.app-url }}" \
             --zap http://localhost:8090 \
-            --base-url "${{ inputs.app-url }}" \
-            --scan-timeout 300 $ARGS
+            --timeout 1200 \
+            --out reports/zap-alerts.json
 
       # ===============================================================
-      # Khi tang dong BI TAT, cong van phai co tieng noi.
-      #
-      # Neu khong co buoc nay, `run-dast: false` tat han cong: khong chay DAST
-      # thi khong sinh nhan CONFIRMED, khong CONFIRMED thi job xanh, va merge
-      # duoc tat. Tuc la mot dong cau hinh bien "khong kiem tra duoc" thanh
-      # "da kiem tra va sach".
-      #
-      # Buoc nay chay correlate o che do --dry-run: van anh xa canh bao tinh
-      # sang endpoint, van ap nhan FILTERED tu bang chung khu doc, chi khong
-      # goi ZAP. Phan con lai la rui ro DA BIET ma CHUA AI KIEM CHUNG.
+      # CHUAN HOA SARIF - de GitHub lam cong
+      # Semgrep: tach rule du an / cong dong, ep security-severity ve so,
+      #          gan nhan DA KHAI THAC neu ZAP trung cung CWE cung endpoint.
+      # ZAP:     JSON -> SARIF, moi alert anh xa ve Controller:dong qua ban do
+      #          route de chu thich hien dung cho trong Files changed.
       # ===============================================================
-      - name: Kiem tra rui ro chua kiem chung (khi tang dong bi tat)
-        if: >-
-          steps.pham_vi.outputs.chi_tai_lieu != 'true' &&
-          !inputs.run-dast &&
-          inputs.fail-on-unverified
+      - name: Chuan hoa SARIF cho Code Scanning
+        if: always() && steps.pham_vi.outputs.chi_tai_lieu != 'true'
         run: |
-          if [ ! -f reports/semgrep.sarif ] || [ ! -f routes_map.json ]; then
-            echo "Thieu ket qua tinh hoac ban do route - khong doi sanh duoc."
-            exit 0
+          if [ -f reports/semgrep.sarif ]; then
+            python "$TOOLKIT/tools/sarif_tools.py" semgrep \
+              --in reports/semgrep.sarif \
+              --out-du-an reports/semgrep-du-an.sarif \
+              --out-cong-dong reports/semgrep-cong-dong.sarif \
+              --zap reports/zap-alerts.json --routes routes_map.json
           fi
-          python "$TOOLKIT/tools/correlate.py" --dry-run \
-            --findings reports/semgrep.sarif \
-            --sanitizers reports/sanitizers.sarif \
-            --baseline-sarif reports/semgrep-moi.sarif \
-            --routes routes_map.json \
-            --base-url "${{ inputs.app-url }}" \
-            --out reports/findings.json \
-            --sarif-out reports/correlated.sarif \
-            --fail-on-unverified
+          if [ -f reports/zap-alerts.json ]; then
+            FB="${{ inputs.project-file }}"
+            if [ -z "$FB" ]; then FB="README.md"; fi
+            python "$TOOLKIT/tools/sarif_tools.py" zap \
+              --in reports/zap-alerts.json --routes routes_map.json \
+              --fallback-file "$FB" --out reports/zap.sarif
+          fi
 
       # ===============================================================
-      # BAO CAO - chay ca khi quality gate da that bai, vi luc that bai
-      # moi la luc nguoi ta can doc bao cao nhat.
+      # TOM TAT cho dev - KHONG chan. Viec khoa merge la cua GitHub
+      # (Code scanning results + ruleset). Buoc nay chi viet lai cung nguong
+      # do thanh mot bang ngan: co gi phai sua, o dau, sua the nao.
       # ===============================================================
+      - name: Tom tat - co gi phai sua khong
+        if: always()
+        env:
+          MOC: ${{ steps.pham_vi.outputs.moc }}
+          CHI_TAI_LIEU: ${{ steps.pham_vi.outputs.chi_tai_lieu }}
+          CO_DAST: ${{ inputs.run-dast && inputs.project-file != '' }}
+        run: |
+          # Bang tong quan tung tang
+          python - <<'PY' >> $GITHUB_STEP_SUMMARY
+          import json, os
+          from pathlib import Path
+          def j(p):
+              q = Path(p); return json.loads(q.read_text(encoding="utf-8")) if q.exists() else None
+          def n_sarif(p):
+              d = j(p); return sum(len(r.get("results", [])) for r in d.get("runs", [])) if d else None
+          print("## Ket qua quet bao mat\n")
+          if os.environ.get("CHI_TAI_LIEU") == "true":
+              print("> Lan chay nay chi sua tai lieu: cac tang can build/chay app duoc BO QUA CO Y. Tang secret van chay.\n")
+          elif os.environ.get("CO_DAST") != "true":
+              print("> Tang dong (DAST) BI BO QUA: khong co project-file hoac run-dast=false. Chi co bang chung tinh.\n")
+          print("| Tang | Ket qua |"); print("|---|---|")
+          print(f"| 0. Secret | {os.environ.get('GITLEAKS_COUNT','?')} phat hien |")
+          sca = j("reports/sca.json")
+          if sca:
+              s = sca["summary"]; print(f"| 1. Thu vien | {s['packages']} goi dinh CVE ({s['by_severity']['Critical']} Critical, {s['by_severity']['High']} High) - goi MOI trong PR do dependency-review xet |")
+          a, b = n_sarif("reports/semgrep-du-an.sarif"), n_sarif("reports/semgrep-cong-dong.sarif")
+          if a is not None: print(f"| 2. Ma nguon | rule du an {a} · rule cong dong {b} |")
+          rm = j("routes_map.json")
+          if rm:
+              s = rm.get("summary", {}); print(f"| 3. Pham vi | {s.get('testable',0)}/{sum(s.values())} endpoint DAST toi duoc |")
+          z = j("reports/zap-alerts.json")
+          if z:
+              al = z.get("alerts", []); print(f"| 4. DAST | High {sum(1 for x in al if x['risk']=='High')} · Medium {sum(1 for x in al if x['risk']=='Medium')} · Low/Info {sum(1 for x in al if x['risk'] in ('Low','Informational'))} |")
+          print()
+          PY
+
+          ARGS=""
+          if [ -f reports/semgrep-du-an.sarif ]; then ARGS="$ARGS --sast reports/semgrep-du-an.sarif"; fi
+          if [ -f reports/zap-alerts.json ]; then ARGS="$ARGS --zap reports/zap-alerts.json"; fi
+          if [ -f reports/gitleaks.sarif ]; then ARGS="$ARGS --gitleaks reports/gitleaks.sarif"; fi
+          if [ -f reports/sca.json ]; then ARGS="$ARGS --sca reports/sca.json"; fi
+          if [ -n "$MOC" ]; then ARGS="$ARGS --moc $MOC"; fi
+          if [ "$CO_DAST" != "true" ]; then ARGS="$ARGS --dast-skipped run-dast=false_hoac_khong_co_project-file"; fi
+          if [ -n "$MOC" ] && git diff --name-only "$MOC" HEAD | grep -qE '\.csproj$|packages\.lock\.json$|Directory\.Packages\.props$'; then
+            ARGS="$ARGS --deps-changed"
+          fi
+          python "$TOOLKIT/tools/gate.py" $ARGS --routes routes_map.json \
+            --title "$TITLE" --out reports/tom-tat.json || true
+
       - name: Dung bao cao HTML
         if: always() && steps.pham_vi.outputs.chi_tai_lieu != 'true'
         run: |
           ARGS=""
-          [ -f reports/sca.json ]       && ARGS="$ARGS --sca reports/sca.json"
-          [ -f reports/semgrep.sarif ]  && ARGS="$ARGS --sast reports/semgrep.sarif"
-          [ -f routes_map.json ]        && ARGS="$ARGS --routes routes_map.json"
-          [ -f reports/findings.json ]  && ARGS="$ARGS --dast reports/findings.json"
-          python "$TOOLKIT/tools/report.py" --title "$TITLE" \
-            $ARGS --out reports/bao_cao.html || true
+          if [ -f reports/sca.json ]; then ARGS="$ARGS --sca reports/sca.json"; fi
+          if [ -f reports/semgrep.sarif ]; then ARGS="$ARGS --sast reports/semgrep.sarif"; fi
+          if [ -f routes_map.json ]; then ARGS="$ARGS --routes routes_map.json"; fi
+          python "$TOOLKIT/tools/report.py" --title "$TITLE" $ARGS --out reports/bao_cao.html || true
 
-      - name: Tom tat len trang ket qua cua lan chay
-        if: always()
-        env:
-          CHI_TAI_LIEU: ${{ steps.pham_vi.outputs.chi_tai_lieu }}
-          CO_DAST: ${{ inputs.run-dast && inputs.project-file != '' }}
-        run: |
-          python - <<'PY' >> $GITHUB_STEP_SUMMARY
-          import json, os
-          from pathlib import Path
-
-          def j(p):
-              q = Path(p)
-              return json.loads(q.read_text(encoding="utf-8")) if q.exists() else None
-
-          print("## Ket qua quet bao mat\n")
-
-          # Bo qua co y van phai duoc NOI RA. Mot bang thieu tang ma khong giai
-          # thich se bi doc nham thanh "da quet va sach".
-          if os.environ.get("CHI_TAI_LIEU") == "true":
-              print("> **Lan chay nay chi thay doi tai lieu.** Cac tang can build va")
-              print("> chay ung dung da duoc BO QUA CO Y - day khong phai ket qua")
-              print("> \"da quet va khong thay gi\". Tang quet secret van chay, vi mot")
-              print("> tep .md van co the chua token bi dan nham.\n")
-          elif os.environ.get("CO_DAST") != "true":
-              print("> **Tang doi sanh tinh x dong da BI BO QUA** o lan chay nay, vi")
-              print("> repo khong khai bao project-file hoac da dat run-dast: false.")
-              print("> Cac tang tinh o duoi van co gia tri, nhung KHONG canh bao nao")
-              print("> trong so do duoc kiem chung tren ung dung dang chay. Day la")
-              print("> **no kiem thu**, khong phai ket luan an toan.\n")
-
-          print("| Tang | Ket qua |")
-          print("|---|---|")
-          print(f"| 0. Secret | {os.environ.get('GITLEAKS_COUNT','?')} phat hien |")
-
-          sca = j("reports/sca.json")
-          if sca:
-              s = sca["summary"]
-              print(f"| 1. Thu vien | {s['packages']} goi dinh CVE "
-                    f"({s['by_severity']['Critical']} Critical, {s['by_severity']['High']} High) |")
-
-          sar = j("reports/semgrep.sarif")
-          if sar:
-              n = sum(len(r.get("results", [])) for r in sar.get("runs", []))
-              print(f"| 2. Ma nguon | {n} canh bao |")
-
-          rm = j("routes_map.json")
-          if rm:
-              s = rm.get("summary", {})
-              print(f"| 3. Pham vi | {s.get('testable',0)}/{sum(s.values())} endpoint kiem thu dong duoc |")
-
-          f = j("reports/findings.json")
-          if f:
-              s = f["summary"]
-              print(f"| 4. Doi sanh | **CONFIRMED {s.get('CONFIRMED',0)}** · "
-                    f"FILTERED {s.get('FILTERED',0)} · UNCONFIRMED {s.get('UNCONFIRMED',0)} |")
-              print()
-
-              co_bl = f.get("baseline_used", False)
-              n_moi = f.get("confirmed_new", s.get("CONFIRMED", 0))
-              n_cu = f.get("confirmed_old", 0)
-
-              if co_bl:
-                  print(f"> Baseline so voi nhanh goc: **{n_moi} CONFIRMED moi** do lan thay "
-                        f"doi nay dua vao, {n_cu} CONFIRMED la no cu tu truoc. "
-                        f"Cong chi chan phan moi.\n")
-              else:
-                  print("> Khong co moc baseline (quet dinh ky, chay tay, hoac nhanh vua "
-                        "tao) — moi canh bao deu tinh la moi.\n")
-
-              if n_moi:
-                  print("> **Cong da chan.** Cac canh bao duoi day da duoc xac nhan la "
-                        "khai thac duoc tren ung dung dang chay:\n")
-                  for x in f["results"]:
-                      if x["label"] == "CONFIRMED" and x.get("moi", True):
-                          print(f"> - `{x['file']}:{x['line']}` — {x['cwe']} tai `{x.get('url','')}`")
-              elif n_cu:
-                  print("> Lan thay doi nay **khong them lo hong moi** nao — cong cho qua. "
-                        f"Nhung **{n_cu} lo hong CONFIRMED cu van con do**; day la no ky "
-                        "thuat da biet, khong phai bang chung an toan:\n")
-                  for x in f["results"]:
-                      if x["label"] == "CONFIRMED":
-                          print(f"> - `{x['file']}:{x['line']}` — {x['cwe']} tai `{x.get('url','')}` *(no cu)*")
-              else:
-                  print("> Khong co canh bao nao duoc xac nhan khai thac duoc. "
-                        "Luu y: **UNCONFIRMED khong dong nghia voi an toan** — "
-                        "do la phan chua co bang chung theo chieu nao.")
-
-              n_ngoai = f.get("outside_dast_scope", 0)
-              if n_ngoai:
-                  print(f"\n> {n_ngoai} canh bao thuoc CWE ma ZAP **khong co active scan rule** "
-                        "— khong kiem chung dong duoc, khong tinh vao cong, can review tay.")
-          PY
-
-      - name: Day SARIF da gan nhan len Code Scanning
-        if: always() && hashFiles('reports/correlated.sarif') != ''
+      # ===============================================================
+      # DAY LEN CODE SCANNING - day la cong that.
+      # Ten check tren PR = "Code scanning results / <ten cong cu trong SARIF>".
+      # Ruleset "Require code scanning results" khoa merge theo nguong tung
+      # cong cu; chi xet alert MOI trong PR.
+      # ===============================================================
+      - name: Code Scanning - Semgrep rule du an (co quyen chan)
+        if: always() && hashFiles('reports/semgrep-du-an.sarif') != ''
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: reports/correlated.sarif
-          category: doi-sanh-sast-dast
+          sarif_file: reports/semgrep-du-an.sarif
+          category: semgrep-du-an
 
-      - name: Day SARIF secret len Code Scanning
+      - name: Code Scanning - Semgrep rule cong dong (tham khao)
+        if: always() && hashFiles('reports/semgrep-cong-dong.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: reports/semgrep-cong-dong.sarif
+          category: semgrep-cong-dong
+
+      - name: Code Scanning - OWASP ZAP (co quyen chan o muc High)
+        if: always() && hashFiles('reports/zap.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: reports/zap.sarif
+          category: zap
+
+      - name: Code Scanning - secret
         if: always() && hashFiles('reports/gitleaks.sarif') != ''
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: reports/gitleaks.sarif
           category: secret
 
-      - name: Day SARIF cau hinh ha tang len Code Scanning
+      - name: Code Scanning - cau hinh ha tang
         if: always() && hashFiles('reports/trivy-config.sarif') != ''
         uses: github/codeql-action/upload-sarif@v3
         with:
@@ -617,3 +519,22 @@ jobs:
       - name: Nhat ky ZAP khi co su co
         if: failure()
         run: docker logs zap 2>/dev/null | tail -50 || true
+
+  # =====================================================================
+  # THU VIEN MOI TRONG PR - dependency-review-action cua GitHub
+  # So sanh manifest giua nhanh goc va PR, chi xet goi PR THEM hoac NANG len
+  # ban dinh CVE. Job rieng de tren PR no la mot check rieng
+  # ("security / dependency-review") - danh dau la required trong ruleset.
+  # CVE moi cong bo tren goi CU thi Dependabot lo, khong chan PR nguoi khac.
+  # =====================================================================
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: never

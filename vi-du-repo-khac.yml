@@ -15,8 +15,13 @@ name: Bao mat
 #         secrets: inherit
 #
 # Khong khai bao project-file thi bon tang tinh van chay (secret, thu vien,
-# ma nguon, ha tang), chi tang doi sanh dong bi bo qua - va trang ket qua se
+# ma nguon, ha tang), chi tang dong (ZAP) bi bo qua - va trang ket qua se
 # NOI RO la da bo qua, chu khong im lang.
+#
+# AI CHAN MERGE: GitHub, khong phai job nay. Sau lan chay dau tren main, vao
+# Settings -> Rules -> Rulesets cua repo nay: "Require code scanning results"
+# voi Semgrep-du-an (Alerts=Errors, Security>=High) va OWASP-ZAP (Security>=High),
+# required check "security / dependency-review", 1 approve, bypass trong.
 # ==========================================================================
 
 # Chi quet khi MO PR va khi push vao main. Khong quet moi push len nhanh phu:
@@ -54,10 +59,6 @@ jobs:
       # va trang ket qua se noi ro la da bo qua, khong im lang.
       run-dast: true
 
-      # Mac dinh true. Giu nguyen thi tat tang dong ma van con canh bao tinh
-      # tren endpoint kiem thu duoc se lam job do - vi do la rui ro DA BIET ma
-      # CHUA AI KIEM CHUNG. Dat false neu chap nhan trang thai do.
-      fail-on-unverified: true
 
       # Bo rule cong dong, keo tu registry Semgrep LUC CHAY nen luon la ban
       # moi nhat. Mac dinh 'p/csharp p/security-audit'. Them pack khac cho
@@ -78,10 +79,6 @@ jobs:
       # vao mot ngay ban khong sua gi ca.
       # toolkit-ref: v1.0.0
 
-      # Repo da co san lo hong tu truoc thi dat false de ap dung dan: pipeline
-      # van quet va van bao cao day du, nhung chua chan merge. Bat len true
-      # sau khi da tra xong no ky thuat.
-      fail-on-confirmed: true
 
     # Telegram la tuy chon. Khong khai bao hai secret thi buoc gui tin nhan tu
     # bo qua, khong lam hong pipeline.

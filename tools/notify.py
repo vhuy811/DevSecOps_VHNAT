@@ -2,7 +2,8 @@
 """
 Gui ket qua pipeline len Telegram.
 
-Doc reports/findings.json roi gui mot tin nhan tom tat. Bien moi truong can:
+Doc reports/tom-tat.json (do tools/gate.py sinh) roi gui mot tin nhan ngan:
+CHAN hay QUA, may van de, o dau. Bien moi truong can:
     TELEGRAM_BOT_TOKEN   token lay tu BotFather
     TELEGRAM_CHAT_ID     id cuoc tro chuyen nhan tin
 
@@ -10,8 +11,8 @@ Cac bien GitHub Actions duoi day la tuy chon, co thi tin nhan day du hon:
     GITHUB_SHA, GITHUB_REF_NAME, GITHUB_REPOSITORY, GITHUB_SERVER_URL, GITHUB_RUN_ID
 
 Cach dung:
-    python tools/notify.py                     # luon gui
-    python tools/notify.py --only-on-confirmed # chi gui khi co lo hong da xac nhan
+    python tools/notify.py               # luon gui
+    python tools/notify.py --only-on-block   # chi gui khi co muc CHAN
 """
 from __future__ import annotations
 
@@ -23,21 +24,13 @@ from pathlib import Path
 
 import requests
 
-CONFIRMED = "CONFIRMED"
-FILTERED = "FILTERED"
-UNCONFIRMED = "UNCONFIRMED"
-
 
 def build_message(data: dict) -> str:
-    s = data.get("summary", {})
-    n_conf = s.get(CONFIRMED, 0)
-    n_filt = s.get(FILTERED, 0)
-    n_unc = s.get(UNCONFIRMED, 0)
-    rate = data.get("resolution_rate", 0)
-
-    icon = "\U0001F534" if n_conf else ("\U0001F7E1" if n_unc else "\U0001F7E2")
+    chan = data.get("chan", [])
+    ket_luan = data.get("ket_luan", "QUA")
+    icon = "\U0001F534" if chan else "\U0001F7E2"
     ten = os.getenv("GITHUB_REPOSITORY", "").split("/")[-1] or "DevSecOps"
-    lines = [f"{icon} <b>{ten} - DevSecOps pipeline</b>"]
+    lines = [f"{icon} <b>{ten} - {ket_luan}</b>"]
 
     repo = os.getenv("GITHUB_REPOSITORY")
     branch = os.getenv("GITHUB_REF_NAME")
@@ -45,42 +38,34 @@ def build_message(data: dict) -> str:
     if repo:
         lines.append(f"<code>{repo}</code> | nhanh <b>{branch}</b> | commit <code>{sha}</code>")
 
-    lines += [
-        "",
-        f"<b>{n_conf}</b> CONFIRMED - da co bang chung khai thac",
-        f"<b>{n_filt}</b> FILTERED - loai tru bang bang chung tinh",
-        f"<b>{n_unc}</b> UNCONFIRMED - can review tay",
-        f"Ti le phan giai tu dong: <b>{rate:.0%}</b>",
-    ]
-
-    confirmed = [r for r in data.get("results", []) if r["label"] == CONFIRMED]
-    if confirmed:
+    if chan:
         lines.append("")
-        lines.append("<b>Lo hong da xac nhan:</b>")
-        for r in confirmed[:10]:
-            lines.append(f"- {r['cwe']} <code>{r['url']}?{r['param']}=</code>")
-
-    unconfirmed = [r for r in data.get("results", []) if r["label"] == UNCONFIRMED]
-    if unconfirmed:
+        lines.append(f"<b>{len(chan)} van de phai sua truoc khi merge:</b>")
+        for c in chan[:10]:
+            uu = " (DA KHAI THAC DUOC)" if c.get("da_khai_thac") else ""
+            lines.append(f"- {c.get('nguon')} CWE-{c.get('cwe')} <code>{c.get('o_dau')}</code>{uu}")
+    else:
         lines.append("")
-        lines.append("<b>Can review tay:</b>")
-        for r in unconfirmed[:10]:
-            lines.append(f"- {r['cwe']} <code>{r['file']}:{r['line']}</code>")
+        lines.append("Khong co van de nao phai sua.")
+
+    for t in data.get("tham_khao", [])[:5]:
+        lines.append(f"<i>{t}</i>")
+    for g in data.get("ghi_chu", [])[:3]:
+        lines.append(f"⚠ {g}")
 
     server = os.getenv("GITHUB_SERVER_URL")
     run_id = os.getenv("GITHUB_RUN_ID")
     if server and repo and run_id:
         lines.append("")
         lines.append(f'<a href="{server}/{repo}/actions/runs/{run_id}">Xem chi tiet lan chay</a>')
-
     return "\n".join(lines)
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--findings", default="reports/findings.json")
-    ap.add_argument("--only-on-confirmed", action="store_true",
-                    help="Chi gui khi co it nhat mot nhan CONFIRMED, tranh lam phien")
+    ap.add_argument("--summary", default="reports/tom-tat.json")
+    ap.add_argument("--only-on-block", action="store_true",
+                    help="Chi gui khi co muc CHAN, tranh lam phien")
     args = ap.parse_args()
 
     token = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -89,29 +74,25 @@ def main() -> int:
         print("Thieu TELEGRAM_BOT_TOKEN hoac TELEGRAM_CHAT_ID, bo qua buoc thong bao.")
         return 0  # khong lam hong pipeline chi vi khong gui duoc tin nhan
 
-    path = Path(args.findings)
+    path = Path(args.summary)
     if not path.exists():
         print(f"Khong tim thay {path}, bo qua buoc thong bao.")
         return 0
 
     data = json.loads(path.read_text(encoding="utf-8"))
-    if args.only_on_confirmed and data.get("summary", {}).get(CONFIRMED, 0) == 0:
-        print("Khong co nhan CONFIRMED, khong gui thong bao.")
+    if args.only_on_block and not data.get("chan"):
+        print("Khong co muc CHAN, khong gui thong bao.")
         return 0
 
     resp = requests.post(
         f"https://api.telegram.org/bot{token}/sendMessage",
-        json={
-            "chat_id": chat_id,
-            "text": build_message(data),
-            "parse_mode": "HTML",
-            "disable_web_page_preview": True,
-        },
+        json={"chat_id": chat_id, "text": build_message(data),
+              "parse_mode": "HTML", "disable_web_page_preview": True},
         timeout=20,
     )
     if resp.status_code != 200:
         print(f"Telegram tra ve {resp.status_code}: {resp.text[:300]}")
-        return 0  # van khong lam hong pipeline
+        return 0
     print("Da gui thong bao Telegram.")
     return 0
 

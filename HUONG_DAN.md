@@ -4,17 +4,20 @@ Quy trình DevSecOps năm tầng — dùng hằng ngày, cài lên máy mới, v
 
 ---
 
-## 1. Ba chốt kiểm tra, không phải hai
+## 1. Ai kiểm tra, lúc nào, chặn gì
 
-Điều hay bị hiểu nhầm: **bạn không tự chạy quét trước mỗi lần push.** Hai chốt đầu chạy tự động, bạn không bấm gì cả.
+Bạn không tự chạy quét. Kiểm tra nằm trên GitHub, kích hoạt khi mở Pull Request; **khoá merge** cũng là GitHub làm — qua Code Scanning và ruleset — không phải pipeline tự chặn.
 
-| Chốt | Chạy khi nào | Ai kích hoạt | Mất bao lâu | Chặn gì |
-|---|---|---|---|---|
-| **Hook pre-commit** | `git commit` | tự động | 5–20 giây | commit không thành |
-| **CI trên GitHub** | mở PR, push vào `main` | tự động | 20 giây – 6 phút | job đỏ, nút Merge xám |
-| **Dashboard** | khi bạn muốn nhìn toàn cảnh | **bạn bấm** | 1–4 phút | không chặn gì |
+| Lúc nào | Cái gì chạy | Chặn gì |
+|---|---|---|
+| `git commit` (máy dev) | hook pre-commit, nếu có cài — Semgrep trên tệp đang sửa | không — chỉ tư vấn, bỏ qua được |
+| `git push` | GitHub push protection quét secret | **chặn push** có khoá/mật khẩu |
+| mở PR / push thêm vào PR | pipeline đủ 5 tầng trên máy ảo tạm; kết quả → Code Scanning | **khoá merge** khi có: cảnh báo ERROR mới của rule dự án · alert High mới của ZAP · gói mới dính CVE ≥ High |
+| bấm Merge | GitHub kiểm ruleset: check xanh + 1 approve + nhánh cập nhật | **nút Merge khoá** nếu thiếu |
+| commit vào `main` (sau merge) | pipeline chạy lại, làm mốc so sánh cho PR sau | không — không còn gì để chặn |
+| 01:00 thứ Ba | quét định kỳ | không — báo Telegram: CVE mới trên code cũ |
 
-Dashboard không nằm trong luồng làm việc hằng ngày. Nó để điều tra, để so sánh hai repo, và để trình diễn. Hook và CI mới là thứ gác cổng.
+Dashboard cục bộ (`tools/webui.py`) không nằm trong luồng này. Nó để điều tra và trình diễn.
 
 ---
 
@@ -53,15 +56,9 @@ Hook in ra một trong ba kết quả:
 
 Dòng thứ ba quan trọng. Nó **không** nói mã nguồn sạch, nó nói chưa kiểm tra được. Hai chuyện đó khác nhau.
 
-### Khi bị hook chặn mà bạn chắc là dương tính giả
+### Khi hook báo mà bạn chắc là báo nhầm
 
-```csharp
-// nosemgrep: vulnshop-sqli-commandtext-concat
-```
-
-Đặt ngay trên dòng bị báo. Cách này để lại dấu vết trong mã nguồn, người review thấy được.
-
-Đừng dùng `git commit --no-verify` — nó bỏ qua âm thầm, không ai biết.
+Hook chỉ tư vấn — commit vẫn đi tiếp nếu bạn muốn. Báo nhầm thật sự được xử lý **ở PR**, trong tab Security → Dismiss alert kèm lý do. Không thêm `// nosemgrep` vào code: pipeline không đọc nó, và nó giấu vấn đề khỏi người review.
 
 ---
 
@@ -138,7 +135,7 @@ App vẫn chạy bình thường ở `localhost:5000`, chỉ ô này điền kh�
 | **FILTERED** | tìm thấy hàm khử độc nằm trên đúng luồng dữ liệu đó |
 | **UNCONFIRMED** | chưa có bằng chứng theo chiều nào — **nợ kiểm thử, không phải an toàn** |
 
-Trạng thái `cổng chặn` ở tầng 5 nghĩa là quét chạy đúng và tìm ra lỗ hổng. Khác hẳn `hỏng`, vốn chỉ dùng cho lỗi kỹ thuật.
+Ba nhãn này là cách **dashboard** trình bày kết quả đối chiếu để điều tra tại máy. Trên GitHub, cổng không dùng chúng: mọi cảnh báo ERROR mới của rule dự án đều chặn, ZAP chỉ thêm nhãn *đã khai thác được* để ưu tiên — không bao giờ để bỏ qua.
 
 ---
 
@@ -178,8 +175,6 @@ Chỉ vậy. Không copy `tools/`, không copy `semgrep-rules/` — pipeline t�
 | `project-file` | đường dẫn `.csproj`. Để `''` nếu không phải .NET |
 | `run-dast` | `false` nếu app cần CSDL, không khởi động được trong CI |
 | `health-path` | đường dẫn kiểm tra app đã lên chưa, ví dụ `/Product/List` |
-| `fail-on-confirmed` | `false` cho repo đã có sẵn lỗ hổng cũ — quét và báo cáo đủ, nhưng chưa chặn merge |
-| `fail-on-unverified` | `false` nếu muốn tắt tầng động mà job vẫn xanh. Mặc định `true`: tắt DAST trong khi vẫn có cảnh báo tĩnh trên endpoint kiểm thử được thì job đỏ |
 | `semgrep-packs` | mặc định `p/csharp p/security-audit`. Thêm pack khác cho ngôn ngữ khác, hoặc để `''` khi cần tái lập đúng một con số đã công bố |
 | `dockerfile` | tên Dockerfile dùng cho bước quét image |
 
@@ -202,33 +197,38 @@ Khi tự đoán không ra, chỉ cho nó bằng một tệp ở gốc repo:
 
 Khoá là đường dẫn endpoint, giá trị là mồi cho tham số đầu tiên. Tệp không bắt buộc; thiếu thì pipeline vẫn tự đoán.
 
-Và khi mồi vô dụng mà không ai chỉ, pipeline **không** tin ZAP: nó so phản hồi của giá trị mồi với một giá trị vô nghĩa, giống nhau thì ghi *"ZAP không kết luận được: mốc so sánh rỗng"* và **không tính là đã kiểm chứng** — cổng `fail-on-unverified` chặn. Một lỗi SQL injection thật đã từng đi qua cổng trước khi có kiểm tra này.
+Mồi vô dụng thì ZAP chỉ không gắn được nhãn *đã khai thác được* — cổng **vẫn chặn** vì rule SAST mức ERROR đã bắt. Trước khi đổi thiết kế, chính trường hợp này đã làm một SQL injection thật đi qua cổng (xem README, mục *Thiết kế đầu và vì sao đổi*).
 
-### Bước 3 — Push và xem
+### Bước 3 — Mở PR và xem
 
-Vào tab **Actions** của repo. Job sẽ chạy.
+Trên trang PR, các check:
 
-| Kết quả | Nghĩa |
-|---|---|
-| Xanh | không có CONFIRMED **mới** — cổng cho qua. Nợ cũ (nếu có) vẫn hiện trong tóm tắt với nhãn *nợ cũ* |
-| Đỏ ở `Doi sanh SAST-DAST va quality gate` | **đúng** — lần thay đổi này đưa vào lỗ hổng xác nhận khai thác được |
-| Đỏ ở lần quét định kỳ | không có mốc baseline nên mọi cảnh báo tính là mới — nhắc rằng nợ vẫn còn |
-| Đỏ ở bước khác | lỗi thật, xem log bước đó |
+| Check | Chặn merge? | Đỏ nghĩa là |
+|---|---|---|
+| `security / scan` | không | pipeline không chạy xong — lỗi hạ tầng, xem log |
+| `Code scanning results / Semgrep-du-an` | **có** | cảnh báo ERROR **mới** trong diff |
+| `Code scanning results / OWASP-ZAP` | **có** | ZAP khai thác được lỗi High trên app dựng từ PR |
+| `security / dependency-review` | **có** | gói mới thêm/nâng dính CVE ≥ High |
+| `Code scanning results / Semgrep-cong-dong`, `/ gitleaks`, `/ Trivy` | không | tham khảo |
 
-Trang tóm tắt của lần chạy (tab Actions → bấm vào lần chạy) ghi rõ: bao nhiêu CONFIRMED mới, bao nhiêu nợ cũ, và bao nhiêu cảnh báo ZAP không có scanner để kiểm chứng.
+Trang **Summary** của `security / scan` có bảng CHẶN/QUA: ở đâu, lỗi gì, cách sửa, dòng nào 🔥 đã khai thác được. Tab **Files changed** có chú thích đỏ đúng dòng.
 
-### Bước 4 — Bật chặn merge
+Lần đầu chuyển sang cơ chế này, chạy pipeline trên `main` một lần (Actions → Run workflow) trước khi mở PR — GitHub cần mốc trên `main` để tính alert nào là mới.
 
-Settings → Branches → Add rule cho `main`:
+### Bước 4 — Bật cổng phía GitHub
 
-- tick **Require a pull request before merging** → **Require approvals: 1**
-- tick **Require status checks to pass before merging** → thêm check **`security / scan`**
-- tick **Require branches to be up to date before merging**
-- tick **Do not allow bypassing the above settings** — áp cả cho admin, tức cả bạn. Không có dòng này thì bước 8 của kịch bản kiểm thử (mục 8) không chứng minh được gì.
+Settings của repo:
 
-Tên check có dấu gạch chéo vì workflow gọi workflow khác. GitHub đặt tên theo `<job gọi> / <job được gọi>`. Ghi sai tên thì PR treo vĩnh viễn ở *"Expected — waiting for status to be reported"* và không merge được nữa.
+**Rules → Rulesets → New branch ruleset**, tên `main`, Enforcement **Active**, target *default branch*, bypass list **trống**:
 
-Thêm check này **sau khi** đã push một lần, để tên check xuất hiện trong danh sách gợi ý.
+- ☑ Require a pull request before merging → Required approvals **1**
+- ☑ Require code scanning results → Add tool `Semgrep-du-an` (Alerts: **Errors**, Security: **High or higher**) · Add tool `OWASP-ZAP` (Security: **High or higher**)
+- ☑ Require status checks to pass → `security / dependency-review` · ☑ Require branches to be up to date
+- ☑ Restrict deletions · ☑ Block force pushes
+
+Tên công cụ chỉ hiện trong danh sách sau khi pipeline đã chạy trên `main` ít nhất một lần.
+
+**Code security**: bật *Secret scanning* + *Push protection*; bật *Dependabot alerts* + *Dependabot security updates*.
 
 ### Bước 5 — Telegram (tuỳ chọn)
 
@@ -256,10 +256,11 @@ Kẹp một tệp `.cs` vào chung commit thì quét đầy đủ trở lại. S
 |---|---|---|
 | Tầng 5 báo `khong ket noi duoc ZAP o cong 8090` | ZAP chưa chạy hoặc sai cổng | `docker ps`, rồi chạy lại lệnh ZAP ở mục 3 |
 | Tầng 5 báo ZAP trả về 500 | ô URL điền `localhost` | đổi thành `host.docker.internal` |
-| Tầng 2 ra 0 FILTERED | `sanitizer-check.yaml` không tìm thấy | kiểm tra `semgrep-rules/` có tồn tại không — chỉ rule dự án mới sinh nhãn FILTERED |
+| Check Code scanning không hiện trên PR | SARIF chưa upload được, hoặc `main` chưa có lần quét nào | xem log bước "Code Scanning - ..." ; chạy workflow trên main một lần |
+| PR đỏ vì lỗi có từ trước | `main` chưa được quét với công cụ cùng tên | chạy workflow trên `main` rồi push lại PR |
 | Tầng 2 ra nhiều cảnh báo hơn lần trước dù không sửa code | rule cộng đồng kéo bản mới lúc chạy | đúng như thiết kế — sửa lỗi mới hoặc đặt `semgrep-packs: ''` nếu cần tái lập |
 | Báo cáo thiếu một tầng | tầng đó bị bỏ qua | xem log để biết lý do — thiếu tệp nghĩa là **không có kết quả mới**, không phải sạch |
-| PR treo ở *"waiting for status to be reported"* | tên required check sai | sửa thành `security / scan` |
+| PR treo ở *"waiting for status to be reported"* | required check ghi sai tên | dùng đúng `security / dependency-review`; check Code scanning cấu hình qua *Require code scanning results*, không qua status check |
 | Kết quả không phản ánh bản sửa vừa nhận | tiến trình `webui.py` cũ vẫn chạy code cũ | **tắt hẳn** rồi chạy lại — Python nạp module một lần lúc khởi động |
 | `UnicodeDecodeError` trên Windows | bảng mã console | đã vá — cập nhật `tools/` lên bản mới nhất |
 
@@ -283,33 +284,35 @@ Lệnh này bắn từng rule vào một tệp mã có lỗi cố ý và một t
 
 Dùng cho chương Thực nghiệm và cho buổi bảo vệ. Cần 3 người và một repo ứng dụng đã gắn pipeline (xem `HUONG_DAN_DONG_DOI.md` để đồng đội cài). Mỗi bước là một bằng chứng; chụp màn hình kết quả từng bước.
 
-Điều kiện trước: `main` của repo app **sạch** (0 CONFIRMED — bản có lỗ hổng nằm ở tag `ground-truth`), branch protection đã bật với check `security / scan` và tắt bypass cho admin.
+Điều kiện trước: `main` của repo app **sạch** (bản có lỗ hổng nằm ở tag `ground-truth`), ruleset đã bật theo §5 bước 4, pipeline đã chạy trên `main` một lần.
 
 | # | Ai | Làm gì | Kỳ vọng | Chứng minh |
 |---|---|---|---|---|
 | 1 | B | `git push origin main` trực tiếp | GitHub từ chối `GH006` | Không có đường tắt vào main |
-| 2 | A | Nhánh `tinh-nang/loc`, thêm action mới `Product/Filter?category=` nối chuỗi vào SQL, push, mở PR | `security / scan` **đỏ**. Summary ghi `1 lỗ hổng mới`. Chú thích hiện đúng dòng trong tab Files changed. Nút Merge khoá | Cổng chặn theo **bằng chứng khai thác** — ZAP đã bắn payload và khai thác được — không theo phỏng đoán của SAST |
-| 3 | A | Thêm `// nosemgrep: vulnshop-sqli-commandtext-concat` không lý do, push | Check **xanh** — cảnh báo bị tắt nên không có gì để hỏi ZAP | Suppress qua được máy nhưng… |
-| 4 | B | Review, thấy `nosemgrep` không lý do → **Request changes** | Merge vẫn khoá | …không qua được người. Quy ước có răng |
-| 5 | A | Bỏ `nosemgrep`, vá thật bằng tham số hoá, push | Check **xanh**. Summary: `0 lỗ hổng mới`. Merge vẫn xám vì chưa approve | Sửa đúng thì qua. Vá được nhận diện bằng bằng chứng sanitizer (FILTERED) hoặc ZAP không khai thác được nữa |
-| 6 | B | Approve | Merge mở → A merge | Hai chốt độc lập: máy và người |
-| 7 | C | PR sạch trên nhánh khác, cùng lúc với bước 5 | Hai pipeline chạy song song, kết quả độc lập | Không chặn nhầm người khác |
-| 8 | Minh | Thử merge một PR đỏ bằng quyền admin | Không được | Tắt bypass áp cả chủ repo |
+| 2 | A | Nhánh `tinh-nang/loc`, thêm action `Product/Filter?category=` nối chuỗi vào SQL, push, mở PR | `Code scanning results / Semgrep-du-an` **đỏ**; Summary: 1 vấn đề, 🔥 đã khai thác được (ZAP trúng); chú thích đỏ đúng dòng. Merge khoá | SAST chặn theo rule tin cậy cao; DAST xác nhận độc lập, xếp ưu tiên |
+| 3 | A | Thêm `// nosemgrep` không lý do, push | Check **vẫn đỏ** — pipeline không đọc `nosemgrep` | Không tắt được cảnh báo bằng cách sửa code |
+| 4 | A | Tab Security → Dismiss alert với lý do "false positive" bịa | Check xanh; B thấy dismiss trong PR, **mở lại alert**, Request changes | Dismiss có dấu vết, có người soát; qua máy không qua người |
+| 5 | A | Vá thật bằng tham số hoá, push | Tất cả check xanh. Summary: QUA. Merge xám vì chưa approve | Sửa đúng thì qua — alert tự đóng "fixed" |
+| 6 | B | Approve | Merge mở → A merge → `main` chạy lại, xanh | Hai chốt độc lập: máy và người |
+| 7 | C | PR sạch trên nhánh khác, cùng lúc | Pipeline riêng, xanh, không dính PR của A | Không chặn nhầm người vô can |
+| 8 | Minh | Thử merge PR đỏ bằng quyền admin | Không được — bypass list trống | Áp cả chủ repo |
 
-Bước 2 và 5 là hai bước quan trọng nhất: cổng chặn được lỗ hổng **trước khi** nó vào `main`, và phân biệt được **sửa thật** với **tắt cảnh báo**.
+Thêm hai tình huống chỉ pipeline mới bắt được, mỗi cái một PR ngắn: **(9)** dán một chuỗi giống khoá AWS vào `appsettings.json` → GitHub chặn ngay lúc `git push`; **(10)** thêm gói NuGet phiên bản cũ có CVE (ví dụ `Newtonsoft.Json 12.0.1`) → `security / dependency-review` đỏ.
 
-Muốn trình diễn thêm tình huống *repo có sẵn nợ cũ* — hay gặp nhất khi áp pipeline lên dự án thật — thì mở PR từ tag `ground-truth`: Summary ghi `4 nợ cũ`, cổng không chặn vì PR không thêm lỗi mới. Đó là baseline hoạt động, đã thấy ở lần chạy `#3` của repo app.
+Bước 2 và 3–4 là cốt lõi: cổng chặn **trước khi vào main**, và không có đường tắt nào không để lại dấu vết.
 
-Lưu ý khi chọn action cho bước 2: phải là action có **tham số GET** (`?category=`), vì tầng 5 chỉ bắn payload qua tham số GET. Đặt lỗi vào action POST thì SAST vẫn bắt nhưng ZAP không kiểm chứng được, kết quả là UNCONFIRMED và không chặn — đó là giới hạn thật, được ghi ở mục 9.
+Muốn trình diễn *repo có sẵn nợ cũ*: mở PR sửa một dòng vô hại trên nhánh tạo từ tag `ground-truth`. Bốn lỗ hổng cũ hiện trong tab Security của nhánh nhưng **không chặn PR** — GitHub chỉ tính alert mới trong diff.
+
+Lưu ý khi chọn action cho bước 2: action có **tham số GET** thì ZAP mới tới được và gắn được nhãn *đã khai thác*. Action POST thì SAST vẫn chặn, chỉ thiếu nhãn — đó là giới hạn của DAST, ghi ở mục 9.
 
 ---
 
 ## 9. Giới hạn cần biết
 
 - Bộ rule của dự án là **C#** và phủ **12 mã CWE** mà ZAP xác nhận động được. Repo ngôn ngữ khác thì chỉ còn rule cộng đồng chạy.
-- **7/12 CWE có thể nhận nhãn FILTERED.** Năm mã còn lại (SSRF, LDAP, XPath, response splitting, code injection) không có API khử độc chuẩn trong .NET nên chỉ có hai kết cục: `CONFIRMED` hoặc `UNCONFIRMED`.
+- **28/31 rule dự án có quyền chặn** (mức ERROR); 3 rule bắt theo tên biến chỉ chú thích. Rule cộng đồng không chặn.
 - Cảnh báo thuộc CWE **ngoài bảng ánh xạ** (deserialization, IDOR, mã hoá yếu…) hiện trong báo cáo ở mục riêng và **không tính vào cổng chặn** — không có công cụ nào kiểm chứng chúng được.
 - Tầng 5 chỉ chạy với **ứng dụng tự chứa** — app cần SQL Server, Redis hay dịch vụ ngoài thì phải thêm service container vào CI.
 - Tầng 5 chỉ phủ được endpoint có **tham số GET kiểu đơn giản**. VulnShop phủ 43%, eShopOnWeb phủ 9%. Tầng 3 đo và công bố con số này thay vì giấu.
 - **DAST cần giá trị mồi sinh ra dữ liệu.** Mồi tự đoán theo kiểu tham số không biết gì về dữ liệu thật; với phép so bằng (`Category = ...`) nó trả về trang trống và ZAP mất mốc so sánh. Pipeline phát hiện mốc rỗng và không tính là đã kiểm chứng; muốn ZAP kiểm chứng được thì khai mồi thật trong `devsecops-seeds.json` (mục 5, bước 2b).
-- **UNCONFIRMED không phải kết luận an toàn.** Nó là phần chưa có bằng chứng theo chiều nào.
+- **Không có nhãn "an toàn".** Check xanh nghĩa là *không có gì mới vượt ngưỡng*, không phải app không có lỗi. Lỗi logic và lỗi ngoài mẫu rule không công cụ nào bắt.

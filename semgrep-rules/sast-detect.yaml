@@ -56,9 +56,13 @@
 # trong metadata.cwe. Tang doi sanh doc o ca hai cho; thieu ca hai thi canh bao
 # ra CWE UNKNOWN va bi loai khoi qua trinh kiem chung.
 #
-# Muc do tin cay ghi trong metadata.confidence phan anh ty le duong tinh gia
-# MONG DOI cua chinh rule do - LOW nghia la rule co bat nham, va co che ba nhan
-# o tang sau chinh la de xu ly dieu do.
+# MUC DO = QUYEN CHAN:
+#   severity ERROR   -> CHAN merge. Chi danh cho rule tin cay cao/vua: dang code
+#                       bi bat gan nhu chac chan la lo hong.
+#   severity WARNING -> chi hien thanh chu thich tham khao, KHONG chan. Danh cho
+#                       rule confidence LOW (bat theo ten bien, de bao nham).
+# Bao nham duoc xu ly O CAP RULE (ha muc, sua pattern) boi nguoi giu bo cong cu -
+# khong bat dev hay reviewer xu ly tung dong o tung PR.
 # =============================================================================
 
 rules:
@@ -100,7 +104,7 @@ rules:
 
   - id: vulnshop-sqli-query-string-concat
     languages: [csharp]
-    severity: ERROR
+    severity: WARNING
     message: >-
       CWE-89: Cau lenh SQL duoc dung bang noi chuoi vao bien trung gian
       truoc khi gan vao CommandText.
@@ -191,7 +195,7 @@ rules:
 
   - id: vulnshop-xss-html-string-concat
     languages: [csharp]
-    severity: ERROR
+    severity: WARNING
     message: >-
       CWE-79: Chuoi HTML duoc dung bang noi chuoi roi tra ve truc tiep cho trinh duyet.
     metadata:
@@ -603,7 +607,7 @@ rules:
 
   - id: vulnshop-openredirect-parameter
     languages: [csharp]
-    severity: ERROR
+    severity: WARNING
     message: >-
       CWE-601: Chuyen huong toi bien co ten goi y la duong dan tra ve
       (returnUrl, redirectUrl, next...) ma khong kiem tra dia chi co noi bo khong.
