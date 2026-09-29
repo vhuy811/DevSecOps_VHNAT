@@ -148,8 +148,10 @@ def lenh_semgrep(a: argparse.Namespace) -> int:
             if la_rule_du_an(rid):
                 # Dung id ngan, on dinh: khong phu thuoc thu muc checkout bo cong cu.
                 # Doi id thi bo ruleIndex/rule cu di, vi danh sach rules bi dung lai.
-                rid = id_ngan(rid)
-                rule = dict(rule, id=rid)
+                rid_goc, rid = rid, id_ngan(rid)
+                # ten/mo ta rule cua Semgrep cung chua id dai ("Semgrep Finding: a.b.vulnshop-x")
+                rule = json.loads(json.dumps(rule, ensure_ascii=False).replace(rid_goc, rid))
+                rule["id"] = rid
                 res["ruleId"] = rid
                 res.pop("ruleIndex", None)
                 res.pop("rule", None)
