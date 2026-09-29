@@ -91,7 +91,6 @@ jobs:
     with:
       project-file: src/Web/Web.csproj
       health-path: /
-    secrets: inherit
 ```
 
 Chỉ quét khi **mở PR** và khi push vào `main` — mỗi PR một check, một mốc so sánh. Nhánh phụ muốn được quét thì mở PR (draft cũng được).
@@ -150,7 +149,6 @@ tools/
   report.py             báo cáo HTML
   webui.py              bảng điều khiển cục bộ
   pre_commit_scan.py    hook pre-commit — tư vấn, không phải hàng rào
-  notify.py             Telegram
 
 semgrep-rules/
   sast-detect.yaml      31 rule phát hiện, 12 CWE — ERROR chặn, WARNING tham khảo

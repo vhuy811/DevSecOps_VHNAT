@@ -15,7 +15,7 @@ Bạn không tự chạy quét. Kiểm tra nằm trên GitHub, kích hoạt khi 
 | mở PR / push thêm vào PR | pipeline đủ 5 tầng trên máy ảo tạm; kết quả → Code Scanning | **khoá merge** khi có: cảnh báo ERROR mới của rule dự án · alert High mới của ZAP · gói mới dính CVE ≥ High |
 | bấm Merge | GitHub kiểm ruleset: check xanh + 1 approve + nhánh cập nhật | **nút Merge khoá** nếu thiếu |
 | commit vào `main` (sau merge) | pipeline chạy lại, làm mốc so sánh cho PR sau | không — không còn gì để chặn |
-| 01:00 thứ Ba | quét định kỳ | không — báo Telegram: CVE mới trên code cũ |
+| 01:00 thứ Ba | quét định kỳ (repo dùng mẫu `vi-du-repo-khac.yml`) | không — alert mới hiện ở tab Security; CVE mới trên gói đang dùng thì Dependabot gửi email |
 
 Dashboard cục bộ (`tools/webui.py`) không nằm trong luồng này. Nó để điều tra và trình diễn.
 
@@ -149,7 +149,13 @@ Trong repo cần bảo vệ, tạo `.github/workflows/bao-mat.yml`:
 
 ```yaml
 name: Bao mat
-on: [push, pull_request, workflow_dispatch]
+# Chi PR va main - quet moi push len nhanh phu thi mot commit co HAI check
+# cung ten, so voi hai moc khac nhau.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
 
 # Bat buoc: workflow duoc goi xin security-events de day SARIF len Code
 # Scanning. Thieu khoi nay thi lan chay bao "Startup failure" ngay lap tuc.
@@ -163,7 +169,6 @@ jobs:
     with:
       project-file: src/Web/Web.csproj
       run-dast: false
-    secrets: inherit
 ```
 
 Chỉ vậy. Không copy `tools/`, không copy `semgrep-rules/` — pipeline tự kéo về lúc chạy.
@@ -230,13 +235,15 @@ Tên công cụ chỉ hiện trong danh sách sau khi pipeline đã chạy trên
 
 **Code security**: bật *Secret scanning* + *Push protection*; bật *Dependabot alerts* + *Dependabot security updates*.
 
-### Bước 5 — Telegram (tuỳ chọn)
+### Bước 5 — Thông báo: email của GitHub, không cần cài gì
 
-1. Nhắn `/newbot` cho **@BotFather**, lấy token
-2. Nhắn cho bot vừa tạo, mở `https://api.telegram.org/bot<TOKEN>/getUpdates`, lấy `chat.id`
-3. Settings → Secrets and variables → Actions → thêm `TELEGRAM_BOT_TOKEN` và `TELEGRAM_CHAT_ID`
+Dự án không dùng Telegram hay n8n. GitHub tự gửi email tới người liên quan:
 
-Không khai báo thì bước gửi tin tự bỏ qua, không làm hỏng pipeline.
+- **Có lỗi trong PR** → `github-advanced-security[bot]` bình luận đúng dòng trên PR, email tới tác giả PR và người theo dõi
+- **Job thất bại** (ví dụ `dependency-review` đỏ) → email "Some jobs were not successful" tới người kích hoạt lần chạy
+- **CVE mới dính gói đang dùng** → Dependabot gửi email và mở PR nâng phiên bản
+
+Chỉnh loại email nhận ở github.com/settings/notifications (mục *Actions*, *Dependabot alerts*).
 
 ---
 
@@ -288,8 +295,8 @@ Dùng cho chương Thực nghiệm và cho buổi bảo vệ. Cần 3 người v
 
 | # | Ai | Làm gì | Kỳ vọng | Chứng minh |
 |---|---|---|---|---|
-| 1 | B | `git push origin main` trực tiếp | GitHub từ chối `GH006` | Không có đường tắt vào main |
-| 2 | A | Nhánh `tinh-nang/loc`, thêm action `Product/Filter?category=` nối chuỗi vào SQL, push, mở PR | `Code scanning results / Semgrep-du-an` **đỏ**; Summary: 1 vấn đề, 🔥 đã khai thác được (ZAP trúng); chú thích đỏ đúng dòng. Merge khoá | SAST chặn theo rule tin cậy cao; DAST xác nhận độc lập, xếp ưu tiên |
+| 1 | B | `git push origin main` trực tiếp | GitHub từ chối `GH013` (vi phạm ruleset) | Không có đường tắt vào main |
+| 2 | A | Nhánh `tinh-nang/loc`, thêm action `Product/Filter?category=` nối chuỗi vào SQL, push, mở PR | `Code scanning results / Semgrep-du-an` **đỏ**; Summary: 1 vấn đề; chú thích đỏ đúng dòng. Merge khoá: *"Semgrep-du-an has detected 1 security relevant alert"*. ZAP chạy độc lập nhưng không khai thác được endpoint này — không ảnh hưởng việc chặn | SAST chặn theo rule tin cậy cao; DAST bỏ sót không mở đường cho lỗi lọt |
 | 3 | A | Thêm `// nosemgrep` không lý do, push | Check **vẫn đỏ** — pipeline không đọc `nosemgrep` | Không tắt được cảnh báo bằng cách sửa code |
 | 4 | A | Tab Security → Dismiss alert với lý do "false positive" bịa | Check xanh; B thấy dismiss trong PR, **mở lại alert**, Request changes | Dismiss có dấu vết, có người soát; qua máy không qua người |
 | 5 | A | Vá thật bằng tham số hoá, push | Tất cả check xanh. Summary: QUA. Merge xám vì chưa approve | Sửa đúng thì qua — alert tự đóng "fixed" |

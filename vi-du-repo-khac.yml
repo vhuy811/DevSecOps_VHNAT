@@ -12,7 +12,6 @@ name: Bao mat
 #     jobs:
 #       security:
 #         uses: vhuy811/DevSecOps_VHNAT/.github/workflows/devsecops-reusable.yml@main
-#         secrets: inherit
 #
 # Khong khai bao project-file thi bon tang tinh van chay (secret, thu vien,
 # ma nguon, ha tang), chi tang dong (ZAP) bi bo qua - va trang ket qua se
@@ -79,7 +78,3 @@ jobs:
       # vao mot ngay ban khong sua gi ca.
       # toolkit-ref: v1.0.0
 
-
-    # Telegram la tuy chon. Khong khai bao hai secret thi buoc gui tin nhan tu
-    # bo qua, khong lam hong pipeline.
-    secrets: inherit

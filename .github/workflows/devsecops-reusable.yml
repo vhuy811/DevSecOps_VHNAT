@@ -12,7 +12,6 @@ name: DevSecOps - nam tang kiem thu (dung chung)
 #         with:
 #           project-file: MyApp/MyApp.csproj
 #           health-path: /
-#         secrets: inherit
 #
 # Day la cach to chuc that trien khai DevSecOps: pipeline nam mot cho, hang
 # tram repo tham chieu toi. Sua mot lan, ca tram repo duoc cap nhat. Neu moi
@@ -95,11 +94,6 @@ on:
         type: boolean
         required: false
         default: true
-    secrets:
-      TELEGRAM_BOT_TOKEN:
-        required: false
-      TELEGRAM_CHAT_ID:
-        required: false
 
 jobs:
   scan:
@@ -248,9 +242,22 @@ jobs:
             CFG="$CFG --config $pack"
           done
           echo "Bo rule dang dung: $CFG"
-          # --disable-nosem: bo qua moi chu thich `// nosemgrep` trong code. Bao nham
-          # duoc xu ly bang Dismiss + ly do tren GitHub (co audit), khong bang cach
-          # sua code de tat canh bao.
+          # KHONG TON TRONG `// nosemgrep`. Bao nham xu ly bang Dismiss + ly do tren
+          # GitHub (co audit, co nguoi mo lai duoc), khong bang cach sua code.
+          #
+          # Chi --disable-nosem la KHONG DU: o PR #1 (commit b5487dd), them
+          # `// nosemgrep` vao dong loi thi check Semgrep-du-an chuyen xanh, merge mo.
+          # Ket qua co "suppressions" trong SARIF bi GitHub coi la da dong.
+          # Nen truoc khi quet, doi "nosem" thanh "no_sem" trong ban checkout TAM
+          # cua CI (repo khong bi dong toi). Giu nguyen so dong -> vi tri canh bao
+          # khong lech. sarif_tools.py con xoa suppressions lan nua.
+          N_NOSEM=$(grep -rIilZ --exclude-dir=.git --exclude-dir="$TOOLKIT" 'nosem' . | tr -cd '\0' | wc -c)
+          if [ "$N_NOSEM" -gt 0 ]; then
+            grep -rIilZ --exclude-dir=.git --exclude-dir="$TOOLKIT" 'nosem' . \
+              | xargs -0 sed -i -E 's/([Nn][Oo])([Ss][Ee][Mm])/\1_\2/g'
+            echo "::warning::$N_NOSEM tep co chu thich nosemgrep - pipeline KHONG ton trong. Bao nham: Dismiss + ly do trong tab Security."
+            echo "> ⚠ $N_NOSEM tep co chu thich \`nosemgrep\` — pipeline không tôn trọng; báo nhầm xử lý bằng Dismiss + lý do." >> $GITHUB_STEP_SUMMARY
+          fi
           docker run --rm -v "$PWD:/src" -w /src semgrep/semgrep \
             semgrep scan $CFG \
             --exclude "$TOOLKIT" \
@@ -508,13 +515,6 @@ jobs:
         with:
           name: bao-cao-bao-mat
           path: reports/
-
-      - name: Gui canh bao Telegram
-        if: always()
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python "$TOOLKIT/tools/notify.py" || true
 
       - name: Nhat ky ZAP khi co su co
         if: failure()

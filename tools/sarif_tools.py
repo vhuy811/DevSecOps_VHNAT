@@ -126,7 +126,7 @@ def lenh_semgrep(a: argparse.Namespace) -> int:
 
     du_an = {"version": sarif.get("version", "2.1.0"), "$schema": sarif.get("$schema"), "runs": []}
     cong_dong = copy.deepcopy(du_an)
-    n_da, n_cd, n_kt = 0, 0, 0
+    n_da, n_cd, n_kt, n_supp = 0, 0, 0, 0
 
     for run in sarif.get("runs", []):
         driver = run.get("tool", {}).get("driver", {})
@@ -139,6 +139,11 @@ def lenh_semgrep(a: argparse.Namespace) -> int:
             res = copy.deepcopy(res)
             # level cua ket qua theo rule da chuan hoa, de ruleset "Alerts: Errors" dung
             res["level"] = rule["defaultConfiguration"]["level"]
+            # Ket qua mang "suppressions" (vd. do chu thich nosemgrep) bi GitHub coi
+            # la DA DONG -> khong chan. Chap nhan rui ro chi qua Dismiss + ly do tren
+            # GitHub, nen xoa moi suppressions tu trong ma nguon.
+            if res.pop("suppressions", None):
+                n_supp += 1
 
             if la_rule_du_an(rid):
                 # Dung id ngan, on dinh: khong phu thuoc thu muc checkout bo cong cu.
@@ -183,6 +188,9 @@ def lenh_semgrep(a: argparse.Namespace) -> int:
     print(f"         {n_cd} canh bao rule cong dong -> {a.out_cong_dong}")
     if zap_alerts:
         print(f"         {n_kt} canh bao rule du an DA KHAI THAC DUOC theo ZAP")
+    if n_supp:
+        print(f"::warning::{n_supp} ket qua Semgrep mang 'suppressions' (tat trong ma nguon) - "
+              f"da BO dau tat, van dua len nhu canh bao binh thuong")
     return 0
 
 

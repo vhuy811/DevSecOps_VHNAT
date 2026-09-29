@@ -121,7 +121,7 @@ Nếu một rule báo nhầm liên tục, nói với người giữ bộ công c
 
 ## 6. Ba quy ước
 
-**Không push lên `main`.** GitHub từ chối với lỗi `GH006`. Thấy lỗi đó là đang ở sai nhánh — `git checkout -b ten-nhanh-moi` rồi push lại.
+**Không push lên `main`.** GitHub từ chối với lỗi `GH013: Repository rule violations found`. Thấy lỗi đó là đang ở sai nhánh — `git checkout -b ten-nhanh-moi` rồi push lại.
 
 **Không tự approve PR của mình.** Nhờ người khác trong nhóm.
 
@@ -143,7 +143,7 @@ Bạn không phải triage cảnh báo bảo mật — máy đã làm. Bạn rev
 
 | Lỗi | Nguyên nhân | Sửa |
 |---|---|---|
-| `GH006: Protected branch update failed` | push thẳng lên main | `git checkout -b nhanh-moi` rồi push lại |
+| `GH013: Repository rule violations found` | push thẳng lên main | `git checkout -b nhanh-moi` rồi push lại |
 | PR treo ở *"Expected — waiting for status"* | cấu hình phía repo, không phải lỗi bạn | báo người quản lý repo |
 | `fatal: not a git repository` | đang đứng sai thư mục | `cd` vào thư mục repo |
 | Vim mở ra, không thoát được | chưa đặt `core.editor` | gõ `Esc` rồi `:q!` Enter; sau đó chạy lệnh `git config` ở mục 1 |
