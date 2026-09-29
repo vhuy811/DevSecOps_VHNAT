@@ -88,10 +88,19 @@ permissions:
 jobs:
   security:
     uses: vhuy811/DevSecOps_VHNAT/.github/workflows/devsecops-reusable.yml@main
-    with:
-      project-file: src/Web/Web.csproj
-      health-path: /
 ```
+
+**Không khai báo gì thêm.** Pipeline tự nhận:
+
+| Tự nhận | Cách nhận |
+|---|---|
+| Ngôn ngữ và bộ rule cộng đồng | phần mở rộng tệp, tệp khai báo (`.csproj`, `package.json`...) — `tools/nhan_ngon_ngu.py` |
+| Thư viện nhúng sẵn (`wwwroot/lib`, `vendor/`, `*.min.js`) | loại khỏi SAST, không coi là mã của dự án |
+| App .NET web | `.csproj` có `Sdk.Web`, bỏ qua dự án test |
+| Cách khởi động app cho DAST | lần lượt: `docker compose` → `dotnet run` → Dockerfile → `npm start` — `tools/khoi_dong_app.py` |
+| Danh sách endpoint cho DAST | controller ASP.NET; tệp OpenAPI/Swagger trong repo hoặc do app phục vụ; spider |
+
+Không khởi động được app thì trang Summary ghi rõ *DAST bỏ qua* và lý do — không im lặng. Rule riêng của repo đặt ở `.devsecops/rules/*.yaml` được tính vào nhóm có quyền chặn.
 
 Chỉ quét khi **mở PR** và khi push vào `main` — mỗi PR một check, một mốc so sánh. Nhánh phụ muốn được quét thì mở PR (draft cũng được).
 
@@ -116,16 +125,19 @@ Hướng dẫn thao tác đầy đủ: [`HUONG_DAN.md`](HUONG_DAN.md). Cho ngư�
 
 ## Tham số của pipeline
 
-| Tham số | Mặc định | Khi nào đổi |
+Mọi tham số đều **tuỳ chọn** — chỉ dùng để ghi đè khi việc tự nhận sai.
+
+| Tham số | Để trống thì | Khi nào khai |
 |---|---|---|
-| `project-file` | `''` | đường dẫn `.csproj`; để trống thì bỏ tầng 1 và 5 |
-| `run-dast` | `true` | `false` khi app cần CSDL, không khởi động được trong CI |
-| `health-path` | `/` | đường dẫn kiểm tra app đã sẵn sàng |
-| `app-url` | `http://localhost:5000` | địa chỉ ZAP nhìn thấy |
-| `dockerfile` | `Dockerfile` | tên Dockerfile cho bước quét image |
+| `start-command` | tự chọn cách khởi động | app không thuộc 4 cách tự nhận (vd. Flask chạy tay) |
+| `app-url` | suy ra theo cách khởi động | app nghe ở cổng khác mặc định |
+| `health-path` | `/` | trang gốc chậm hoặc cần đăng nhập |
+| `project-file` | tự tìm `.csproj` web | repo có nhiều app web |
+| `dockerfile` | tự tìm Dockerfile đầu tiên | có nhiều Dockerfile |
+| `semgrep-packs` | tự chọn theo ngôn ngữ | muốn thêm hoặc bớt bộ rule cộng đồng |
+| `run-dast` | `true` | `false` khi app không thể chạy trong CI |
 | `run-image-scan` | `true` | `false` để tiết kiệm vài phút CI |
-| `semgrep-packs` | `p/csharp p/security-audit` | bộ rule cộng đồng chạy kèm; kết quả vào `Semgrep-cong-dong`, không chặn |
-| `dotnet-version` | `9.0.x` | phiên bản SDK |
+| `dotnet-version` | `9.0.x` | phiên bản SDK khác |
 | `toolkit-ref` | `main` | ghim tag khi dùng thật |
 
 Không còn tham số bật/tắt cổng. Ngưỡng chặn nằm ở ruleset của GitHub — thay đổi được mà không sửa workflow, và có audit.
@@ -141,7 +153,10 @@ tools/
   sca.py                tầng 1 — đối chiếu NuGet với CSDL lỗ hổng
   gen_routes_map.py     tầng 3 — bản đồ endpoint, Controller và Razor Pages
   trivy.py              tầng 4 — cấu hình, SBOM, so sánh image trước/sau gia cố
-  dast_scan.py          tầng 5 — ZAP quét toàn bộ app tạm
+  dast_scan.py          tầng 5 — ZAP quét toàn bộ app tạm, nạp OpenAPI nếu có
+  nhan_ngon_ngu.py      tự nhận ngôn ngữ → công cụ, bộ rule; tách thư viện nhúng sẵn
+  khoi_dong_app.py      tự khởi động app cho DAST: compose / dotnet / Dockerfile / npm
+  cham_diem.py          phòng đo: chấm công cụ quét trên Juliet C# 1.3 của NIST
   sarif_tools.py        chuẩn hoá SARIF cho Code Scanning: tách rule dự án/cộng đồng,
                         ZAP → SARIF ánh xạ về mã nguồn, gắn nhãn đã khai thác
   gate.py               tóm tắt CHẶN/QUA cho dev trên trang Summary — không chặn
@@ -151,13 +166,14 @@ tools/
   pre_commit_scan.py    hook pre-commit — tư vấn, không phải hàng rào
 
 semgrep-rules/
-  sast-detect.yaml      31 rule phát hiện, 12 CWE — ERROR chặn, WARNING tham khảo
+  sast-detect.yaml      31 rule phát hiện (tiền tố dso-), 12 CWE — ERROR chặn, WARNING tham khảo
   sanitizer-check.yaml  rule tìm bằng chứng khử độc (dashboard cục bộ)
   kiem-thu-rule/        fixture tự kiểm chứng bộ rule (mã có lỗi cố ý)
 
 .github/workflows/
   devsecops-reusable.yml  pipeline dùng chung, repo khác gọi tới
   devsecops.yml           repo này tự gọi pipeline của chính mình
+  phong-do.yml            phòng đo trên Juliet C# — chạy khi sửa rule hoặc bấm tay
 
 vi-du-repo-khac.yml     mẫu dán vào repo khác
 kiem_tra_moi_truong.py  chẩn đoán 9 điều kiện

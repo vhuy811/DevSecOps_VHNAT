@@ -166,24 +166,21 @@ permissions:
 jobs:
   security:
     uses: vhuy811/DevSecOps_VHNAT/.github/workflows/devsecops-reusable.yml@main
-    with:
-      project-file: src/Web/Web.csproj
-      run-dast: false
 ```
 
-Chỉ vậy. Không copy `tools/`, không copy `semgrep-rules/` — pipeline tự kéo về lúc chạy.
+Chỉ vậy. Không copy `tools/`, không copy `semgrep-rules/`, không khai báo ngôn ngữ hay đường dẫn — pipeline tự kéo bộ công cụ về và tự nhận ngôn ngữ, `.csproj`, Dockerfile, bộ rule, cách khởi động app. Kết quả tự nhận in ở đầu trang Summary của mỗi lần chạy — đọc bảng đó trước tiên.
 
-### Bước 2 — Chọn tham số cho đúng dự án
+### Bước 2 — Chỉ khai tham số khi tự nhận sai
 
-| Tham số | Khi nào đổi |
+| Tham số | Khi nào khai |
 |---|---|
-| `project-file` | đường dẫn `.csproj`. Để `''` nếu không phải .NET |
-| `run-dast` | `false` nếu app cần CSDL, không khởi động được trong CI |
-| `health-path` | đường dẫn kiểm tra app đã lên chưa, ví dụ `/Product/List` |
-| `semgrep-packs` | mặc định `p/csharp p/security-audit`. Thêm pack khác cho ngôn ngữ khác, hoặc để `''` khi cần tái lập đúng một con số đã công bố |
-| `dockerfile` | tên Dockerfile dùng cho bước quét image |
+| `start-command` + `app-url` | app không khởi động được bằng 4 cách tự nhận (compose, dotnet, Dockerfile, npm) |
+| `health-path` | trang gốc chậm hoặc cần đăng nhập, ví dụ `/Product/List` |
+| `run-dast: false` | app cần dịch vụ ngoài (SQL Server...) mà CI không có — tránh đỏ vì thiếu CSDL chứ không vì lỗ hổng |
+| `project-file`, `dockerfile` | repo có nhiều app web / nhiều Dockerfile |
+| `semgrep-packs` | thêm/bớt bộ rule cộng đồng, hoặc cố định khi cần tái lập đúng một con số đã công bố |
 
-`run-dast: false` là tham số hay cần nhất. Không có nó, repo cần CSDL sẽ đỏ ở bước khởi động app — đỏ vì thiếu SQL Server, không phải vì tìm ra lỗ hổng. Sai hoàn toàn về ý nghĩa.
+Rule riêng của dự án: đặt tệp `.yaml` theo cú pháp Semgrep vào `.devsecops/rules/` — pipeline tự quét cùng rule của bộ công cụ, kết quả vào `Semgrep-du-an` (có quyền chặn nếu mức ERROR).
 
 ### Bước 2b — Giá trị mồi cho DAST: `devsecops-seeds.json`
 
@@ -263,7 +260,7 @@ Chỉ commit trên `main` (sau khi merge) mà toàn là `.md`, `.txt`, ảnh, `d
 | Tầng 5 báo ZAP trả về 500 | ô URL điền `localhost` | đổi thành `host.docker.internal` |
 | Check Code scanning không hiện trên PR | SARIF chưa upload được, hoặc `main` chưa có lần quét nào | xem log bước "Code Scanning - ..." ; chạy workflow trên main một lần |
 | PR đỏ vì lỗi có từ trước | `main` chưa được quét với công cụ cùng tên | chạy workflow trên `main` rồi push lại PR |
-| Tầng 2 ra nhiều cảnh báo hơn lần trước dù không sửa code | rule cộng đồng kéo bản mới lúc chạy | đúng như thiết kế — sửa lỗi mới hoặc đặt `semgrep-packs: ''` nếu cần tái lập |
+| Tầng 2 ra nhiều cảnh báo hơn lần trước dù không sửa code | rule cộng đồng kéo bản mới lúc chạy | đúng như thiết kế — sửa lỗi mới, hoặc cố định `semgrep-packs` nếu cần tái lập |
 | Báo cáo thiếu một tầng | tầng đó bị bỏ qua | xem log để biết lý do — thiếu tệp nghĩa là **không có kết quả mới**, không phải sạch |
 | PR treo ở *"waiting for status to be reported"* | required check ghi sai tên | dùng đúng `security / dependency-review`; check Code scanning cấu hình qua *Require code scanning results*, không qua status check |
 | Kết quả không phản ánh bản sửa vừa nhận | tiến trình `webui.py` cũ vẫn chạy code cũ | **tắt hẳn** rồi chạy lại — Python nạp module một lần lúc khởi động |
