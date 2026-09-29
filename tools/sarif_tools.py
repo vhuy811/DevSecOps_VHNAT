@@ -81,6 +81,23 @@ def cwe_cua_rule(rule: dict, res: dict) -> str:
     return m.group(1) if m else ""
 
 
+def id_ngan(rid: str) -> str:
+    """Bo tien to duong dan ma Semgrep gan vao id rule.
+
+    Semgrep nap rule tu tep cuc bo thi dat id = <thu muc chua tep, noi bang dau
+    cham>.<id trong tep>. Chay trong CI voi --config devsecops-toolkit/semgrep-rules/
+    sast-detect.yaml, rule `vulnshop-sqli-commandtext-concat` thanh
+    `devsecops-toolkit.semgrep-rules.vulnshop-sqli-commandtext-concat`.
+    Id rule trong tep khong chua dau cham, nen phan sau dau cham cuoi la id goc.
+    Rule cong dong (csharp.lang.security...) giu nguyen id - do la id registry.
+    """
+    return rid.rsplit(".", 1)[-1]
+
+
+def la_rule_du_an(rid: str) -> bool:
+    return id_ngan(rid).startswith(TIEN_TO_DU_AN)
+
+
 def vi_tri(res: dict) -> tuple[str, int]:
     loc = (res.get("locations") or [{}])[0].get("physicalLocation", {})
     return (loc.get("artifactLocation", {}).get("uri", "").replace("\\", "/").lstrip("./"),
@@ -123,7 +140,14 @@ def lenh_semgrep(a: argparse.Namespace) -> int:
             # level cua ket qua theo rule da chuan hoa, de ruleset "Alerts: Errors" dung
             res["level"] = rule["defaultConfiguration"]["level"]
 
-            if rid.startswith(TIEN_TO_DU_AN):
+            if la_rule_du_an(rid):
+                # Dung id ngan, on dinh: khong phu thuoc thu muc checkout bo cong cu.
+                # Doi id thi bo ruleIndex/rule cu di, vi danh sach rules bi dung lai.
+                rid = id_ngan(rid)
+                rule = dict(rule, id=rid)
+                res["ruleId"] = rid
+                res.pop("ruleIndex", None)
+                res.pop("rule", None)
                 # Doi chieu voi ZAP: cung CWE, cung endpoint -> DA KHAI THAC DUOC
                 cwe = cwe_cua_rule(rule, res)
                 f, line = vi_tri(res)
@@ -139,6 +163,8 @@ def lenh_semgrep(a: argparse.Namespace) -> int:
                             break
                 res_da.append(res); rule_da[rid] = rule; n_da += 1
             else:
+                res.pop("ruleIndex", None)
+                res.pop("rule", None)
                 res_cd.append(res); rule_cd[rid] = rule; n_cd += 1
 
         def run_moi(results, rules_dict, ten):
@@ -202,7 +228,7 @@ def lenh_zap(a: argparse.Namespace) -> int:
             n_map += 1
         else:
             f, line = fallback, 1
-        text = f"{z.get('alert')} tai {path}" + (f"?{param}=" if param else "")
+        text = f"{z.get('alert')} tai {path}" + (f" (tham so/header: {param})" if param else "")
         if z.get("attack"):
             text += f" | payload: {z['attack'][:80]}"
         if z.get("evidence"):
