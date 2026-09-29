@@ -29,7 +29,9 @@ from pathlib import Path
 
 # thu muc khong bao gio la ma nguon cua du an
 BO_QUA_THU_MUC = {".git", "bin", "obj", "node_modules", ".devsecops-toolkit", ".vs", ".idea",
-                  "__pycache__", ".venv", "venv", "target", "coverage", "reports"}
+                  "__pycache__", ".venv", "venv", "target", "coverage", "reports",
+                  # ma mau co loi CO Y de kiem thu rule cua bo cong cu - khong phai ma du an
+                  "kiem-thu-rule"}
 # thu muc chua ban dong goi / sinh ra (dist/, build/): khong phai ma viet tay.
 # KHONG bo qua han - thu vien nhung thuong nam o lib/jquery/dist/ - ma xep vao nhom nhung.
 SINH_RA = {"dist", "build", "out"}
@@ -66,6 +68,10 @@ CODEQL = {
     "c-cpp": "c-cpp",
     "actions": "actions",
 }
+# Cach CodeQL dung CSDL cho tung ngon ngu. "none" = doc ma nguon, khong can build
+# (C#, Java/Kotlin va cac ngon ngu thong dich). Go va C/C++ phai build that.
+CODEQL_BUILD = {"go": "autobuild", "c-cpp": "autobuild"}
+
 # ngon ngu -> bo rule Semgrep cong dong
 SEMGREP = {
     "csharp": ["p/csharp"],
@@ -150,6 +156,7 @@ def nhan(root: Path) -> dict:
         "thu_vien_nhung": dict(nhung),
         "thu_muc_nhung": sorted(thu_muc_nhung),
         "codeql_languages": codeql,
+        "codeql_matrix": [{"language": l, "build-mode": CODEQL_BUILD.get(l, "none")} for l in codeql],
         "semgrep_packs": semgrep,
         "ha_tang": ha_tang,
         "co_dotnet": ma.get("csharp", 0) > 0 and any(root.rglob("*.csproj")),
@@ -201,6 +208,7 @@ def main() -> int:
     if a.github_output and os.getenv("GITHUB_OUTPUT"):
         with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
             f.write(f"codeql_languages={json.dumps(kq['codeql_languages'])}\n")
+            f.write(f"codeql_matrix={json.dumps(kq['codeql_matrix'])}\n")
             f.write(f"semgrep_packs={' '.join(kq['semgrep_packs'])}\n")
             f.write(f"co_dotnet={'true' if kq['co_dotnet'] else 'false'}\n")
             f.write(f"co_codeql={'true' if kq['codeql_languages'] else 'false'}\n")
