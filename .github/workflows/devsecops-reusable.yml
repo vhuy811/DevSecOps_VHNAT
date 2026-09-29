@@ -9,9 +9,10 @@ name: DevSecOps - nam tang kiem thu (dung chung)
 #     jobs:
 #       security:
 #         uses: vhuy811/DevSecOps_VHNAT/.github/workflows/devsecops-reusable.yml@main
-#         with:
-#           project-file: MyApp/MyApp.csproj
-#           health-path: /
+#
+# Khong can khai bao gi them: ngon ngu, .csproj, Dockerfile, bo rule deu TU
+# NHAN; app tu khoi dong cho DAST (docker compose / dotnet / Dockerfile / npm).
+# Cac input ben duoi chi de GHI DE khi viec tu nhan sai.
 #
 # Day la cach to chuc that trien khai DevSecOps: pipeline nam mot cho, hang
 # tram repo tham chieu toi. Sua mot lan, ca tram repo duoc cap nhat. Neu moi
@@ -37,17 +38,24 @@ on:
   workflow_call:
     inputs:
       project-file:
-        description: 'Duong dan toi .csproj. De trong thi bo qua build, chay app va ca tang dong.'
+        description: 'Ghi de .csproj cua app web. De trong = tu tim (.csproj co Sdk.Web, bo qua du an test).'
+        type: string
+        required: false
+        default: ''
+      start-command:
+        description: >-
+          Lenh khoi dong app cho DAST, dung khi viec tu nhan khong du (vd app Python).
+          De trong = tu chon: docker compose -> dotnet -> Dockerfile -> npm start.
         type: string
         required: false
         default: ''
       app-url:
-        description: 'URL ung dung sau khi chay len, de ZAP ban payload vao.'
+        description: 'Ghi de URL app sau khi chay. De trong = suy ra tu cach khoi dong.'
         type: string
         required: false
-        default: 'http://localhost:5000'
+        default: ''
       health-path:
-        description: 'Duong dan de kiem tra app da san sang chua, vi du /Product/List.'
+        description: 'Duong dan kiem tra app da len chua (bat ky phan hoi < 500 deu tinh la da len).'
         type: string
         required: false
         default: '/'
@@ -57,10 +65,10 @@ on:
         required: false
         default: '9.0.x'
       dockerfile:
-        description: 'Dockerfile dung cho buoc quet image. Khong co tep thi buoc do tu bo qua.'
+        description: 'Ghi de Dockerfile. De trong = tu tim Dockerfile dau tien trong repo.'
         type: string
         required: false
-        default: 'Dockerfile'
+        default: ''
       title:
         description: 'Ten hien thi tren bao cao. De trong thi lay ten repo.'
         type: string
@@ -82,13 +90,12 @@ on:
         default: true
       semgrep-packs:
         description: >-
-          Cac bo rule cong dong chay KEM rule cua do an, cach nhau bang dau
-          cach. Chung duoc tai tu registry cua Semgrep luc chay nen luon la
-          ban moi nhat. De trong thi chi dung rule tu viet - nhanh hon nhung
-          bo sot moi lop CWE ngoai SQLi va XSS.
+          Ghi de bo rule cong dong. De trong = tu chon theo ngon ngu nhan ra
+          trong repo (p/csharp, p/javascript, p/python...). Tai tu registry luc
+          chay nen luon la ban moi nhat.
         type: string
         required: false
-        default: 'p/csharp p/security-audit'
+        default: ''
       run-image-scan:
         description: 'Quet CVE trong container image. Ton them vai phut nen mac dinh chi chay o nhanh chinh.'
         type: boolean
@@ -205,8 +212,60 @@ jobs:
           ref: ${{ inputs.toolkit-ref }}
           path: .devsecops-toolkit
 
+      # ===============================================================
+      # NHAN DIEN DU AN - khong bat repo goi khai bao gi.
+      # Ngon ngu -> cong cu, .csproj web, Dockerfile, bo rule cong dong.
+      # Input nao duoc khai bao thi ghi de phan tu nhan tuong ung.
+      # ===============================================================
+      - name: Nhan dien du an (tu dong)
+        id: du_an
+        env:
+          PF_IN: ${{ inputs.project-file }}
+          DF_IN: ${{ inputs.dockerfile }}
+          PACKS_IN: ${{ inputs.semgrep-packs }}
+        run: |
+          python "$TOOLKIT/tools/nhan_ngon_ngu.py" --root . --out reports/ngon-ngu.json --summary
+          BO="--exclude-dir=.git --exclude-dir=$TOOLKIT --exclude-dir=node_modules --exclude-dir=bin --exclude-dir=obj"
+          PF="$PF_IN"
+          if [ -z "$PF" ]; then
+            # .csproj cua app web (Sdk.Web / Sdk.Razor), bo du an test
+            PF=$(grep -rlIs $BO --include='*.csproj' -E 'Sdk="Microsoft\.NET\.Sdk\.(Web|Razor|BlazorWebAssembly)"' . \
+                 | grep -viE '(^|/)[^/]*(test|tests|spec)[^/]*(/|$)' | sort | head -1 | sed 's#^\./##')
+          fi
+          DF="$DF_IN"
+          if [ -z "$DF" ]; then
+            DF=$(find . -path ./.git -prune -o -path "./$TOOLKIT" -prune -o -path ./node_modules -prune \
+                 -o -type f -iname 'Dockerfile' -print | sort | head -1 | sed 's#^\./##')
+          fi
+          PACKS="$PACKS_IN"
+          if [ -z "$PACKS" ]; then
+            PACKS=$(python -c "import json;print(' '.join(json.load(open('reports/ngon-ngu.json'))['semgrep_packs']))")
+          fi
+          NHUNG=$(python -c "import json;print(' '.join(json.load(open('reports/ngon-ngu.json'))['thu_muc_nhung']))")
+          # tep de gan alert ZAP khong anh xa duoc ve dong code nao
+          FB=""
+          for f in "$PF" "$DF" package.json README.md; do
+            if [ -n "$f" ] && [ -f "$f" ]; then FB="$f"; break; fi
+          done
+          {
+            echo "project_file=$PF"
+            echo "dockerfile=$DF"
+            echo "semgrep_packs=$PACKS"
+            echo "thu_muc_nhung=$NHUNG"
+            echo "tep_du_phong=${FB:-README.md}"
+          } >> "$GITHUB_OUTPUT"
+          nguon() { [ -n "$1" ] && echo "khai báo" || echo "tự tìm"; }
+          {
+            echo "| Mục | Giá trị | Nguồn |"
+            echo "|---|---|---|"
+            echo "| Dự án .NET web | \`${PF:-không có}\` | $(nguon "$PF_IN") |"
+            echo "| Dockerfile | \`${DF:-không có}\` | $(nguon "$DF_IN") |"
+            echo "| Bộ rule cộng đồng | \`$PACKS\` | $(nguon "$PACKS_IN") |"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Cai .NET SDK
-        if: steps.pham_vi.outputs.chi_tai_lieu != 'true' && inputs.project-file != ''
+        if: steps.pham_vi.outputs.chi_tai_lieu != 'true' && steps.du_an.outputs.project_file != ''
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ inputs.dotnet-version }}
@@ -219,9 +278,9 @@ jobs:
       # Tang nay khong suy doan: no so phien ban voi CSDL lo hong da cong bo.
       # ===============================================================
       - name: SCA - doi chieu thu vien voi CSDL lo hong
-        if: steps.pham_vi.outputs.chi_tai_lieu != 'true' && inputs.project-file != ''
+        if: steps.pham_vi.outputs.chi_tai_lieu != 'true' && steps.du_an.outputs.project_file != ''
         run: |
-          dotnet restore "${{ inputs.project-file }}"
+          dotnet restore "${{ steps.du_an.outputs.project_file }}"
           python "$TOOLKIT/tools/sca.py" --repo . --out reports/sca.json || true
           if [ -f reports/sca.json ]; then
             python - <<'PY'
@@ -233,22 +292,23 @@ jobs:
           fi
 
       # ===============================================================
-      # TANG 2 - Ma nguon (SAST) - Semgrep, mot lan quet
+      # TANG 2 - Ma nguon (SAST) - Semgrep, HAI luot quet
       #
-      # Ket qua duoc tach lam hai truoc khi day len Code Scanning:
-      #   Semgrep-du-an     rule tu viet, tin cay cao   -> co quyen CHAN (level error)
-      #   Semgrep-cong-dong rule cong dong              -> tham khao
-      # Khong con buoc --baseline-commit: GitHub tu tinh alert nao la MOI trong
-      # PR bang cach so voi lan quet gan nhat cua nhanh goc (cung ten cong cu).
+      #   Luot 1 - rule cua bo cong cu + rule rieng cua repo (.devsecops/rules/*.yaml)
+      #            -> Semgrep-du-an: tin cay cao, co quyen CHAN (level error)
+      #   Luot 2 - bo rule cong dong, tu chon theo ngon ngu nhan ra
+      #            -> Semgrep-cong-dong: tham khao
+      # Nhom quyet dinh theo LUOT QUET, khong theo ten rule: repo nao cung them
+      # duoc rule rieng ma khong phai dat ten theo quy uoc nao.
+      # Thu vien nhung san (wwwroot/lib, vendor/, *.min.js) khong quet SAST.
+      # GitHub tu tinh alert nao la MOI trong PR bang cach so voi nhanh goc.
       # ===============================================================
       - name: Semgrep - quet ma nguon
         if: steps.pham_vi.outputs.chi_tai_lieu != 'true'
+        env:
+          PACKS: ${{ steps.du_an.outputs.semgrep_packs }}
+          NHUNG: ${{ steps.du_an.outputs.thu_muc_nhung }}
         run: |
-          CFG="--config $TOOLKIT/semgrep-rules/sast-detect.yaml"
-          for pack in ${{ inputs.semgrep-packs }}; do
-            CFG="$CFG --config $pack"
-          done
-          echo "Bo rule dang dung: $CFG"
           # KHONG TON TRONG `// nosemgrep`. Bao nham xu ly bang Dismiss + ly do tren
           # GitHub (co audit, co nguoi mo lai duoc), khong bang cach sua code.
           #
@@ -258,19 +318,38 @@ jobs:
           # Nen truoc khi quet, doi "nosem" thanh "no_sem" trong ban checkout TAM
           # cua CI (repo khong bi dong toi). Giu nguyen so dong -> vi tri canh bao
           # khong lech. sarif_tools.py con xoa suppressions lan nua.
-          N_NOSEM=$(grep -rIilZ --exclude-dir=.git --exclude-dir="$TOOLKIT" 'nosem' . | tr -cd '\0' | wc -c)
+          N_NOSEM=$(grep -rIilZ --exclude-dir=.git --exclude-dir="$TOOLKIT" --exclude-dir=.devsecops 'nosem' . | tr -cd '\0' | wc -c)
           if [ "$N_NOSEM" -gt 0 ]; then
-            grep -rIilZ --exclude-dir=.git --exclude-dir="$TOOLKIT" 'nosem' . \
+            grep -rIilZ --exclude-dir=.git --exclude-dir="$TOOLKIT" --exclude-dir=.devsecops 'nosem' . \
               | xargs -0 sed -i -E 's/([Nn][Oo])([Ss][Ee][Mm])/\1_\2/g'
             echo "::warning::$N_NOSEM tep co chu thich nosemgrep - pipeline KHONG ton trong. Bao nham: Dismiss + ly do trong tab Security."
-            echo "> ⚠ $N_NOSEM tep co chu thich \`nosemgrep\` — pipeline không tôn trọng; báo nhầm xử lý bằng Dismiss + lý do." >> $GITHUB_STEP_SUMMARY
+            echo "> ⚠ $N_NOSEM tệp có chú thích \`nosemgrep\` — pipeline không tôn trọng; báo nhầm xử lý bằng Dismiss + lý do." >> $GITHUB_STEP_SUMMARY
           fi
+
+          LOAI="--exclude $TOOLKIT --exclude kiem-thu-rule --exclude .devsecops"
+          for d in $NHUNG; do LOAI="$LOAI --exclude $d"; done
+
+          # Luot 1: rule cua bo cong cu + rule rieng cua repo
+          CFG="--config $TOOLKIT/semgrep-rules/sast-detect.yaml"
+          if [ -d .devsecops/rules ] && ls .devsecops/rules/*.y*ml >/dev/null 2>&1; then
+            CFG="$CFG --config .devsecops/rules"
+            echo "Them rule rieng cua repo: .devsecops/rules/"
+            echo "> Rule riêng của repo trong \`.devsecops/rules/\` được tính vào nhóm có quyền chặn." >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "Luot 1 (du an): $CFG"
           docker run --rm -v "$PWD:/src" -w /src semgrep/semgrep \
-            semgrep scan $CFG \
-            --exclude "$TOOLKIT" \
-            --exclude "kiem-thu-rule" \
-            --disable-nosem \
-            --sarif --output reports/semgrep.sarif --metrics=off
+            semgrep scan $CFG $LOAI --disable-nosem --metrics=off \
+            --sarif --output reports/semgrep-du-an-tho.sarif
+
+          # Luot 2: bo rule cong dong theo ngon ngu
+          CD=""
+          for pack in $PACKS; do CD="$CD --config $pack"; done
+          if [ -n "$CD" ]; then
+            echo "Luot 2 (cong dong): $CD"
+            docker run --rm -v "$PWD:/src" -w /src semgrep/semgrep \
+              semgrep scan $CD $LOAI --disable-nosem --metrics=off \
+              --sarif --output reports/semgrep-cong-dong-tho.sarif
+          fi
 
       # ===============================================================
       # TANG 3 - Ha tang: cau hinh trien khai + SBOM
@@ -314,12 +393,14 @@ jobs:
            github.event_name == 'workflow_dispatch' ||
            github.event_name == 'schedule')
         run: |
-          if [ ! -f "${{ inputs.dockerfile }}" ]; then
-            echo "Khong co ${{ inputs.dockerfile }} - bo qua buoc quet image."
+          DF="${{ steps.du_an.outputs.dockerfile }}"
+          if [ -z "$DF" ] || [ ! -f "$DF" ]; then
+            echo "Repo khong co Dockerfile - bo qua buoc quet image."
             echo "Luu y: day la 'khong quet' chu khong phai 'image sach'."
             exit 0
           fi
-          docker build -f "${{ inputs.dockerfile }}" -t quet-ci:latest .
+          # ngu canh build = goc repo (Dockerfile trong thu muc con kieu Visual Studio can vay)
+          docker build -f "$DF" -t quet-ci:latest .
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
             aquasec/trivy:latest image quet-ci:latest --scanners vuln \
             --severity CRITICAL,HIGH --quiet || true
@@ -334,36 +415,45 @@ jobs:
       # SAST x DAST chi con dung de GAN NHAN "da khai thac duoc" - xep uu tien,
       # khong bao gio dung de bo qua.
       # ===============================================================
+      # Khoi dong app KHONG gan voi .NET: start-command -> docker compose ->
+      # dotnet -> Dockerfile -> npm start (tools/khoi_dong_app.py). Khong cach
+      # nao dung duoc thi DAST bo qua va trang tom tat NOI RO ly do. Da chon
+      # mot cach ma app khong len thi job do - app hong trong PR la tin hieu that.
+      - name: Build (.NET)
+        if: >-
+          steps.pham_vi.outputs.chi_tai_lieu != 'true' && inputs.run-dast &&
+          inputs.start-command == '' && steps.du_an.outputs.project_file != ''
+        run: dotnet build "${{ steps.du_an.outputs.project_file }}" -c Release
+
+      - name: Khoi dong ung dung cho DAST
+        id: app
+        if: steps.pham_vi.outputs.chi_tai_lieu != 'true' && inputs.run-dast
+        env:
+          START_CMD: ${{ inputs.start-command }}
+        run: |
+          python "$TOOLKIT/tools/khoi_dong_app.py" --root . \
+            --start-command "$START_CMD" \
+            --project-file "${{ steps.du_an.outputs.project_file }}" \
+            --dockerfile "${{ steps.du_an.outputs.dockerfile }}" \
+            --app-url "${{ inputs.app-url }}" \
+            --health-path "${{ inputs.health-path }}" \
+            --log reports/app.log --github-output --summary
+
       - name: Sinh ban do route
         if: steps.pham_vi.outputs.chi_tai_lieu != 'true'
         run: |
+          # Ban do route hien doc duoc controller ASP.NET; stack khac se ra rong
+          # va ZAP dua vao spider (xem G0.4: nap OpenAPI neu repo co).
           python "$TOOLKIT/tools/gen_routes_map.py" \
-            --root . --base-url "${{ inputs.app-url }}" \
+            --root . --base-url "${{ steps.app.outputs.url || 'http://localhost:5000' }}" \
             --out routes_map.json
-
-      - name: Build
-        if: steps.pham_vi.outputs.chi_tai_lieu != 'true' && inputs.run-dast && inputs.project-file != ''
-        run: dotnet build "${{ inputs.project-file }}" -c Release
-
-      - name: Chay ung dung o nen
-        if: steps.pham_vi.outputs.chi_tai_lieu != 'true' && inputs.run-dast && inputs.project-file != ''
-        run: |
-          nohup dotnet run --project "${{ inputs.project-file }}" \
-            --urls http://0.0.0.0:5000 > app.log 2>&1 &
-          for i in $(seq 1 40); do
-            if curl -sf "${{ inputs.app-url }}${{ inputs.health-path }}" > /dev/null; then
-              echo "Ung dung da san sang sau ${i} lan thu."
-              exit 0
-            fi
-            sleep 2
-          done
-          echo "Ung dung khong khoi dong duoc:"; cat app.log; exit 1
 
       # Tren runner Linux dung --network host, nen ZAP goi thang localhost.
       - name: Khoi dong OWASP ZAP dang daemon
-        if: steps.pham_vi.outputs.chi_tai_lieu != 'true' && inputs.run-dast && inputs.project-file != ''
+        if: steps.pham_vi.outputs.chi_tai_lieu != 'true' && steps.app.outputs.chay == 'true'
         run: |
-          docker run -d --name zap --network host zaproxy/zap-stable \
+          # mount workspace chi-doc de ZAP doc duoc tep OpenAPI cua repo (neu co)
+          docker run -d --name zap --network host -v "$PWD:/zap/wrk:ro" zaproxy/zap-stable \
             zap.sh -daemon -host 0.0.0.0 -port 8090 \
             -config api.addrs.addr.name=.* \
             -config api.addrs.addr.regex=true \
@@ -378,13 +468,18 @@ jobs:
           echo "ZAP khong khoi dong duoc:"; docker logs zap; exit 1
 
       - name: ZAP - quet toan bo ung dung tam
-        if: steps.pham_vi.outputs.chi_tai_lieu != 'true' && inputs.run-dast && inputs.project-file != ''
+        if: steps.pham_vi.outputs.chi_tai_lieu != 'true' && steps.app.outputs.chay == 'true'
         run: |
+          # tep dac ta API trong repo (openapi*.json/yaml, swagger*.json/yaml)
+          API=$(find . -path ./.git -prune -o -path "./$TOOLKIT" -prune -o -path ./node_modules -prune -o -type f \
+                \( -iname 'openapi*.json' -o -iname 'openapi*.y*ml' -o -iname 'swagger*.json' -o -iname 'swagger*.y*ml' \) \
+                -print | sed 's#^\./##' | paste -sd, -)
           python "$TOOLKIT/tools/dast_scan.py" \
             --routes routes_map.json \
-            --base-url "${{ inputs.app-url }}" \
+            --openapi "$API" \
+            --base-url "${{ steps.app.outputs.url }}" \
             --zap http://localhost:8090 \
-            --timeout 1200 \
+            --timeout 600 \
             --out reports/zap-alerts.json
 
       # ===============================================================
@@ -397,16 +492,16 @@ jobs:
       - name: Chuan hoa SARIF cho Code Scanning
         if: always() && steps.pham_vi.outputs.chi_tai_lieu != 'true'
         run: |
-          if [ -f reports/semgrep.sarif ]; then
+          if [ -f reports/semgrep-du-an-tho.sarif ] || [ -f reports/semgrep-cong-dong-tho.sarif ]; then
             python "$TOOLKIT/tools/sarif_tools.py" semgrep \
-              --in reports/semgrep.sarif \
+              --du-an reports/semgrep-du-an-tho.sarif \
+              --cong-dong reports/semgrep-cong-dong-tho.sarif \
               --out-du-an reports/semgrep-du-an.sarif \
               --out-cong-dong reports/semgrep-cong-dong.sarif \
               --zap reports/zap-alerts.json --routes routes_map.json
           fi
           if [ -f reports/zap-alerts.json ]; then
-            FB="${{ inputs.project-file }}"
-            if [ -z "$FB" ]; then FB="README.md"; fi
+            FB="${{ steps.du_an.outputs.tep_du_phong }}"
             python "$TOOLKIT/tools/sarif_tools.py" zap \
               --in reports/zap-alerts.json --routes routes_map.json \
               --fallback-file "$FB" --out reports/zap.sarif
@@ -422,7 +517,8 @@ jobs:
         env:
           MOC: ${{ steps.pham_vi.outputs.moc }}
           CHI_TAI_LIEU: ${{ steps.pham_vi.outputs.chi_tai_lieu }}
-          CO_DAST: ${{ inputs.run-dast && inputs.project-file != '' }}
+          CO_DAST: ${{ steps.app.outputs.chay == 'true' }}
+          LY_DO_DAST: ${{ !inputs.run-dast && 'run-dast=false' || steps.app.outputs.ly_do }}
         run: |
           # Bang tong quan tung tang
           python - <<'PY' >> $GITHUB_STEP_SUMMARY
@@ -436,7 +532,7 @@ jobs:
           if os.environ.get("CHI_TAI_LIEU") == "true":
               print("> Lan chay nay chi sua tai lieu: cac tang can build/chay app duoc BO QUA CO Y. Tang secret van chay.\n")
           elif os.environ.get("CO_DAST") != "true":
-              print("> Tang dong (DAST) BI BO QUA: khong co project-file hoac run-dast=false. Chi co bang chung tinh.\n")
+              print(f"> Tang dong (DAST) BI BO QUA: {os.environ.get('LY_DO_DAST') or 'khong ro ly do'}. Chi co bang chung tinh.\n")
           print("| Tang | Ket qua |"); print("|---|---|")
           print(f"| 0. Secret | {os.environ.get('GITLEAKS_COUNT','?')} phat hien |")
           sca = j("reports/sca.json")
@@ -459,11 +555,13 @@ jobs:
           if [ -f reports/gitleaks.sarif ]; then ARGS="$ARGS --gitleaks reports/gitleaks.sarif"; fi
           if [ -f reports/sca.json ]; then ARGS="$ARGS --sca reports/sca.json"; fi
           if [ -n "$MOC" ]; then ARGS="$ARGS --moc $MOC"; fi
-          if [ "$CO_DAST" != "true" ]; then ARGS="$ARGS --dast-skipped run-dast=false_hoac_khong_co_project-file"; fi
-          if [ -n "$MOC" ] && git diff --name-only "$MOC" HEAD | grep -qE '\.csproj$|packages\.lock\.json$|Directory\.Packages\.props$'; then
+          DS=()
+          if [ "$CO_DAST" != "true" ]; then DS=(--dast-skipped "${LY_DO_DAST:-khong ro ly do}"); fi
+          # tep khai bao thu vien cua moi he sinh thai pho bien
+          if [ -n "$MOC" ] && git diff --name-only "$MOC" HEAD | grep -qE '\.csproj$|packages\.lock\.json$|Directory\.Packages\.props$|(^|/)(package(-lock)?\.json|yarn\.lock|pnpm-lock\.yaml|requirements[^/]*\.txt|poetry\.lock|Pipfile\.lock|pom\.xml|build\.gradle(\.kts)?|go\.(mod|sum)|Gemfile\.lock|composer\.(json|lock)|Cargo\.lock)$'; then
             ARGS="$ARGS --deps-changed"
           fi
-          python "$TOOLKIT/tools/gate.py" $ARGS --routes routes_map.json \
+          python "$TOOLKIT/tools/gate.py" $ARGS "${DS[@]}" --routes routes_map.json \
             --title "$TITLE" --out reports/tom-tat.json || true
 
       - name: Dung bao cao HTML
@@ -471,7 +569,7 @@ jobs:
         run: |
           ARGS=""
           if [ -f reports/sca.json ]; then ARGS="$ARGS --sca reports/sca.json"; fi
-          if [ -f reports/semgrep.sarif ]; then ARGS="$ARGS --sast reports/semgrep.sarif"; fi
+          if [ -f reports/semgrep-du-an.sarif ]; then ARGS="$ARGS --sast reports/semgrep-du-an.sarif"; fi
           if [ -f routes_map.json ]; then ARGS="$ARGS --routes routes_map.json"; fi
           python "$TOOLKIT/tools/report.py" --title "$TITLE" $ARGS --out reports/bao_cao.html || true
 

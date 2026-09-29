@@ -10,9 +10,12 @@ Security la duong chap nhan rui ro chinh thuc, co audit.
 
 Hai lenh:
 
-  semgrep   Doc SARIF cua Semgrep, chuan hoa muc do, TACH lam hai tep:
-              - semgrep-du-an.sarif     rule tu viet (vulnshop-*), tin cay cao -> chan
-              - semgrep-cong-dong.sarif rule cong dong                          -> tham khao
+  semgrep   Doc SARIF cua HAI luot quet Semgrep, chuan hoa muc do, ghi hai tep:
+              --du-an      rule cua bo cong cu + rule rieng cua repo (.devsecops/rules)
+                           -> semgrep-du-an.sarif: tin cay cao, co quyen chan
+              --cong-dong  bo rule cong dong theo ngon ngu
+                           -> semgrep-cong-dong.sarif: tham khao
+            Nhom quyet dinh theo luot quet, khong theo ten rule.
             Neu co ket qua ZAP: rule du an nao cung CWE + cung endpoint voi mot
             alert ZAP thi ghi nhan "DA KHAI THAC DUOC" vao thong diep. Chi de
             xep uu tien - KHONG bao gio dung de bo qua canh bao.
@@ -44,7 +47,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from correlate import find_route  # noqa: E402
 
 CWE_RE = re.compile(r"CWE-(\d+)", re.I)
-TIEN_TO_DU_AN = "vulnshop-"
 
 LEVEL_SEV = {"error": "8.0", "warning": "5.0", "note": "2.0", "none": "0.0"}
 CHU_SEV = {"critical": "9.5", "high": "8.0", "medium": "5.0", "moderate": "5.0",
@@ -86,16 +88,12 @@ def id_ngan(rid: str) -> str:
 
     Semgrep nap rule tu tep cuc bo thi dat id = <thu muc chua tep, noi bang dau
     cham>.<id trong tep>. Chay trong CI voi --config devsecops-toolkit/semgrep-rules/
-    sast-detect.yaml, rule `vulnshop-sqli-commandtext-concat` thanh
-    `devsecops-toolkit.semgrep-rules.vulnshop-sqli-commandtext-concat`.
+    sast-detect.yaml, rule `dso-sqli-commandtext-concat` thanh
+    `devsecops-toolkit.semgrep-rules.dso-sqli-commandtext-concat`.
     Id rule trong tep khong chua dau cham, nen phan sau dau cham cuoi la id goc.
     Rule cong dong (csharp.lang.security...) giu nguyen id - do la id registry.
     """
     return rid.rsplit(".", 1)[-1]
-
-
-def la_rule_du_an(rid: str) -> bool:
-    return id_ngan(rid).startswith(TIEN_TO_DU_AN)
 
 
 def vi_tri(res: dict) -> tuple[str, int]:
@@ -119,43 +117,41 @@ def chuan_hoa_rule(rule: dict) -> dict:
     return r
 
 
-def lenh_semgrep(a: argparse.Namespace) -> int:
-    sarif = doc(a.inp)
-    zap_alerts = doc(a.zap).get("alerts", []) if a.zap and Path(a.zap).is_file() else []
-    routes = doc(a.routes).get("routes", []) if a.routes and Path(a.routes).is_file() else []
+def xu_ly_semgrep(path: str, ten: str, rut_gon_id: bool, zap_alerts: list, routes: list) -> tuple[dict, dict]:
+    """Chuan hoa mot tep SARIF Semgrep thanh mot 'cong cu' tren Code Scanning.
 
-    du_an = {"version": sarif.get("version", "2.1.0"), "$schema": sarif.get("$schema"), "runs": []}
-    cong_dong = copy.deepcopy(du_an)
-    n_da, n_cd, n_kt, n_supp = 0, 0, 0, 0
-
+    rut_gon_id=True cho nhom du an: rule doc tu tep cuc bo bi Semgrep ghep duong
+    dan vao id (a.b.dso-x) -> rut ve id goc de on dinh, khong phu thuoc thu muc.
+    Rule registry (nhom cong dong) giu nguyen id.
+    """
+    sarif = doc(path)
+    out = {"version": sarif.get("version", "2.1.0"), "$schema": sarif.get("$schema"), "runs": []}
+    dem = {"kq": 0, "kt": 0, "supp": 0}
     for run in sarif.get("runs", []):
         driver = run.get("tool", {}).get("driver", {})
         rules = {r.get("id"): chuan_hoa_rule(r) for r in driver.get("rules", [])}
-        res_da, res_cd, rule_da, rule_cd = [], [], {}, {}
-
+        ket_qua, rule_dung = [], {}
         for res in run.get("results", []):
             rid = res.get("ruleId", "")
             rule = rules.get(rid) or chuan_hoa_rule({"id": rid, "defaultConfiguration": {"level": res.get("level", "warning")}})
             res = copy.deepcopy(res)
-            # level cua ket qua theo rule da chuan hoa, de ruleset "Alerts: Errors" dung
+            # level theo rule da chuan hoa, de ruleset "Alerts: Errors" dung
             res["level"] = rule["defaultConfiguration"]["level"]
-            # Ket qua mang "suppressions" (vd. do chu thich nosemgrep) bi GitHub coi
-            # la DA DONG -> khong chan. Chap nhan rui ro chi qua Dismiss + ly do tren
-            # GitHub, nen xoa moi suppressions tu trong ma nguon.
+            # "suppressions" (vd. tu chu thich nosemgrep) bi GitHub coi la DA DONG -> khong
+            # chan. Chap nhan rui ro chi qua Dismiss + ly do tren GitHub, nen xoa het.
             if res.pop("suppressions", None):
-                n_supp += 1
-
-            if la_rule_du_an(rid):
-                # Dung id ngan, on dinh: khong phu thuoc thu muc checkout bo cong cu.
-                # Doi id thi bo ruleIndex/rule cu di, vi danh sach rules bi dung lai.
+                dem["supp"] += 1
+            # danh sach rules duoc dung lai -> chi so cu mat nghia
+            res.pop("ruleIndex", None)
+            res.pop("rule", None)
+            if rut_gon_id:
                 rid_goc, rid = rid, id_ngan(rid)
-                # ten/mo ta rule cua Semgrep cung chua id dai ("Semgrep Finding: a.b.vulnshop-x")
-                rule = json.loads(json.dumps(rule, ensure_ascii=False).replace(rid_goc, rid))
-                rule["id"] = rid
-                res["ruleId"] = rid
-                res.pop("ruleIndex", None)
-                res.pop("rule", None)
-                # Doi chieu voi ZAP: cung CWE, cung endpoint -> DA KHAI THAC DUOC
+                if rid != rid_goc:
+                    # ten/mo ta rule cua Semgrep cung chua id dai ("Semgrep Finding: a.b.dso-x")
+                    rule = json.loads(json.dumps(rule, ensure_ascii=False).replace(rid_goc, rid))
+                    rule["id"] = rid
+                    res["ruleId"] = rid
+                # Doi chieu voi ZAP: cung CWE, cung endpoint -> DA KHAI THAC DUOC (chi de xep uu tien)
                 cwe = cwe_cua_rule(rule, res)
                 f, line = vi_tri(res)
                 route = find_route(f, line, routes) if routes and f else None
@@ -166,32 +162,45 @@ def lenh_semgrep(a: argparse.Namespace) -> int:
                             msg["text"] = (f"[DA KHAI THAC DUOC - ZAP: {z.get('alert')}, payload: "
                                            f"{(z.get('attack') or '')[:60]}] " + msg.get("text", ""))
                             res.setdefault("properties", {})["da_khai_thac"] = True
-                            n_kt += 1
+                            dem["kt"] += 1
                             break
-                res_da.append(res); rule_da[rid] = rule; n_da += 1
-            else:
-                res.pop("ruleIndex", None)
-                res.pop("rule", None)
-                res_cd.append(res); rule_cd[rid] = rule; n_cd += 1
+            ket_qua.append(res)
+            rule_dung[rid] = rule
+            dem["kq"] += 1
+        r2 = copy.deepcopy(run)
+        r2["tool"]["driver"] = dict(driver, name=ten, rules=list(rule_dung.values()))
+        r2["results"] = ket_qua
+        r2.pop("automationDetails", None)
+        out["runs"].append(r2)
+    return out, dem
 
-        def run_moi(results, rules_dict, ten):
-            r2 = copy.deepcopy(run)
-            r2["tool"]["driver"] = dict(driver, name=ten, rules=list(rules_dict.values()))
-            r2["results"] = results
-            r2.pop("automationDetails", None)
-            return r2
 
-        du_an["runs"].append(run_moi(res_da, rule_da, "Semgrep-du-an"))
-        cong_dong["runs"].append(run_moi(res_cd, rule_cd, "Semgrep-cong-dong"))
+def lenh_semgrep(a: argparse.Namespace) -> int:
+    """Hai luot quet rieng -> hai cong cu tren Code Scanning.
 
-    ghi(a.out_du_an, du_an)
-    ghi(a.out_cong_dong, cong_dong)
-    print(f"Semgrep: {n_da} canh bao rule du an -> {a.out_du_an}")
-    print(f"         {n_cd} canh bao rule cong dong -> {a.out_cong_dong}")
-    if zap_alerts:
-        print(f"         {n_kt} canh bao rule du an DA KHAI THAC DUOC theo ZAP")
-    if n_supp:
-        print(f"::warning::{n_supp} ket qua Semgrep mang 'suppressions' (tat trong ma nguon) - "
+    Nhom duoc quyet dinh theo NGUON CAU HINH cua luot quet, khong theo ten rule:
+      --du-an      luot quet rule cua bo cong cu + rule rieng cua repo (.devsecops/rules)
+                   -> Semgrep-du-an: tin cay cao, co quyen chan
+      --cong-dong  luot quet bo rule cong dong theo ngon ngu -> Semgrep-cong-dong: tham khao
+    Repo nao cung them duoc rule rieng ma khong phai dat ten theo quy uoc nao.
+    """
+    zap_alerts = doc(a.zap).get("alerts", []) if a.zap and Path(a.zap).is_file() else []
+    routes = doc(a.routes).get("routes", []) if a.routes and Path(a.routes).is_file() else []
+    tong_supp = 0
+    for nguon, dich, ten, rut_gon in ((a.du_an, a.out_du_an, "Semgrep-du-an", True),
+                                     (a.cong_dong, a.out_cong_dong, "Semgrep-cong-dong", False)):
+        if not nguon:
+            continue
+        if not Path(nguon).is_file():
+            print(f"::warning::Khong co {nguon} - bo qua {ten}")
+            continue
+        out, dem = xu_ly_semgrep(nguon, ten, rut_gon, zap_alerts if rut_gon else [], routes)
+        ghi(dich, out)
+        tong_supp += dem["supp"]
+        them = f", {dem['kt']} DA KHAI THAC DUOC theo ZAP" if rut_gon and zap_alerts else ""
+        print(f"{ten}: {dem['kq']} canh bao -> {dich}{them}")
+    if tong_supp:
+        print(f"::warning::{tong_supp} ket qua Semgrep mang 'suppressions' (tat trong ma nguon) - "
               f"da BO dau tat, van dua len nhu canh bao binh thuong")
     return 0
 
@@ -277,7 +286,8 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("semgrep")
-    s.add_argument("--in", dest="inp", required=True)
+    s.add_argument("--du-an", default="", help="SARIF cua luot quet rule bo cong cu + rule rieng cua repo")
+    s.add_argument("--cong-dong", default="", help="SARIF cua luot quet bo rule cong dong")
     s.add_argument("--out-du-an", default="reports/semgrep-du-an.sarif")
     s.add_argument("--out-cong-dong", default="reports/semgrep-cong-dong.sarif")
     s.add_argument("--zap", default="")

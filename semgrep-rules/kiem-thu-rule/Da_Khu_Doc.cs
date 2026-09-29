@@ -28,7 +28,7 @@ namespace KiemThuRule
     {
         // ------------------------------------------------------------------
         // CWE-89 : tham so hoa
-        // sanitizer: vulnshop-sanitizer-sql-parameterized
+        // sanitizer: dso-sanitizer-sql-parameterized
         // ------------------------------------------------------------------
         public void Sql_ThamSoHoa(SqlCommand cmd, string ten)
         {
@@ -37,13 +37,13 @@ namespace KiemThuRule
             cmd.ExecuteNonQuery();
         }
 
-        // sanitizer: vulnshop-sanitizer-sql-ef-interpolated
+        // sanitizer: dso-sanitizer-sql-ef-interpolated
         public void Sql_EfInterpolated(AppDbContext ctx, string ten)
         {
             ctx.Database.ExecuteSqlInterpolated($"DELETE FROM SanPham WHERE Ten = {ten}");
         }
 
-        // sanitizer: vulnshop-sanitizer-sql-dapper-params
+        // sanitizer: dso-sanitizer-sql-dapper-params
         public void Sql_DapperThamSo(SqlConnection conn, int id)
         {
             conn.Execute("UPDATE DonHang SET TrangThai = 1 WHERE Id = @id", new { id });
@@ -51,7 +51,7 @@ namespace KiemThuRule
 
         // ------------------------------------------------------------------
         // CWE-79 : ma hoa HTML
-        // sanitizer: vulnshop-sanitizer-html-encode
+        // sanitizer: dso-sanitizer-html-encode
         // ------------------------------------------------------------------
         public string Xss_MaHoa(string tuKhoa)
         {
@@ -61,7 +61,7 @@ namespace KiemThuRule
 
         // ------------------------------------------------------------------
         // CWE-78 : tach doi so
-        // sanitizer: vulnshop-sanitizer-cmd-argumentlist
+        // sanitizer: dso-sanitizer-cmd-argumentlist
         // ------------------------------------------------------------------
         public void Cmd_ArgumentList(string tenTep)
         {
@@ -75,7 +75,7 @@ namespace KiemThuRule
 
         // ------------------------------------------------------------------
         // CWE-22 : cat bo thanh phan thu muc
-        // sanitizer: vulnshop-sanitizer-path-getfilename
+        // sanitizer: dso-sanitizer-path-getfilename
         // ------------------------------------------------------------------
         public string Path_ChiTenTep(string tenTep)
         {
@@ -86,7 +86,7 @@ namespace KiemThuRule
 
         // ------------------------------------------------------------------
         // CWE-611 : dong DTD
-        // sanitizer: vulnshop-sanitizer-xxe-dtd-off
+        // sanitizer: dso-sanitizer-xxe-dtd-off
         // ------------------------------------------------------------------
         public void Xml_DongDtd()
         {
@@ -97,7 +97,7 @@ namespace KiemThuRule
 
         // ------------------------------------------------------------------
         // CWE-601 : chi cho dia chi noi bo
-        // sanitizer: vulnshop-sanitizer-local-redirect
+        // sanitizer: dso-sanitizer-local-redirect
         // ------------------------------------------------------------------
         public IActionResult Redirect_NoiBo(string returnUrl)
         {
@@ -106,7 +106,7 @@ namespace KiemThuRule
 
         // ------------------------------------------------------------------
         // CWE-91 : ma hoa noi dung XML
-        // sanitizer: vulnshop-sanitizer-xml-escape
+        // sanitizer: dso-sanitizer-xml-escape
         // ------------------------------------------------------------------
         public void Xml_MaHoa(XmlWriter writer, string ten)
         {

@@ -30,6 +30,7 @@ import argparse
 import json
 import sys
 import time
+import urllib.request
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -37,6 +38,39 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from correlate import Zap  # noqa: E402
 
 RISK_RANK = {"Informational": 0, "Low": 1, "Medium": 2, "High": 3}
+
+# duong dan dac ta API ma cac framework pho bien tu phuc vu
+DUONG_OPENAPI = ("/swagger/v1/swagger.json", "/openapi/v1.json", "/openapi.json",
+                 "/v3/api-docs", "/api-docs", "/swagger.json", "/docs/openapi.json")
+
+
+def nap_openapi(zap: Zap, base: str, tep: list[str]) -> list[str]:
+    """Nap dac ta OpenAPI/Swagger vao ZAP de no biet moi endpoint + tham so.
+
+    Ban do route chi doc duoc controller ASP.NET. Voi stack khac, dac ta API la
+    nguon endpoint dang tin nhat - co thi dung, khong co thi con spider.
+      - tep trong repo: ZAP chay trong container, workspace duoc mount o /zap/wrk
+      - duong dan app tu phuc vu: thu cac duong dan quen thuoc cua framework
+    """
+    da_nap = []
+    for f in tep:
+        try:
+            zap._get("/JSON/openapi/action/importFile/", file=f"/zap/wrk/{f}", target=base)
+            da_nap.append(f)
+        except Exception as exc:
+            print(f"    (!) khong nap duoc {f}: {exc}")
+    for duong in DUONG_OPENAPI:
+        url = base + duong
+        try:
+            with urllib.request.urlopen(url, timeout=5) as r:
+                d = json.loads(r.read().decode("utf-8", errors="replace"))
+            if not isinstance(d, dict) or not ("openapi" in d or "swagger" in d):
+                continue
+            zap._get("/JSON/openapi/action/importUrl/", url=url)
+            da_nap.append(url)
+        except Exception:
+            continue
+    return da_nap
 
 
 def cho(zap: Zap, view: str, scan_id: str, han: float, nhan: str) -> None:
@@ -61,6 +95,8 @@ def main() -> int:
     ap.add_argument("--zap-api-key", default="")
     ap.add_argument("--timeout", type=int, default=1200,
                     help="tong so giay toi da cho spider + active scan")
+    ap.add_argument("--openapi", default="",
+                    help="tep dac ta OpenAPI/Swagger trong repo, cach nhau dau phay (duong dan tuong doi)")
     ap.add_argument("--out", default="reports/zap-alerts.json")
     args = ap.parse_args()
 
@@ -86,6 +122,10 @@ def main() -> int:
             zap.access_url(u)
         except Exception as exc:  # 404/500 cua mot endpoint khong lam dung ca buoc
             print(f"    (!) {u}: {exc}")
+
+    # 1b) Dac ta OpenAPI neu co - nguon endpoint cho stack khong phai .NET
+    openapi = nap_openapi(zap, base, [f for f in args.openapi.split(",") if f.strip()])
+    print(f"[*] OpenAPI: {', '.join(openapi) if openapi else 'khong co dac ta nao'}")
 
     timed_out = False
     # 2) Spider tu trang goc de tim them nhung gi ban do route bo sot
@@ -142,6 +182,7 @@ def main() -> int:
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps({"base_url": base, "scanned_urls": len(diem),
+                               "openapi": openapi,
                                "timed_out": timed_out,
                                "alerts": uniq}, indent=2, ensure_ascii=False),
                    encoding="utf-8")

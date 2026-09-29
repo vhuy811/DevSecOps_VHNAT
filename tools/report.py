@@ -361,9 +361,9 @@ def build(title: str, sca, sast, routes, rules_note: str, dast=None, trivy=None)
     total = n_adv + n_code
 
     # Nhan bo rule suy ra tu chinh du lieu SARIF thay vi ghi chet:
-    # moi rule rieng cua do an deu co tien to "vulnshop-".
-    # Semgrep gan tien to duong dan tep rule vao id (a.b.vulnshop-x) -> xet phan cuoi.
-    n_own = sum(1 for r in sast if r.get("rule", "").rsplit(".", 1)[-1].startswith("vulnshop-"))
+    # moi rule cua bo cong cu deu co tien to "dso-" (ban cu: "vulnshop-").
+    # Semgrep gan tien to duong dan tep rule vao id (a.b.dso-x) -> xet phan cuoi.
+    n_own = sum(1 for r in sast if r.get("rule", "").rsplit(".", 1)[-1].startswith(("dso-", "vulnshop-")))
     if not sast:
         rules_src = "chưa có cảnh báo nào"
     elif n_own == len(sast):

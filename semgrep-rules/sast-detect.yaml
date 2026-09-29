@@ -71,7 +71,7 @@ rules:
   # CWE-89 : SQL Injection
   # ===========================================================================
 
-  - id: vulnshop-sqli-commandtext-concat
+  - id: dso-sqli-commandtext-concat
     languages: [csharp]
     severity: ERROR
     message: >-
@@ -86,7 +86,7 @@ rules:
         - https://cwe.mitre.org/data/definitions/89.html
     pattern: $CMD.CommandText = <... $A + $B ...>;
 
-  - id: vulnshop-sqli-commandtext-interpolated
+  - id: dso-sqli-commandtext-interpolated
     languages: [csharp]
     severity: ERROR
     message: >-
@@ -102,7 +102,7 @@ rules:
       - pattern: $CMD.CommandText = string.Format(...);
       - pattern: $CMD.CommandText = String.Format(...);
 
-  - id: vulnshop-sqli-query-string-concat
+  - id: dso-sqli-query-string-concat
     languages: [csharp]
     severity: WARNING
     message: >-
@@ -121,7 +121,7 @@ rules:
           metavariable: $SQL
           regex: (?i).*(sql|query|cmd).*
 
-  - id: vulnshop-sqli-sqlcommand-ctor-concat
+  - id: dso-sqli-sqlcommand-ctor-concat
     languages: [csharp]
     severity: ERROR
     message: >-
@@ -142,7 +142,7 @@ rules:
       - pattern: new MySqlCommand($"...", ...)
       - pattern: new NpgsqlCommand($"...", ...)
 
-  - id: vulnshop-sqli-efcore-raw
+  - id: dso-sqli-efcore-raw
     languages: [csharp]
     severity: ERROR
     message: >-
@@ -166,7 +166,7 @@ rules:
       - pattern: $CTX.Database.SqlQueryRaw(<... $A + $B ...>, ...)
       - pattern: $CTX.$T.SqlQuery(<... $A + $B ...>, ...)
 
-  - id: vulnshop-sqli-dapper-concat
+  - id: dso-sqli-dapper-concat
     languages: [csharp]
     severity: ERROR
     message: >-
@@ -193,7 +193,7 @@ rules:
   # CWE-79 : Cross-Site Scripting
   # ===========================================================================
 
-  - id: vulnshop-xss-html-string-concat
+  - id: dso-xss-html-string-concat
     languages: [csharp]
     severity: WARNING
     message: >-
@@ -211,7 +211,7 @@ rules:
           metavariable: $HTML
           regex: (?i).*(html|markup|output).*
 
-  - id: vulnshop-xss-response-write
+  - id: dso-xss-response-write
     languages: [csharp]
     severity: ERROR
     message: >-
@@ -228,7 +228,7 @@ rules:
       - pattern: $R.WriteAsync(<... $A + $B ...>);
       - pattern: $R.WriteAsync($"...");
 
-  - id: vulnshop-xss-htmlstring-ctor
+  - id: dso-xss-htmlstring-ctor
     languages: [csharp]
     severity: ERROR
     message: >-
@@ -247,7 +247,7 @@ rules:
       - pattern: new MarkupString(<... $A + $B ...>)
       - pattern: new MarkupString($"...")
 
-  - id: vulnshop-xss-content-result-html
+  - id: dso-xss-content-result-html
     languages: [csharp]
     severity: ERROR
     message: >-
@@ -262,7 +262,7 @@ rules:
       - pattern: Content(<... $A + $B ...>, "text/html")
       - pattern: Content($"...", "text/html")
 
-  - id: vulnshop-xss-html-raw-razor
+  - id: dso-xss-html-raw-razor
     languages: [generic]
     severity: ERROR
     message: >-
@@ -277,7 +277,7 @@ rules:
         - "*.cshtml"
     pattern: Html.Raw(...)
 
-  - id: vulnshop-xss-markupstring-razor
+  - id: dso-xss-markupstring-razor
     languages: [generic]
     severity: ERROR
     message: >-
@@ -296,7 +296,7 @@ rules:
   # CWE-78 : OS Command Injection
   # ===========================================================================
 
-  - id: vulnshop-cmdi-process-start-concat
+  - id: dso-cmdi-process-start-concat
     languages: [csharp]
     severity: ERROR
     message: >-
@@ -316,7 +316,7 @@ rules:
       - pattern: Process.Start($F, $"...")
       - pattern: System.Diagnostics.Process.Start(<... $A + $B ...>)
 
-  - id: vulnshop-cmdi-processstartinfo-arguments
+  - id: dso-cmdi-processstartinfo-arguments
     languages: [csharp]
     severity: ERROR
     message: >-
@@ -336,7 +336,7 @@ rules:
       - pattern: new ProcessStartInfo($F, <... $A + $B ...>)
       - pattern: new ProcessStartInfo($F, $"...")
 
-  - id: vulnshop-cmdi-shell-execute
+  - id: dso-cmdi-shell-execute
     languages: [csharp]
     severity: ERROR
     message: >-
@@ -361,7 +361,7 @@ rules:
   # CWE-22 : Path Traversal
   # ===========================================================================
 
-  - id: vulnshop-pathtraversal-file-api-concat
+  - id: dso-pathtraversal-file-api-concat
     languages: [csharp]
     severity: ERROR
     message: >-
@@ -391,7 +391,7 @@ rules:
       - pattern: File.ReadAllText($"...", ...)
       - pattern: File.ReadAllTextAsync($"...", ...)
 
-  - id: vulnshop-pathtraversal-physicalfile
+  - id: dso-pathtraversal-physicalfile
     languages: [csharp]
     severity: ERROR
     message: >-
@@ -408,7 +408,7 @@ rules:
       - pattern: $R.SendFileAsync(<... $A + $B ...>, ...)
       - pattern: new PhysicalFileResult(<... $A + $B ...>, ...)
 
-  - id: vulnshop-pathtraversal-path-combine-request
+  - id: dso-pathtraversal-path-combine-request
     languages: [csharp]
     severity: ERROR
     message: >-
@@ -442,7 +442,7 @@ rules:
   # CWE-643 : XPath Injection
   # ===========================================================================
 
-  - id: vulnshop-xpathi-select-concat
+  - id: dso-xpathi-select-concat
     languages: [csharp]
     severity: ERROR
     message: >-
@@ -471,7 +471,7 @@ rules:
   # CWE-611 : XML External Entity (XXE)
   # ===========================================================================
 
-  - id: vulnshop-xxe-dtd-processing-parse
+  - id: dso-xxe-dtd-processing-parse
     languages: [csharp]
     severity: ERROR
     message: >-
@@ -490,7 +490,7 @@ rules:
       - pattern: $S.DtdProcessing = System.Xml.DtdProcessing.Parse;
       - pattern: $S.ProhibitDtd = false;
 
-  - id: vulnshop-xxe-xmlresolver-enabled
+  - id: dso-xxe-xmlresolver-enabled
     languages: [csharp]
     severity: ERROR
     message: >-
@@ -505,7 +505,7 @@ rules:
       - pattern: $S.XmlResolver = new XmlUrlResolver(...);
       - pattern: $S.XmlResolver = new System.Xml.XmlUrlResolver(...);
 
-  - id: vulnshop-xxe-xmltextreader-default
+  - id: dso-xxe-xmltextreader-default
     languages: [csharp]
     severity: ERROR
     message: >-
@@ -524,7 +524,7 @@ rules:
   # CWE-918 : Server-Side Request Forgery
   # ===========================================================================
 
-  - id: vulnshop-ssrf-http-client-concat
+  - id: dso-ssrf-http-client-concat
     languages: [csharp]
     severity: ERROR
     message: >-
@@ -551,7 +551,7 @@ rules:
       - pattern: new HttpRequestMessage($M, <... $A + $B ...>)
       - pattern: new HttpRequestMessage($M, $"...")
 
-  - id: vulnshop-ssrf-webrequest-concat
+  - id: dso-ssrf-webrequest-concat
     languages: [csharp]
     severity: ERROR
     message: >-
@@ -574,7 +574,7 @@ rules:
   # CWE-601 : Open Redirect
   # ===========================================================================
 
-  - id: vulnshop-openredirect-from-request
+  - id: dso-openredirect-from-request
     languages: [csharp]
     severity: ERROR
     message: >-
@@ -605,7 +605,7 @@ rules:
                 - pattern: Request.Params[...]
                 - pattern: $CTX.Request.Query[...]
 
-  - id: vulnshop-openredirect-parameter
+  - id: dso-openredirect-parameter
     languages: [csharp]
     severity: WARNING
     message: >-
@@ -629,7 +629,7 @@ rules:
   # CWE-90 : LDAP Injection
   # ===========================================================================
 
-  - id: vulnshop-ldapi-filter-concat
+  - id: dso-ldapi-filter-concat
     languages: [csharp]
     severity: ERROR
     message: >-
@@ -654,7 +654,7 @@ rules:
   # CWE-91 : XML / XSLT Injection
   # ===========================================================================
 
-  - id: vulnshop-xmli-innerxml-concat
+  - id: dso-xmli-innerxml-concat
     languages: [csharp]
     severity: ERROR
     message: >-
@@ -675,7 +675,7 @@ rules:
       - pattern: XElement.Parse(<... $A + $B ...>, ...)
       - pattern: XDocument.Parse(<... $A + $B ...>, ...)
 
-  - id: vulnshop-xslti-enable-script
+  - id: dso-xslti-enable-script
     languages: [csharp]
     severity: ERROR
     message: >-
@@ -696,7 +696,7 @@ rules:
   # CWE-113 : HTTP Response Splitting
   # ===========================================================================
 
-  - id: vulnshop-responsesplit-header-concat
+  - id: dso-responsesplit-header-concat
     languages: [csharp]
     severity: ERROR
     message: >-
@@ -722,7 +722,7 @@ rules:
   # CWE-94 : Server-Side Code Injection
   # ===========================================================================
 
-  - id: vulnshop-codei-dynamic-compile
+  - id: dso-codei-dynamic-compile
     languages: [csharp]
     severity: ERROR
     message: >-

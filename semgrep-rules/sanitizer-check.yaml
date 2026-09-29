@@ -48,7 +48,7 @@
 rules:
 
   # ---------------- CWE-89 : truy van da tham so hoa ----------------
-  - id: vulnshop-sanitizer-sql-parameterized
+  - id: dso-sanitizer-sql-parameterized
     languages: [csharp]
     severity: INFO
     message: "SANITIZER CWE-89: truy van da duoc tham so hoa."
@@ -63,7 +63,7 @@ rules:
       - pattern: new NpgsqlParameter(...)
       - pattern: new MySqlParameter(...)
 
-  - id: vulnshop-sanitizer-sql-ef-interpolated
+  - id: dso-sanitizer-sql-ef-interpolated
     languages: [csharp]
     severity: INFO
     message: >-
@@ -80,7 +80,7 @@ rules:
       - pattern: $CTX.Database.ExecuteSqlInterpolatedAsync(...)
       - pattern: $CTX.$T.FromSql($"...")
 
-  - id: vulnshop-sanitizer-sql-dapper-params
+  - id: dso-sanitizer-sql-dapper-params
     languages: [csharp]
     severity: INFO
     message: >-
@@ -97,7 +97,7 @@ rules:
       - pattern: new DynamicParameters(...)
 
   # ---------------- CWE-79 : ma hoa HTML ----------------
-  - id: vulnshop-sanitizer-html-encode
+  - id: dso-sanitizer-html-encode
     languages: [csharp]
     severity: INFO
     message: "SANITIZER CWE-79: gia tri da duoc ma hoa HTML truoc khi ghep vao output."
@@ -115,7 +115,7 @@ rules:
       - pattern: JavaScriptEncoder.Default.Encode(...)
 
   # ---------------- CWE-78 : tach doi so, khong qua shell ----------------
-  - id: vulnshop-sanitizer-cmd-argumentlist
+  - id: dso-sanitizer-cmd-argumentlist
     languages: [csharp]
     severity: INFO
     message: >-
@@ -132,7 +132,7 @@ rules:
       - pattern: $PSI.ArgumentList = $L;
 
   # ---------------- CWE-22 : cat bo phan thu muc ----------------
-  - id: vulnshop-sanitizer-path-getfilename
+  - id: dso-sanitizer-path-getfilename
     languages: [csharp]
     severity: INFO
     message: >-
@@ -148,7 +148,7 @@ rules:
       - pattern: System.IO.Path.GetFileName(...)
 
   # ---------------- CWE-611 : dong DTD ----------------
-  - id: vulnshop-sanitizer-xxe-dtd-off
+  - id: dso-sanitizer-xxe-dtd-off
     languages: [csharp]
     severity: INFO
     message: >-
@@ -165,7 +165,7 @@ rules:
       - pattern: $DOC.XmlResolver = null;
 
   # ---------------- CWE-601 : chi cho phep dia chi noi bo ----------------
-  - id: vulnshop-sanitizer-local-redirect
+  - id: dso-sanitizer-local-redirect
     languages: [csharp]
     severity: INFO
     message: >-
@@ -184,7 +184,7 @@ rules:
       - pattern: new LocalRedirectResult(...)
 
   # ---------------- CWE-91 : ma hoa noi dung XML ----------------
-  - id: vulnshop-sanitizer-xml-escape
+  - id: dso-sanitizer-xml-escape
     languages: [csharp]
     severity: INFO
     message: >-

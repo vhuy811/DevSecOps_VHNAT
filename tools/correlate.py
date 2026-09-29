@@ -516,7 +516,7 @@ def write_sarif(results: list[dict], path: Path) -> None:
     """
     rules, seen = [], set()
     for r in results:
-        rid = r["rule_id"] or "vulnshop-unknown"
+        rid = r["rule_id"] or "dso-unknown"
         if rid in seen:
             continue
         seen.add(rid)
@@ -530,7 +530,7 @@ def write_sarif(results: list[dict], path: Path) -> None:
     sarif_results = []
     for r in results:
         entry = {
-            "ruleId": r["rule_id"] or "vulnshop-unknown",
+            "ruleId": r["rule_id"] or "dso-unknown",
             "level": SARIF_LEVEL[r["label"]],
             "message": {"text": f"[{r['label']}] {r['cwe']} tai {r['url'] or '?'} "
                                 f"(tham so: {r['param'] or '-'}). {r['evidence']}"},
@@ -554,7 +554,7 @@ def write_sarif(results: list[dict], path: Path) -> None:
         "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
         "runs": [{
             "tool": {"driver": {
-                "name": "vulnshop-correlator",
+                "name": "dso-correlator",
                 "semanticVersion": "1.0.0",
                 "informationUri": "https://github.com/",
                 "rules": rules,
