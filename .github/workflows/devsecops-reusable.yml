@@ -151,7 +151,14 @@ jobs:
 
           KHAC=$(echo "$CHANGED" | grep -vE '\.(md|txt|png|jpe?g|gif)$|^docs/|^LICENSE' || true)
 
-          if [ -n "$CHANGED" ] && [ -z "$KHAC" ]; then
+          if [ -n "$CHANGED" ] && [ -z "$KHAC" ] && [ "$EV" = "pull_request" ]; then
+            # PR thi LUON quet du: ruleset "Require code scanning results" doi
+            # Semgrep-du-an va OWASP-ZAP co ket qua cho TUNG commit cua PR. Bo
+            # qua hai tang do thi PR chi sua README cung treo mai o "Code scanning
+            # is waiting for results", khong merge duoc.
+            echo "chi_tai_lieu=false" >> "$GITHUB_OUTPUT"
+            echo "==> PR chi sua tai lieu nhung VAN quet day du (ruleset can ket qua moi cong cu)."
+          elif [ -n "$CHANGED" ] && [ -z "$KHAC" ]; then
             echo "chi_tai_lieu=true" >> "$GITHUB_OUTPUT"
             echo "==> Chi thay doi tai lieu. Bo qua cac tang can build va chay ung dung."
           else

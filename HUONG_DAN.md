@@ -249,11 +249,9 @@ Chỉnh loại email nhận ở github.com/settings/notifications (mục *Action
 
 ## 6. Commit chỉ sửa tài liệu
 
-Sửa `.md`, `.txt`, ảnh, `docs/`, `LICENSE` thì CI bỏ qua các tầng cần build và chạy app — xong trong khoảng 20 giây.
+**PR luôn được quét đầy đủ**, kể cả PR chỉ sửa README. Lý do: ruleset *Require code scanning results* đòi `Semgrep-du-an` và `OWASP-ZAP` có kết quả cho từng commit của PR. Bỏ qua hai tầng đó thì PR treo mãi ở "Code scanning is waiting for results" và không merge được.
 
-Gitleaks **vẫn chạy**, vì một tệp `.md` hoàn toàn có thể chứa token bị dán nhầm.
-
-Kẹp một tệp `.cs` vào chung commit thì quét đầy đủ trở lại. Sửa chính tệp workflow cũng vậy.
+Chỉ commit trên `main` (sau khi merge) mà toàn là `.md`, `.txt`, ảnh, `docs/`, `LICENSE` mới được rút gọn: CI bỏ qua các tầng cần build và chạy app, xong trong khoảng 20 giây. Gitleaks **vẫn chạy**, vì một tệp `.md` hoàn toàn có thể chứa token bị dán nhầm.
 
 ---
 
