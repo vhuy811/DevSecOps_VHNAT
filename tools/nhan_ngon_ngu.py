@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 from collections import Counter
 from pathlib import Path
@@ -96,6 +97,31 @@ TEN = {
 }
 
 
+# Tep chi co chu thich / khoang trang khong phai la ma. Vi du: site.js mac dinh
+# cua template ASP.NET chi co 3 dong chu thich. Dem no la "co JavaScript" thi
+# CodeQL dung CSDL rong va hong job ("detected code ... could not process any
+# of it") - do la VulnShop-App lan chay #21.
+CHU_THICH_C = {"csharp", "javascript", "typescript", "java", "kotlin", "go", "c-cpp", "rust", "swift", "php"}
+CHU_THICH_THANG = {"python", "ruby"}
+
+
+def chi_chu_thich(p: Path, nn: str) -> bool:
+    if nn not in CHU_THICH_C and nn not in CHU_THICH_THANG:
+        return False
+    try:
+        if p.stat().st_size > 200_000:
+            return False
+        s = p.read_text(encoding="utf-8-sig", errors="replace")
+    except OSError:
+        return False
+    if nn in CHU_THICH_C:
+        s = re.sub(r"/\*.*?\*/", "", s, flags=re.S)
+        s = re.sub(r"//[^\n]*", "", s)
+    else:
+        s = re.sub(r"#[^\n]*", "", s)
+    return not s.strip()
+
+
 def la_nhung(parts: tuple[str, ...], ten: str) -> bool:
     """Thu vien nhung san: nam duoi lib/, vendor/... hoac la tep .min.js/.min.css."""
     if any(p.lower() in THU_MUC_NHUNG or p.lower() in SINH_RA for p in parts[:-1]):
@@ -120,6 +146,7 @@ def nhan(root: Path) -> dict:
     ma = Counter()          # tep ma cua du an theo ngon ngu
     nhung = Counter()       # tep thu vien nhung san theo ngon ngu
     thu_muc_nhung = set()
+    rong = Counter()        # tep chi co chu thich, khong tinh la ma
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if d not in BO_QUA_THU_MUC]
         for f in filenames:
@@ -135,6 +162,9 @@ def nhan(root: Path) -> dict:
                             if p.lower() in THU_MUC_NHUNG or p.lower() in SINH_RA), None)
                 # nam trong lib/, vendor/... -> ghi thu muc; tep .min.js le -> ghi chinh tep
                 thu_muc_nhung.add("/".join(rel.parts[: idx + 1]) if idx is not None else rel.as_posix())
+                continue
+            if chi_chu_thich(Path(dirpath) / f, nn):
+                rong[nn] += 1
                 continue
             ma[nn] += 1
 
@@ -155,6 +185,7 @@ def nhan(root: Path) -> dict:
         "ma_du_an": dict(sorted(ma.items(), key=lambda x: -x[1])),
         "thu_vien_nhung": dict(nhung),
         "thu_muc_nhung": sorted(thu_muc_nhung),
+        "tep_chi_chu_thich": dict(rong),
         "codeql_languages": codeql,
         "codeql_matrix": [{"language": l, "build-mode": CODEQL_BUILD.get(l, "none")} for l in codeql],
         "semgrep_packs": semgrep,
@@ -181,6 +212,10 @@ def bang_markdown(kq: dict) -> str:
         dong.append("")
         dong.append(f"Thư viện nhúng sẵn: {tong} tệp trong {', '.join(f'`{d}`' for d in kq['thu_muc_nhung'])} "
                     "— không quét SAST (mã người khác viết), chuyển cho tầng kiểm thư viện.")
+    if kq.get("tep_chi_chu_thich"):
+        dong.append("")
+        dong.append("Bỏ qua tệp chỉ có chú thích (không phải mã): "
+                    + ", ".join(f"{TEN.get(n, n)} {so}" for n, so in kq["tep_chi_chu_thich"].items()) + ".")
     for g in kq["ghi_chu"]:
         dong.append(f"> {g}")
     return "\n".join(dong) + "\n"
