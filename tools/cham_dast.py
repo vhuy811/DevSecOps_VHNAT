@@ -92,16 +92,40 @@ def main() -> int:
                 o.append("❌ bỏ sót")
         print(f"| CWE-{cwe} `{path}?{ts}=` | " + " | ".join(o) + " |")
 
-    def ngoai(d: dict) -> int:
-        biet = {(p, t) for p, t, _ in dap_an}
-        return sum(1 for x in d.get("alerts", []) if x.get("risk") == "High"
-                   and (duong(x.get("url", "")), x.get("param")) not in biet)
+    def ngoai(d: dict) -> list[dict]:
+        """Alert High khong ung voi lo hong nao trong dap an.
 
-    print("| High ngoài đáp án (báo nhầm) | " + " | ".join(str(ngoai(d)) for _, d in cau_hinh) + " |")
+        Cung duong dan + cung ho CWE nhung khac tham so (vd. rule XSS DOM bao
+        voi tham so rong tren chinh trang Echo) van tinh la TRUNG lo hong da
+        biet, khong phai bao nham.
+        """
+        ra = []
+        for x in d.get("alerts", []):
+            if x.get("risk") != "High":
+                continue
+            p = duong(x.get("url", ""))
+            if any(p == dp and x.get("cweid") in HO_CWE[dc] for dp, _, dc in dap_an):
+                continue
+            ra.append(x)
+        return ra
+
+    print("| High ngoài đáp án (báo nhầm) | " + " | ".join(str(len(ngoai(d))) for _, d in cau_hinh) + " |")
     print("| Thời gian quét (giây) | " + " | ".join(
         f"{d.get('giay', '?')}{' ⚠ quá giờ' if d.get('timed_out') else ''}" for _, d in cau_hinh) + " |")
     print("| Rule được chỉnh | " + " | ".join(str(len(d.get("rule_da_chinh", []))) for _, d in cau_hinh) + " |")
     print()
+    for ten, d in cau_hinh:
+        ds = ngoai(d)
+        if not ds:
+            continue
+        print(f"<details><summary>`{ten}`: {len(ds)} alert High ngoài đáp án</summary>\n")
+        print("| Alert | Đường dẫn | Tham số | Payload | Bằng chứng |")
+        print("|---|---|---|---|---|")
+        for x in ds:
+            o = [x.get("alert", ""), duong(x.get("url", "")), x.get("param", ""),
+                 (x.get("attack") or "")[:80], (x.get("evidence") or "")[:80]]
+            print("| " + " | ".join("`" + str(v).replace("|", "\\|").replace("`", "'") + "`" if v else "" for v in o) + " |")
+        print("\n</details>\n")
     return 0
 
 
