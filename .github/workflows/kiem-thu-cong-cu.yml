@@ -39,10 +39,16 @@ jobs:
           # 2) Chay nhu trong pipeline (loai tru kiem-thu-rule): phai ra 0 ket qua.
           python tools/retire_sarif.py --vao ket-qua/retire.json --ra ket-qua/loai-tru.sarif
           # 3) Thieu dau vao: phai thoat ma khac 0 va KHONG ghi SARIF.
-          if python tools/retire_sarif.py --vao ket-qua/khong-co.json --ra ket-qua/loi.sarif; then
+          #    (2>/dev/null: annotation ::error:: o day la DU KIEN, khong de hien do.)
+          if python tools/retire_sarif.py --vao ket-qua/khong-co.json --ra ket-qua/loi.sarif 2>/dev/null; then
             echo "::error::Thieu dau vao ma van thoat 0"; exit 1
           fi
           test ! -f ket-qua/loi.sarif || { echo "::error::Loi ma van ghi SARIF"; exit 1; }
+          # 4) Duong dan ngoai thu muc lam viec: phai bi tu choi.
+          if python tools/retire_sarif.py --vao /etc/hostname --ra ket-qua/ngoai.sarif 2>/dev/null; then
+            echo "::error::Doc tep ngoai thu muc lam viec ma khong bi tu choi"; exit 1
+          fi
+          test ! -f ket-qua/ngoai.sarif || { echo "::error::Bi tu choi ma van ghi SARIF"; exit 1; }
           python - <<'PY'
           import json, sys
           a = json.load(open("ket-qua/co-loi.sarif"))["runs"][0]

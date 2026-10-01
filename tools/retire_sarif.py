@@ -35,9 +35,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
+import posixpath
 import re
 import sys
-from pathlib import Path
 
 TEN_CONG_CU = "retire.js"
 DIEM = {"critical": "9.5", "high": "8.0", "medium": "5.5", "low": "2.5"}
@@ -64,7 +65,7 @@ def ma_lo_hong(v: dict) -> str:
         if ids.get(k):
             return f"{k}-{ids[k]}"
     tom_tat = ids.get("summary") or json.dumps(v, sort_keys=True)
-    return "retire-" + hashlib.sha1(tom_tat.encode("utf-8")).hexdigest()[:10]
+    return "retire-" + hashlib.sha256(tom_tat.encode("utf-8")).hexdigest()[:10]
 
 
 def cwe_cua(v: dict) -> list[str]:
@@ -76,14 +77,33 @@ def cwe_cua(v: dict) -> list[str]:
     return ra
 
 
-def duong_dan_tuong_doi(tep: str, goc: Path) -> str:
-    p = Path(tep)
-    if not p.is_absolute():
-        p = (goc / p)
-    try:
-        return p.resolve().relative_to(goc.resolve()).as_posix()
-    except ValueError:
-        return Path(tep).as_posix().lstrip("./")
+def trong_thu_muc_lam_viec(duong_dan: str) -> str:
+    """Chi doc/ghi ben trong thu muc lam viec (workspace cua CI).
+
+    Duong dan tu dong lenh do workflow viet ra, nhung cong cu khong co ly do gi
+    de dong toi tep ngoai workspace - chan luon cho chac (CodeQL threat model
+    local coi tham so dong lenh la du lieu khong tin cay, va no dung).
+    """
+    goc = os.path.realpath(os.getcwd())
+    thuc = os.path.realpath(duong_dan)
+    if thuc != goc and not thuc.startswith(goc + os.sep):
+        raise SystemExit(f"Tu choi: {duong_dan} nam ngoai thu muc lam viec {goc}")
+    return thuc
+
+
+def duong_dan_tuong_doi(tep: str, goc: str) -> str:
+    """Doi duong dan retire.js tra ve sang tuong doi so voi goc repo.
+
+    Chi xu ly CHUOI (posixpath), khong cham he thong tep: duong dan nay doc tu
+    ket qua cua cong cu khac, khong nen dem di resolve / mo.
+    """
+    t = posixpath.normpath(tep.replace("\\", "/"))
+    if posixpath.isabs(t):
+        rel = posixpath.relpath(t, goc.replace("\\", "/"))
+        if rel == ".." or rel.startswith("../"):
+            return t.lstrip("/")
+        return rel
+    return t
 
 
 def bi_bo(rel: str, bo: list[str]) -> bool:
@@ -97,7 +117,7 @@ def bi_bo(rel: str, bo: list[str]) -> bool:
     return False
 
 
-def doi(du_lieu: dict, goc: Path, bo: list[str]) -> tuple[dict, list[dict], list[tuple]]:
+def doi(du_lieu: dict, goc: str, bo: list[str]) -> tuple[dict, list[dict], list[tuple]]:
     rules: dict[str, dict] = {}
     results: list[dict] = []
     phat_hien: list[dict] = []
@@ -219,9 +239,10 @@ def main() -> int:
                     help="KHONG loai tru kiem-thu-rule (chi dung khi kiem thu chinh cong cu nay)")
     a = ap.parse_args()
 
-    vao = Path(a.vao)
+    vao = a.vao
     try:
-        du_lieu = json.loads(vao.read_text(encoding="utf-8"))
+        with open(trong_thu_muc_lam_viec(vao), encoding="utf-8") as f:
+            du_lieu = json.load(f)
     except FileNotFoundError:
         print(f"::error::retire.js khong tao ra {vao} - tang thu vien JS nhung san CHUA quet duoc.", file=sys.stderr)
         if a.summary:
@@ -237,9 +258,11 @@ def main() -> int:
             print(f"::warning::retire.js bao loi: {str(loi)[:300]}", file=sys.stderr)
 
     bo = [b for b in BO_MAC_DINH if not (a.giu_kiem_thu and b == "kiem-thu-rule")] + a.bo
-    sarif, phat_hien, nhan_ra = doi(du_lieu, Path(a.goc), bo)
-    Path(a.ra).parent.mkdir(parents=True, exist_ok=True)
-    Path(a.ra).write_text(json.dumps(sarif, ensure_ascii=False, indent=2), encoding="utf-8")
+    sarif, phat_hien, nhan_ra = doi(du_lieu, trong_thu_muc_lam_viec(a.goc), bo)
+    ra = trong_thu_muc_lam_viec(a.ra)
+    os.makedirs(os.path.dirname(ra), exist_ok=True)
+    with open(ra, "w", encoding="utf-8") as f:
+        json.dump(sarif, f, ensure_ascii=False, indent=2)
     print(f"retire.js: {len(phat_hien)} lo hong, {len(sarif['runs'][0]['tool']['driver']['rules'])} rule -> {a.ra}",
           file=sys.stderr)
     if a.summary:
