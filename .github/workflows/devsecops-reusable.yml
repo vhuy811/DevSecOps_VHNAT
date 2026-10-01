@@ -501,6 +501,7 @@ jobs:
             --base-url "${{ steps.app.outputs.url }}" \
             --zap http://localhost:8090 \
             --timeout 600 \
+            --kich-ban-loi-sqlite \
             --out reports/zap-alerts.json
 
       # ===============================================================
