@@ -1,0 +1,111 @@
+name: Phong do DAST
+
+# G3.1 - VI SAO ZAP BO SOT SQL INJECTION
+# Pipeline quet toan bo VulnShop-App bang ZAP nhung hai lan bo sot SQLi that:
+# /Product/Filter (PR #1) va /Product/TimNhanh (PR #4). Phong do nay dung lai
+# CHINH ban code co loi do (va tag ground-truth), quet hai lan tren cung mot
+# ZAP, chi khac do nhay cua scan rule:
+#   mac-dinh : policy goc cua ZAP (cuong do MEDIUM, nguong MEDIUM) = pipeline hien tai
+#   cao      : ho rule ung voi CWE (SQLi, XSS, OS command...) day len HIGH / LOW
+# roi cham voi dap an biet truoc (tools/cham_dast.py). Khong sua gi o app.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - tools/dast_scan.py
+      - tools/cham_dast.py
+      - tools/correlate.py
+      - .github/workflows/phong-do-dast.yml
+
+permissions:
+  contents: read
+
+jobs:
+  do:
+    name: ${{ matrix.ten }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - ten: ground-truth
+            ref: 95974aaaa40d8e2226d3e3c28912c040e06ef7a1   # tag ground-truth (C1-C6)
+          - ten: tim-nhanh
+            ref: d017808712e78ceffed2c8c347effe9c146ae752   # PR #4 truoc khi sua
+          - ten: loc
+            ref: 217f4762aed3e2d9a03d01811d7fcf3f68f46f48   # PR #1 truoc khi va
+    steps:
+      - name: Lay bo cong cu
+        uses: actions/checkout@v4
+        with:
+          path: toolkit
+
+      - name: Lay VulnShop-App o ban co loi
+        uses: actions/checkout@v4
+        with:
+          repository: vhuy811/VulnShop-App
+          ref: ${{ matrix.ref }}
+          path: app
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Cai phu thuoc Python
+        run: pip install requests
+
+      - name: Build va khoi dong app
+        id: app
+        run: |
+          dotnet build app/VulnShop.csproj -c Release
+          python toolkit/tools/khoi_dong_app.py --root app --project-file VulnShop.csproj \
+            --health-path /Product/List --log app.log --github-output
+
+      - name: Ban do route
+        run: python toolkit/tools/gen_routes_map.py --root app --base-url http://localhost:5000 --out routes_map.json
+
+      - name: Khoi dong ZAP
+        run: |
+          docker run -d --name zap --network host zaproxy/zap-stable \
+            zap.sh -daemon -host 0.0.0.0 -port 8090 \
+            -config api.addrs.addr.name=.* -config api.addrs.addr.regex=true -config api.disablekey=true
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:8090/JSON/core/view/version/ > /dev/null && exit 0
+            sleep 2
+          done
+          docker logs zap; exit 1
+
+      # Thu tu bat buoc: mac-dinh TRUOC. Che do "cao" ghi vao policy cua ca
+      # phien ZAP, chay truoc thi lan sau khong con la policy goc nua.
+      - name: ZAP - do nhay mac dinh (nhu pipeline hien tai)
+        continue-on-error: true
+        run: |
+          mkdir -p ket-qua
+          python toolkit/tools/dast_scan.py --routes routes_map.json --base-url http://localhost:5000 \
+            --zap http://localhost:8090 --timeout 900 --phien-moi --do-nhay mac-dinh \
+            --out ket-qua/mac-dinh.json
+
+      - name: ZAP - do nhay cao (HIGH / LOW)
+        continue-on-error: true
+        run: |
+          python toolkit/tools/dast_scan.py --routes routes_map.json --base-url http://localhost:5000 \
+            --zap http://localhost:8090 --timeout 1500 --phien-moi --do-nhay cao \
+            --out ket-qua/cao.json
+
+      - name: Cham voi dap an
+        if: always()
+        run: |
+          python toolkit/tools/cham_dast.py --muc-tieu "${{ matrix.ten }}" \
+            --ket-qua mac-dinh=ket-qua/mac-dinh.json --ket-qua cao=ket-qua/cao.json \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Luu ket qua
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phong-do-dast-${{ matrix.ten }}
+          path: |
+            ket-qua/
+            routes_map.json
+            app.log
