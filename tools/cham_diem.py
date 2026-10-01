@@ -440,6 +440,42 @@ def lenh_chon(a: argparse.Namespace) -> int:
     return 0
 
 
+def lenh_mau(a: argparse.Namespace) -> int:
+    """In ham Bad (bien the 01) cua mot test case moi CWE ra Markdown.
+
+    Dung de doc sink THAT cua nhung CWE chua cong cu nao bat truoc khi viet rule,
+    thay vi doan. Cu phap --cwe: "23,36,89:CommandText" (sau dau ':' la chuoi
+    phai co trong ten tep, de chon dung bien the).
+    """
+    goc = Path(a.goc)
+    uu_tien = ("QueryString_Web", "Params_Get_Web", "Get_Cookies_Web")
+    out = ["### Mã mẫu — hàm `Bad` (biến thể 01) của các CWE chưa công cụ nào bắt", ""]
+    for tok in [x.strip() for x in a.cwe.split(",") if x.strip()]:
+        cwe, _, loc = tok.partition(":")
+        tep = sorted(p for p in goc.glob(f"CWE{cwe}_*/**/*_01.cs") if loc in p.name)
+        if not tep:
+            out.append(f"- CWE-{tok}: không có tệp mẫu\n")
+            continue
+        chon = next((p for u in uu_tien for p in tep if u in p.name), tep[0])
+        src = chon.read_text(encoding="utf-8", errors="replace")
+        dong = src.splitlines()
+        hams = [h for h in cac_ham(src) if vai_tro(h[0]) == "bad"]
+        if not hams:
+            out.append(f"- CWE-{tok}: không tìm thấy hàm bad trong `{chon.name}`\n")
+            continue
+        ten, a0, b0 = max(hams, key=lambda h: h[2] - h[1])
+        than = "\n".join(dong[max(0, a0 - 2):b0])
+        if len(than) > 4000:
+            than = than[:4000] + "\n// ... (cat bot)"
+        out += [f"<details><summary>CWE-{tok} — <code>{chon.name}</code> ({ten})</summary>", "",
+                "```csharp", than, "```", "</details>", ""]
+    text = "\n".join(out)
+    if a.md:
+        Path(a.md).write_text(text, encoding="utf-8")
+    print(text)
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -453,8 +489,12 @@ def main() -> int:
     j.add_argument("--chan", action="append", default=[], help="ten:level=error | ten:sev>=7")
     j.add_argument("--out", default="")
     j.add_argument("--md", default="")
+    m = sub.add_parser("mau")
+    m.add_argument("--goc", required=True)
+    m.add_argument("--cwe", required=True)
+    m.add_argument("--md", default="")
     a = ap.parse_args()
-    return lenh_chon(a) if a.cmd == "chon" else lenh_juliet(a)
+    return {"chon": lenh_chon, "juliet": lenh_juliet, "mau": lenh_mau}[a.cmd](a)
 
 
 if __name__ == "__main__":
