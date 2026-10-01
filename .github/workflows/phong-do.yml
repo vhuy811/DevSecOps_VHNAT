@@ -27,6 +27,13 @@ on:
       - 'semgrep-rules/**'
       - 'tools/cham_diem.py'
       - '.github/workflows/phong-do.yml'
+  # PR sua rule chay phong do TRUOC khi merge: rule mu / bao nham lo ra o PR,
+  # khong phai sau khi da vao main.
+  pull_request:
+    paths:
+      - 'semgrep-rules/**'
+      - 'tools/cham_diem.py'
+      - '.github/workflows/phong-do.yml'
 
 permissions:
   contents: read
@@ -43,6 +50,12 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
+
+      # Kiem thu nhanh tren fixture: moi rule phat hien phai bat case cua no
+      # trong Co_Loi.*, khong rule nao duoc bat Da_Khu_Doc.cs. Hong o day thi
+      # dung luon, khong ton 10 phut do Juliet.
+      - name: Kiem thu rule tren fixture (Co_Loi / Da_Khu_Doc)
+        run: python semgrep-rules/kiem-thu-rule/chay_kiem_thu.py
 
       - name: Tai Juliet C# 1.3 tu NIST SARD
         run: |
@@ -89,12 +102,26 @@ jobs:
           queries: security-extended
           source-root: bench/src
 
-      - name: CodeQL - phan tich (khong upload)
+      # Action analyze chi dung de dong goi (finalize) CSDL, KHONG chay truy van.
+      # Ly do: khi workflow chay tren pull_request, action bat "diff-informed
+      # analysis" (log: "Generating diff range extension pack") - chi bao canh bao
+      # nam trong cac dong PR sua. Juliet khong nam trong diff nen cot codeql tren
+      # PR #7 tut tu 27.5% xuong 8.7%. Chay truy van bang CLI thi ket qua giong
+      # nhau du workflow chay tren push, pull_request hay workflow_dispatch.
+      - name: CodeQL - dong goi CSDL (khong chay truy van)
         uses: github/codeql-action/analyze@v4
         with:
           upload: never
-          output: ket-qua/codeql
+          skip-queries: true
           category: phong-do-juliet
+
+      - name: CodeQL - phan tich (threat model mac dinh = remote)
+        run: |
+          CQ="${{ steps.cq_init.outputs.codeql-path }}"
+          "$CQ" database analyze "$RUNNER_TEMP/codeql_databases/csharp" \
+            codeql/csharp-queries:codeql-suites/csharp-security-extended.qls \
+            --format=sarif-latest \
+            --output=ket-qua/codeql.sarif --threads=0 --rerun
 
       # Mac dinh CodeQL chi coi du lieu tu mang (HTTP, socket) la nguon nguy hiem
       # (threat model "remote"), nen nguon CSDL va cuc bo do duoc 0%. Phan tich
@@ -116,15 +143,14 @@ jobs:
 
       - name: Cham diem
         run: |
-          CQ=$(ls ket-qua/codeql/*.sarif 2>/dev/null | head -1)
           python tools/cham_diem.py juliet --goc bench/src/testcases \
             --sarif semgrep-du-an=ket-qua/semgrep-du-an.sarif \
             --sarif semgrep-cong-dong=ket-qua/semgrep-cong-dong.sarif \
-            --sarif codeql="$CQ" \
+            --sarif codeql=ket-qua/codeql.sarif \
             --sarif codeql-local=ket-qua/codeql-local.sarif \
             --chan "pipeline-hien-tai=semgrep-du-an:level=error" \
             --chan "pipeline-muc-tieu=semgrep-du-an:level=error" \
-            --chan "pipeline-muc-tieu=codeql:sev>=4" \
+            --chan "pipeline-muc-tieu=codeql-local:sev>=4" \
             --out ket-qua/juliet.json --md ket-qua/juliet.md
           cat ket-qua/juliet.md >> "$GITHUB_STEP_SUMMARY"
 

@@ -694,7 +694,10 @@ jobs:
           import json, os
           bo = json.loads(os.environ.get("NHUNG") or "[]") + ["**/kiem-thu-rule"]
           with open(".devsecops-codeql.yml", "w", encoding="utf-8") as f:
-              f.write("name: devsecops\npaths-ignore:\n")
+              # threat model "local": coi ca du lieu tu CSDL, tep, bien moi truong
+              # la nguon nguy hiem. Phong do #5: bat 27.5% -> 40.2%, bao nham
+              # 3.3% -> 5.2%; nguon CSDL (stored XSS, SQLi bac hai) 0% -> 53%.
+              f.write("name: devsecops\nthreat-models: local\npaths-ignore:\n")
               for p in bo:
                   f.write(f"  - {json.dumps(p)}\n")
           PY
