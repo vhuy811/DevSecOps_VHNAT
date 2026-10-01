@@ -45,7 +45,7 @@ import time
 import urllib.request
 from pathlib import Path
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from correlate import CWE_ZAP_SCANNER, Zap  # noqa: E402
@@ -80,8 +80,25 @@ def co_loi_sqlite(text: str) -> bool:
     return bool(text) and CHU_KY_SQLITE.search(text) is not None
 
 
-def _tai_trang(url: str, timeout: float) -> tuple[int | None, str]:
-    """GET url, tra ve (ma_http, body). Doc ca body khi loi HTTP 4xx/5xx."""
+def _cung_goc(url: str, base: str) -> bool:
+    """Chi cho phep goi dung muc tieu da cau hinh (cung scheme + host + cong).
+
+    Vua la rao an toan that (ban do route la dau vao - khong de mot ban do bi
+    sua tro thanh banh lai dua DAST di goi host khac), vua chan luong SSRF:
+    phan tu bien doi (duong dan tu ban do route) khong the doi duoc host.
+    """
+    try:
+        u, b = urlsplit(url), urlsplit(base)
+    except ValueError:
+        return False
+    return u.scheme in ("http", "https") and u.scheme == b.scheme and u.netloc == b.netloc
+
+
+def _tai_trang(url: str, base: str, timeout: float) -> tuple[int | None, str]:
+    """GET url (chi khi cung goc voi base), tra ve (ma_http, body). Doc ca body
+    khi loi HTTP 4xx/5xx."""
+    if not _cung_goc(url, base):
+        return None, ""
     req = urllib.request.Request(url, headers={"User-Agent": "dast-kich-ban-sqlite"})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -96,22 +113,21 @@ def _tai_trang(url: str, timeout: float) -> tuple[int | None, str]:
         return None, ""
 
 
-def quet_loi_sqlite(routes_path: str, base: str, moi_timeout: float = 8.0) -> list[dict]:
+def quet_loi_sqlite(routes: list[dict], base: str, moi_timeout: float = 8.0) -> list[dict]:
     """Lop error-based: voi moi endpoint kiem thu duoc, chen mot dau nháy va
     doi chieu phan hoi voi chu ky loi Microsoft.Data.Sqlite.
+
+    `routes` la danh sach route DA PHAN TICH (main() doc ban do mot lan roi
+    truyen vao - khong doc tep lan nua o day).
 
     Logic (error-based SQLi kinh dien):
       1. Dau vao lanh (test_seed) KHONG duoc gay loi CSDL - neu co san thi moc
          so sanh hong, bo qua endpoint do de tranh bao nham.
       2. Chen them mot dau nháy ('): neu phan hoi xuat hien loi CSDL thi gia tri
          dang duoc noi thang vao cau SQL -> SQL injection (CWE-89).
-    Lop nay goi HTTP thang toi app, doc lap voi policy ZAP.
+    Lop nay goi HTTP thang toi app (chi dung muc tieu base), doc lap voi ZAP.
     """
     ra: list[dict] = []
-    rp = Path(routes_path)
-    if not rp.is_file():
-        return ra
-    routes = json.loads(rp.read_text(encoding="utf-8")).get("routes", [])
     for r in routes:
         if r.get("status") != "testable":
             continue
@@ -119,13 +135,13 @@ def quet_loi_sqlite(routes_path: str, base: str, moi_timeout: float = 8.0) -> li
         path = r["url_path"]
         for p in r.get("params", []):
             lanh = f"{base}{path}?{urlencode({p: seed})}"
-            _, body_lanh = _tai_trang(lanh, moi_timeout)
+            _, body_lanh = _tai_trang(lanh, base, moi_timeout)
             if co_loi_sqlite(body_lanh):
                 # app bao loi ngay voi dau vao lanh -> khong ket luan duoc
                 continue
             payload = seed + "'"
             tan_cong = f"{base}{path}?{urlencode({p: payload})}"
-            _, body = _tai_trang(tan_cong, moi_timeout)
+            _, body = _tai_trang(tan_cong, base, moi_timeout)
             m = CHU_KY_SQLITE.search(body or "")
             if not m:
                 continue
@@ -233,12 +249,14 @@ def main() -> int:
     #    (vi du action vua them trong PR) phai duoc nap tay tu ban do route.
     diem = [f"{base}/"]
     rp = Path(args.routes)
+    cac_route = []
     if rp.is_file():
-        for r in json.loads(rp.read_text(encoding="utf-8")).get("routes", []):
-            if r.get("status") != "testable":
-                continue
-            p = r["params"][0]
-            diem.append(f"{base}{r['url_path']}?{urlencode({p: r.get('test_seed') or 'a'})}")
+        cac_route = json.loads(rp.read_text(encoding="utf-8")).get("routes", [])
+    for r in cac_route:
+        if r.get("status") != "testable":
+            continue
+        p = r["params"][0]
+        diem.append(f"{base}{r['url_path']}?{urlencode({p: r.get('test_seed') or 'a'})}")
     print(f"[*] Nap {len(diem)} diem vao tu ban do route")
     for u in diem:
         try:
@@ -306,7 +324,7 @@ def main() -> int:
     #     Doc lap voi ZAP nen van chay duoc ke ca khi active scan qua gio.
     kich_ban = []
     if args.kich_ban_loi_sqlite:
-        kich_ban = quet_loi_sqlite(args.routes, base)
+        kich_ban = quet_loi_sqlite(cac_route, base)
         them = 0
         for a in kich_ban:
             k = (a["plugin"], a["url"].split("?")[0], a["param"])
