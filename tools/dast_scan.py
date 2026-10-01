@@ -94,23 +94,34 @@ def _cung_goc(url: str, base: str) -> bool:
     return u.scheme in ("http", "https") and u.scheme == b.scheme and u.netloc == b.netloc
 
 
-def _tai_trang(url: str, base: str, timeout: float) -> tuple[int | None, str]:
-    """GET url (chi khi cung goc voi base), tra ve (ma_http, body). Doc ca body
-    khi loi HTTP 4xx/5xx."""
+def _trich_header(msg) -> dict:
+    """Rut header (khoa viet thuong) + danh sach Set-Cookie tu phan hoi."""
+    try:
+        h = {k.lower(): v for k, v in msg.items()}
+        cookies = msg.get_all("Set-Cookie") or []
+    except Exception:
+        h, cookies = {}, []
+    return {"h": h, "cookie": cookies}
+
+
+def _tai_trang(url: str, base: str, timeout: float) -> tuple[int | None, str, dict]:
+    """GET url (chi khi cung goc voi base), tra ve (ma_http, body, header). Doc ca
+    body/header khi loi HTTP 4xx/5xx."""
+    rong = {"h": {}, "cookie": []}
     if not _cung_goc(url, base):
-        return None, ""
+        return None, "", rong
     req = urllib.request.Request(url, headers={"User-Agent": "dast-kich-ban-sqlite"})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
-            return r.getcode(), r.read().decode("utf-8", "replace")
+            return r.getcode(), r.read().decode("utf-8", "replace"), _trich_header(r.headers)
     except HTTPError as e:
         try:
             body = e.read().decode("utf-8", "replace")
         except Exception:
             body = ""
-        return e.code, body
+        return e.code, body, _trich_header(getattr(e, "headers", None) or {})
     except (URLError, OSError):
-        return None, ""
+        return None, "", rong
 
 
 def quet_loi_sqlite(routes: list[dict], base: str, moi_timeout: float = 8.0) -> list[dict]:
@@ -135,13 +146,13 @@ def quet_loi_sqlite(routes: list[dict], base: str, moi_timeout: float = 8.0) -> 
         path = r["url_path"]
         for p in r.get("params", []):
             lanh = f"{base}{path}?{urlencode({p: seed})}"
-            _, body_lanh = _tai_trang(lanh, base, moi_timeout)
+            _, body_lanh, _ = _tai_trang(lanh, base, moi_timeout)
             if co_loi_sqlite(body_lanh):
                 # app bao loi ngay voi dau vao lanh -> khong ket luan duoc
                 continue
             payload = seed + "'"
             tan_cong = f"{base}{path}?{urlencode({p: payload})}"
-            _, body = _tai_trang(tan_cong, base, moi_timeout)
+            _, body, _ = _tai_trang(tan_cong, base, moi_timeout)
             m = CHU_KY_SQLITE.search(body or "")
             if not m:
                 continue
@@ -157,6 +168,79 @@ def quet_loi_sqlite(routes: list[dict], base: str, moi_timeout: float = 8.0) -> 
                 "evidence": (body[m.start():m.start() + 120]).strip(),
                 "nguon": "kich-ban",
             })
+    return ra
+
+
+# Chinh sach DAST phien ban hoa - doc tu tep co dinh canh script (khong lay
+# duong dan tu dong lenh, tranh dua dau vao ngoai vao bieu thuc duong dan).
+DUONG_CHINH_SACH = Path(__file__).resolve().parent / "chinh-sach-zap.json"
+
+
+def doc_chinh_sach() -> dict:
+    """Doc chinh-sach-zap.json. Thieu/hong thi tra ve {} va dung mac dinh."""
+    try:
+        return json.loads(DUONG_CHINH_SACH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def quet_runtime(base: str, urls: list[str], rt: dict, moi_timeout: float = 8.0) -> list[dict]:
+    """Rule runtime (G3.3): soi header bao mat + co cookie tren phan hoi that.
+
+    `rt` la phan "runtime" cua chinh-sach-zap.json. Header xet o muc host (bao
+    mot lan/rule); cookie xet tren tung phan hoi co Set-Cookie. Dung lai
+    _tai_trang (da co rao cung-goc) nen khong them be mat SSRF moi.
+    """
+    ra: list[dict] = []
+    la_https = urlsplit(base).scheme == "https"
+    da_header: set[str] = set()      # rule-id da bao (host-level)
+    da_cookie: set[tuple] = set()    # (rule-id, ten-cookie)
+    for url in urls:
+        ma, _, meta = _tai_trang(url, base, moi_timeout)
+        if ma is None:
+            continue
+        duong = url.split("?")[0]
+        h = meta.get("h", {})
+        for rule in rt.get("header", []):
+            if rule.get("chi_https") and not la_https:
+                continue
+            ten = rule["header"].lower()
+            co = h.get(ten)
+            thieu = co is None
+            if not thieu and rule.get("gia_tri"):
+                thieu = rule["gia_tri"].lower() not in co.lower()
+            if thieu and rule["id"] not in da_header:
+                da_header.add(rule["id"])
+                ra.append({
+                    "alert": f"Thieu header bao mat: {rule['header']}",
+                    "risk": rule.get("muc", "Low"), "confidence": "High",
+                    "cweid": str(rule.get("cwe", "")), "plugin": "rule-runtime",
+                    "url": duong, "param": "", "attack": "",
+                    "evidence": (f"{rule['header']}: {co}" if co is not None
+                                 else f"{rule['header']} vang mat"),
+                    "cach_sua": rule.get("cach_sua", ""), "nguon": "rule-runtime",
+                })
+        for raw in meta.get("cookie", []):
+            ten_cookie = raw.split("=", 1)[0].strip()
+            thap = raw.lower()
+            for rule in rt.get("cookie", []):
+                if rule.get("chi_https") and not la_https:
+                    continue
+                co_flag = rule["co"].lower()
+                if co_flag in thap:
+                    continue
+                khoa = (rule["id"], ten_cookie)
+                if khoa in da_cookie:
+                    continue
+                da_cookie.add(khoa)
+                ra.append({
+                    "alert": f"Cookie thieu co {rule['co']}: {ten_cookie}",
+                    "risk": rule.get("muc", "Low"), "confidence": "High",
+                    "cweid": str(rule.get("cwe", "")), "plugin": "rule-runtime",
+                    "url": duong, "param": ten_cookie, "attack": "",
+                    "evidence": raw[:120], "cach_sua": rule.get("cach_sua", ""),
+                    "nguon": "rule-runtime",
+                })
     return ra
 
 
@@ -220,13 +304,18 @@ def main() -> int:
     ap.add_argument("--kich-ban-loi-sqlite", action="store_true",
                     help="bat lop error-based rieng cho Microsoft.Data.Sqlite (G3.2) - bat "
                          "ngu canh WHERE = '...' ma rule 40018 cua ZAP bo sot")
+    ap.add_argument("--rule-runtime", action="store_true",
+                    help="bat rule runtime (G3.3): soi header bao mat + co cookie theo "
+                         "chinh-sach-zap.json. Ket qua report-only, ghi rieng o 'rule_runtime'")
     ap.add_argument("--phien-moi", action="store_true",
                     help="mo phien ZAP moi truoc khi quet (xoa alert/cay Sites cu - dung khi do A/B)")
     args = ap.parse_args()
 
     base = args.base_url.rstrip("/")
+    chinh_sach = doc_chinh_sach()
     zap = Zap(args.zap, args.zap_api_key, timeout=args.timeout)
-    print(f"[*] ZAP {zap.ping()} | muc tieu {base} | do nhay {args.do_nhay}")
+    print(f"[*] ZAP {zap.ping()} | muc tieu {base} | do nhay {args.do_nhay}"
+          f"{' | chinh-sach-zap.json' if chinh_sach else ''}")
     bat_dau = time.time()
     han = bat_dau + args.timeout
 
@@ -240,9 +329,14 @@ def main() -> int:
     # mac-dinh truoc, cao sau.
     da_chinh: list[str] = []
     if args.do_nhay == "cao":
+        # Cuong do/nguong lay tu chinh-sach-zap.json (policy as code); thieu tep
+        # thi dung HIGH/LOW nhu truoc -> hanh vi khong doi.
+        cs_cao = chinh_sach.get("active", {}).get("do_nhay_cao", {})
+        cuong_do = cs_cao.get("strength", "HIGH")
+        nguong = cs_cao.get("threshold", "LOW")
         for cwe in CWE_ZAP_SCANNER:
-            da_chinh += zap.tune_scanners(cwe)
-        print(f"[*] Da day {len(da_chinh)} rule len HIGH/LOW")
+            da_chinh += zap.tune_scanners(cwe, strength=cuong_do, threshold=nguong)
+        print(f"[*] Da day {len(da_chinh)} rule len {cuong_do}/{nguong}")
 
     # 1) Nap diem vao: trang goc + moi endpoint trong ban do route, kem gia tri
     #    moi. Spider chi thay trang co link toi - endpoint khong ai link toi
@@ -334,15 +428,26 @@ def main() -> int:
                 them += 1
         print(f"[*] Kich ban loi SQLite: {them} alert error-based")
 
+    # 4c) Rule runtime (G3.3): header bao mat + co cookie. Ghi RIENG o
+    #     'rule_runtime' (report-only), KHONG tron vao 'alerts'/SARIF cua ZAP.
+    rule_runtime = []
+    if args.rule_runtime:
+        rule_runtime = quet_runtime(base, diem, chinh_sach.get("runtime", {}))
+        print(f"[*] Rule runtime: {len(rule_runtime)} phat hien (header/cookie)")
+        for f in rule_runtime:
+            print(f"    {f['risk']:<6} {f['alert']}")
+
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps({"base_url": base, "scanned_urls": len(diem),
                                "openapi": openapi,
                                "do_nhay": args.do_nhay,
                                "kich_ban_loi_sqlite": args.kich_ban_loi_sqlite,
+                               "chinh_sach_da_dung": bool(chinh_sach),
                                "rule_da_chinh": da_chinh,
                                "giay": round(time.time() - bat_dau),
                                "timed_out": timed_out,
+                               "rule_runtime": rule_runtime,
                                "alerts": uniq}, indent=2, ensure_ascii=False),
                    encoding="utf-8")
 
