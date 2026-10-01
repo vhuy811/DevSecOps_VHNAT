@@ -15,7 +15,6 @@ Chay: python tools/kiem_thu_dast_sqlite.py
 from __future__ import annotations
 
 import http.server
-import json
 import socketserver
 import sys
 import threading
@@ -63,16 +62,14 @@ def main() -> int:
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     time.sleep(0.4)
 
-    routes = {"routes": [
+    routes = [
         {"url_path": "/Product/Filter", "status": "testable", "params": ["category"], "test_seed": "Phu kien"},
         {"url_path": "/Product/Search", "status": "testable", "params": ["q"], "test_seed": "a"},
         {"url_path": "/Product/SafeSearch", "status": "testable", "params": ["q"], "test_seed": "a"},
         {"url_path": "/Product/Echo", "status": "testable", "params": ["msg"], "test_seed": "a"},
-    ]}
-    rm = Path("/tmp/kiem_thu_routes.json")
-    rm.write_text(json.dumps(routes), encoding="utf-8")
+    ]
 
-    got = d.quet_loi_sqlite(str(rm), "http://127.0.0.1:5097")
+    got = d.quet_loi_sqlite(routes, "http://127.0.0.1:5097")
     srv.shutdown()
 
     paths = sorted(urllib.parse.urlparse(a["url"]).path for a in got)
