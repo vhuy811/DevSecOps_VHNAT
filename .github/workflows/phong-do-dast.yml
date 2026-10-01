@@ -8,8 +8,12 @@ name: Phong do DAST
 #   mac-dinh : policy goc cua ZAP (cuong do MEDIUM, nguong MEDIUM) = pipeline hien tai
 #   cao      : ho rule ung voi CWE (SQLi, XSS, OS command...) day len HIGH / LOW
 # roi cham voi dap an biet truoc (tools/cham_dast.py). Khong sua gi o app.
+#
+# CHI chay tren pull_request, KHONG co workflow_dispatch: job nay build va chay
+# code cua repo khac (VulnShop-App). Chay tu nhanh mac dinh thi cache cua job
+# thuoc pham vi main - code do ghi duoc cache ma workflow cua main doc lai
+# (CodeQL actions/cache-poisoning). Tren PR, cache chi thuoc refs/pull/N/merge.
 on:
-  workflow_dispatch:
   pull_request:
     paths:
       - tools/dast_scan.py
