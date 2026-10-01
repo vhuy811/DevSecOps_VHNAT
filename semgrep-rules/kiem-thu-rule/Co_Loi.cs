@@ -22,6 +22,9 @@ using System.DirectoryServices;
 using System.IO;
 using System.Net;
 using System.Net.Http;
+using System.Security.Cryptography;
+using System.Text;
+using System.Web;
 using System.Xml;
 using System.Xml.Xsl;
 using Microsoft.AspNetCore.Mvc;
@@ -73,6 +76,15 @@ namespace KiemThuRule
         public void Sqli_Dapper(SqlConnection conn, string id)
         {
             conn.Execute("UPDATE DonHang SET TrangThai = 1 WHERE Id = " + id);
+        }
+
+        // rule: dso-sqli-commandtext-concat (dang += cua Juliet "CommandText")
+        public void Sqli_CommandTextCongDon(SqlCommand cmd, string[] ten)
+        {
+            foreach (var t in ten)
+            {
+                cmd.CommandText += "UPDATE SanPham SET Xem = Xem + 1 WHERE Ten = '" + t + "';";
+            }
         }
 
         // ------------------------------------------------------------------
@@ -256,6 +268,76 @@ namespace KiemThuRule
         public void ResponseSplit_Header(string ngonNgu)
         {
             Response.Headers.Add("X-Ngon-Ngu", "vi-" + ngonNgu);
+        }
+
+        // ------------------------------------------------------------------
+        // G2.3 - lan theo luong du lieu (taint)
+        // ------------------------------------------------------------------
+
+        // rule: dso-taint-path-traversal (khong noi chuoi: tham so di qua bien roi vao StreamReader)
+        public string PathTraversal_Taint(string tenTep)
+        {
+            var duongDan = tenTep;
+            if (File.Exists(duongDan))
+            {
+                using var sr = new StreamReader(duongDan);
+                return sr.ReadToEnd();
+            }
+            return "";
+        }
+
+        // rule: dso-taint-header-injection
+        public void Header_Cookie(string ngonNgu)
+        {
+            var cookie = new HttpCookie("lang", ngonNgu);
+            Response.AppendCookie(cookie);
+        }
+
+        // rule: dso-taint-unsafe-reflection
+        public object Reflection_TaoDoiTuong(string tenLop)
+        {
+            var kieu = Type.GetType(tenLop);
+            return Activator.CreateInstance(kieu);
+        }
+
+        // rule: dso-taint-xss-status-description
+        public void Xss_StatusDescription(string thongBao)
+        {
+            Response.StatusCode = 404;
+            Response.StatusDescription = "Khong tim thay: " + thongBao;
+        }
+
+        // ------------------------------------------------------------------
+        // G2.3 - mat ma va bi mat viet cung
+        // ------------------------------------------------------------------
+
+        // rule: dso-hardcoded-password
+        public NetworkCredential MatKhau_VietCung()
+        {
+            var matKhau = "7e5tc4s3";
+            return new NetworkCredential("user", matKhau, "domain");
+        }
+
+        // rule: dso-hardcoded-crypto-key
+        public byte[] Khoa_VietCung(byte[] duLieu)
+        {
+            var khoa = "23 ~j;asn!@#/>as";
+            using var aes = Aes.Create();
+            var enc = aes.CreateEncryptor(Encoding.UTF8.GetBytes(khoa), aes.IV);
+            return enc.TransformFinalBlock(duLieu, 0, duLieu.Length);
+        }
+
+        // rule: dso-weak-hash
+        public byte[] Bam_Md5(byte[] duLieu)
+        {
+            using var md5 = MD5.Create();
+            return md5.ComputeHash(duLieu);
+        }
+
+        // rule: dso-weak-random
+        public int NgauNhien_Yeu()
+        {
+            return new Random().Next();
         }
 
         // ------------------------------------------------------------------

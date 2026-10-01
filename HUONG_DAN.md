@@ -316,7 +316,7 @@ Lưu ý khi chọn action cho bước 2: action có **tham số GET** thì ZAP m
 ## 9. Giới hạn cần biết
 
 - Bộ rule của dự án là **C#** và phủ **12 mã CWE** mà ZAP xác nhận động được. Repo ngôn ngữ khác thì chỉ còn rule cộng đồng chạy.
-- **28/31 rule dự án có quyền chặn** (mức ERROR); 3 rule bắt theo tên biến chỉ chú thích. Rule cộng đồng không chặn.
+- **33/39 rule dự án có quyền chặn** (mức ERROR); 6 rule chỉ chú thích. Rule cộng đồng không chặn.
 - Cảnh báo thuộc CWE **ngoài bảng ánh xạ** (deserialization, IDOR, mã hoá yếu…) hiện trong báo cáo ở mục riêng và **không tính vào cổng chặn** — không có công cụ nào kiểm chứng chúng được.
 - Tầng 5 chỉ chạy với **ứng dụng tự chứa** — app cần SQL Server, Redis hay dịch vụ ngoài thì phải thêm service container vào CI.
 - Tầng 5 chỉ phủ được endpoint có **tham số GET kiểu đơn giản**. VulnShop phủ 43%, eShopOnWeb phủ 9%. Tầng 3 đo và công bố con số này thay vì giấu.

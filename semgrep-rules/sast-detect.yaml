@@ -42,6 +42,11 @@
 # chi la chung dung lai o nhan UNCONFIRMED - va do la su that ve nang luc cua
 # cong cu, khong phai thieu sot cua rule.
 #
+# CAP NHAT G2.3 (sau khi do tren Juliet C# 1.3 cua NIST): gia dinh "bo rule
+# cong dong bat phan be rong" SAI voi C# - p/csharp + p/security-audit bat 0%
+# CWE-259, 321, 328, 338. Nen cuoi tep them rule cho cac loai nay, va them nhom
+# rule lan theo luong du lieu (taint) cho nhung CWE khong cong cu nao bat.
+#
 # -----------------------------------------------------------------------------
 # GHI CHU CU PHAP (da kiem chung bang thuc nghiem tren Semgrep, khong phai suy doan):
 #   - Phai viet `var` LITERAL. Metavariable kieu `$T $X = ...` KHONG khop
@@ -84,7 +89,11 @@ rules:
       confidence: MEDIUM
       references:
         - https://cwe.mitre.org/data/definitions/89.html
-    pattern: $CMD.CommandText = <... $A + $B ...>;
+    # `+=` la bien the Juliet "CommandText" (lenh SQL cong don trong vong lap):
+    # Phong do #5 cho thay ca Semgrep lan CodeQL deu bo sot dang nay.
+    pattern-either:
+      - pattern: $CMD.CommandText = <... $A + $B ...>;
+      - pattern: $CMD.CommandText += <... $A + $B ...>;
 
   - id: dso-sqli-commandtext-interpolated
     languages: [csharp]
@@ -363,7 +372,10 @@ rules:
 
   - id: dso-pathtraversal-file-api-concat
     languages: [csharp]
-    severity: ERROR
+    # WARNING tu G2.3: tren Juliet rule nay bat 100% case loi nhung bao nham CUNG
+    # 100% case an toan (noi mot hang so vao duong dan cung khop). Quyen chan
+    # chuyen cho dso-taint-path-traversal - chi bao khi du lieu that su den tu request.
+    severity: WARNING
     message: >-
       CWE-22: Duong dan tep duoc dung tu noi chuoi. Chuoi "../" trong input cho
       phep doc hoac ghi ra ngoai thu muc du dinh.
@@ -741,3 +753,325 @@ rules:
       - pattern: CSharpScript.Create(...)
       - pattern: $P.CompileAssemblyFromSource(...)
       - pattern: Assembly.Load($BYTES)
+
+  # ===========================================================================
+  # LAN THEO LUONG DU LIEU (taint mode) - them o G2.3
+  #
+  # Cac rule o tren khop theo HINH DANG dong code nen khong phan biet duoc gia
+  # tri den tu nguoi dung hay la hang so: tren Juliet C# chung bat va bao nham
+  # cung mot ti le (Youden 0). Cac rule duoi day chi bao khi du lieu di tu
+  # NGUON (tham so request, tham so action cua Controller/PageModel) toi DICH
+  # ma khong qua ham lam sach.
+  #
+  # Chon nhung CWE ma Phong do #3-#5 cho thay KHONG cong cu nao bat (ke ca
+  # CodeQL): path traversal co kiem tra File.Exists, header/cookie injection,
+  # unsafe reflection, XSS qua StatusDescription.
+  #
+  # Gioi han that: Semgrep ban cong dong lan theo trong MOT ham. Du lieu di qua
+  # ham khac / tep khac thi day la phan cua CodeQL.
+  # ===========================================================================
+
+  - id: dso-taint-path-traversal
+    mode: taint
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      CWE-22: Du lieu tu request duoc dung lam duong dan tep ma khong cat bo thu
+      muc (Path.GetFileName). Chuoi "../" hoac duong dan tuyet doi cho phep doc,
+      ghi hoac do tim tep ngoai thu muc du dinh. File.Exists KHONG phai la kiem tra.
+    metadata:
+      cwe: "CWE-22"
+      category: security
+      subcategory: [vuln]
+      confidence: HIGH
+      references:
+        - https://cwe.mitre.org/data/definitions/22.html
+    pattern-sources:
+      - pattern: $R.QueryString[$K]
+      - pattern: $R.Params[$K]
+      - pattern: $R.Form[$K]
+      - pattern: $R.Cookies
+      - pattern: $R.Headers[$K]
+      - pattern: $R.Query[$K]
+      - pattern: $R.RouteValues[$K]
+      - patterns:
+          - pattern-inside: |
+              class $C { ... }
+          - metavariable-regex:
+              metavariable: $C
+              regex: (Controller|PageModel)$
+          - pattern-inside: |
+              public $RET $M(..., $T $P, ...) { ... }
+          - pattern: $P
+    pattern-sanitizers:
+      - pattern: Path.GetFileName(...)
+      - pattern: System.IO.Path.GetFileName(...)
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: File.$F($X, ...)
+              - pattern: System.IO.File.$F($X, ...)
+              - pattern: Directory.$F($X, ...)
+              - pattern: new FileStream($X, ...)
+              - pattern: new StreamReader($X, ...)
+              - pattern: new StreamWriter($X, ...)
+              - pattern: new FileInfo($X)
+              - pattern: new DirectoryInfo($X)
+              - pattern: PhysicalFile($X, ...)
+              - pattern: $RESP.SendFileAsync($X, ...)
+          - focus-metavariable: $X
+
+  - id: dso-taint-header-injection
+    mode: taint
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      CWE-113: Du lieu tu request duoc dua vao header hoac cookie cua phan hoi ma
+      khong ma hoa. Ky tu xuong dong / dau cham phay cho phep chen header, chen
+      thuoc tinh cookie. (Kestrel tu chan CR/LF trong header, nhung cookie va
+      ASP.NET cu thi khong.)
+    metadata:
+      cwe: "CWE-113"
+      category: security
+      subcategory: [vuln]
+      confidence: MEDIUM
+      references:
+        - https://cwe.mitre.org/data/definitions/113.html
+    pattern-sources:
+      - pattern: $R.QueryString[$K]
+      - pattern: $R.Params[$K]
+      - pattern: $R.Form[$K]
+      - pattern: $R.Cookies
+      - pattern: $R.Headers[$K]
+      - pattern: $R.Query[$K]
+      - pattern: $R.RouteValues[$K]
+      - patterns:
+          - pattern-inside: |
+              class $C { ... }
+          - metavariable-regex:
+              metavariable: $C
+              regex: (Controller|PageModel)$
+          - pattern-inside: |
+              public $RET $M(..., $T $P, ...) { ... }
+          - pattern: $P
+    pattern-sanitizers:
+      - pattern: HttpUtility.UrlEncode(...)
+      - pattern: WebUtility.UrlEncode(...)
+      - pattern: Uri.EscapeDataString(...)
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: $RESP.AddHeader($N, $X)
+              - pattern: $RESP.AppendHeader($N, $X)
+              - pattern: $RESP.Headers.Add($N, $X)
+              - pattern: $RESP.Headers.Append($N, $X)
+              - pattern: $RESP.Headers.Set($N, $X)
+              - pattern: $RESP.Headers[$N] = $X
+              - pattern: new HttpCookie($N, $X)
+              - pattern: $RESP.Cookies.Append($N, $X, ...)
+          - focus-metavariable: $X
+
+  - id: dso-taint-unsafe-reflection
+    mode: taint
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      CWE-470: Ten kieu / assembly / phuong thuc lay tu request roi nap bang
+      reflection. Ke tan cong chon duoc lop nao duoc khoi tao hoac goi - co the
+      dan toi chay ma. Chi cho phep mot danh sach kieu biet truoc.
+    metadata:
+      cwe: "CWE-470"
+      category: security
+      subcategory: [vuln]
+      confidence: HIGH
+      references:
+        - https://cwe.mitre.org/data/definitions/470.html
+    pattern-sources:
+      - pattern: $R.QueryString[$K]
+      - pattern: $R.Params[$K]
+      - pattern: $R.Form[$K]
+      - pattern: $R.Cookies
+      - pattern: $R.Headers[$K]
+      - pattern: $R.Query[$K]
+      - pattern: $R.RouteValues[$K]
+      - patterns:
+          - pattern-inside: |
+              class $C { ... }
+          - metavariable-regex:
+              metavariable: $C
+              regex: (Controller|PageModel)$
+          - pattern-inside: |
+              public $RET $M(..., $T $P, ...) { ... }
+          - pattern: $P
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: Type.GetType($X, ...)
+              - pattern: Activator.CreateInstance($A, $X, ...)
+              - pattern: Activator.CreateInstance($X)
+              - pattern: Activator.CreateInstanceFrom($A, $X, ...)
+              - pattern: Assembly.LoadFrom($X)
+              - pattern: Assembly.LoadFile($X)
+              - pattern: $T.GetMethod($X, ...)
+              - pattern: $T.InvokeMember($X, ...)
+          - focus-metavariable: $X
+
+  - id: dso-taint-xss-status-description
+    mode: taint
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      CWE-79: Du lieu tu request duoc dat vao dong trang thai (StatusDescription /
+      ReasonPhrase) ma khong ma hoa HTML. Nhieu trang loi in nguyen van dong nay ra
+      trinh duyet - XSS phan xa qua thong bao loi (Juliet CWE-81).
+    metadata:
+      cwe: "CWE-79"
+      category: security
+      subcategory: [vuln]
+      confidence: MEDIUM
+      references:
+        - https://cwe.mitre.org/data/definitions/81.html
+    pattern-sources:
+      - pattern: $R.QueryString[$K]
+      - pattern: $R.Params[$K]
+      - pattern: $R.Form[$K]
+      - pattern: $R.Cookies
+      - pattern: $R.Headers[$K]
+      - pattern: $R.Query[$K]
+      - pattern: $R.RouteValues[$K]
+      - patterns:
+          - pattern-inside: |
+              class $C { ... }
+          - metavariable-regex:
+              metavariable: $C
+              regex: (Controller|PageModel)$
+          - pattern-inside: |
+              public $RET $M(..., $T $P, ...) { ... }
+          - pattern: $P
+    pattern-sanitizers:
+      - pattern: WebUtility.HtmlEncode(...)
+      - pattern: HttpUtility.HtmlEncode(...)
+      - pattern: $ENC.Encode(...)
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: $RESP.StatusDescription = $X
+              - pattern: $FEAT.ReasonPhrase = $X
+          - focus-metavariable: $X
+
+  # ===========================================================================
+  # MAT MA VA BI MAT VIET CUNG - them o G2.3
+  #
+  # Phan dau tep noi day la viec cua bo rule cong dong. Phong do Juliet C# noi
+  # nguoc lai: p/csharp + p/security-audit bat 0% CWE-259, 321, 328, 338. Nen
+  # tu viet, theo dung dang ma da doc tu Juliet (ham Bad bien the 01).
+  # ===========================================================================
+
+  - id: dso-hardcoded-password
+    mode: taint
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      CWE-259: Mat khau viet cung trong ma nguon duoc dung de xac thuc. Ai doc duoc
+      ma nguon (hoac tep .dll) deu co mat khau; doi mat khau phai sua code va phat
+      hanh lai. Lay tu kho bi mat / bien moi truong.
+    metadata:
+      cwe: "CWE-259"
+      category: security
+      subcategory: [vuln]
+      confidence: HIGH
+      references:
+        - https://cwe.mitre.org/data/definitions/259.html
+    pattern-sources:
+      - patterns:
+          - pattern-either:
+              - pattern-inside: var $V = $L;
+              - pattern-inside: string $V = $L;
+              - pattern-inside: $V = $L;
+          - pattern: '"..."'
+    pattern-sanitizers:
+      - pattern: $CFG[...]
+      - pattern: $CFG.GetValue<$T>(...)
+      - pattern: Environment.GetEnvironmentVariable(...)
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: new NetworkCredential($U, $X, ...)
+              - pattern: $OBJ.Password = $X
+          - focus-metavariable: $X
+
+  - id: dso-hardcoded-crypto-key
+    mode: taint
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      CWE-321: Khoa ma hoa viet cung trong ma nguon. Khoa lo cung ma nguon thi moi
+      du lieu da ma hoa bang no coi nhu lo. Lay khoa tu kho bi mat.
+    metadata:
+      cwe: "CWE-321"
+      category: security
+      subcategory: [vuln]
+      confidence: HIGH
+      references:
+        - https://cwe.mitre.org/data/definitions/321.html
+    pattern-sources:
+      - patterns:
+          - pattern-either:
+              - pattern-inside: var $V = $L;
+              - pattern-inside: string $V = $L;
+              - pattern-inside: $V = $L;
+          - pattern: '"..."'
+      - pattern: Encoding.$E.GetBytes("...")
+      - pattern: new byte[] { ... }
+    pattern-sanitizers:
+      - pattern: $CFG[...]
+      - pattern: $CFG.GetValue<$T>(...)
+      - pattern: Environment.GetEnvironmentVariable(...)
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: $ALG.CreateEncryptor($X, ...)
+              - pattern: $ALG.CreateDecryptor($X, ...)
+              - pattern: $ALG.Key = $X
+              - pattern: new HMACSHA256($X)
+              - pattern: new HMACSHA512($X)
+              - pattern: new SymmetricSecurityKey($X)
+          - focus-metavariable: $X
+
+  - id: dso-weak-hash
+    languages: [csharp]
+    # WARNING: MD5/SHA1 dung lam checksum thi khong sao; nguy hiem khi bam mat
+    # khau hoac ky. Rule khong phan biet duoc muc dich nen khong chan.
+    severity: WARNING
+    message: >-
+      CWE-328: MD5 / SHA-1 da bi pha (tim duoc va cham). Khong dung de bam mat
+      khau, ky hay kiem tra toan ven. Dung SHA-256 tro len; mat khau thi dung
+      PBKDF2 / bcrypt / Argon2.
+    metadata:
+      cwe: "CWE-328"
+      category: security
+      subcategory: [audit]
+      confidence: MEDIUM
+    pattern-either:
+      - pattern: new MD5CryptoServiceProvider()
+      - pattern: MD5.Create(...)
+      - pattern: new SHA1CryptoServiceProvider()
+      - pattern: new SHA1Managed()
+      - pattern: SHA1.Create(...)
+      - pattern: MD5.HashData(...)
+      - pattern: SHA1.HashData(...)
+
+  - id: dso-weak-random
+    languages: [csharp]
+    # WARNING: System.Random dung cho tro choi / xao tron thi dung; chi sai khi
+    # sinh token, mat khau, khoa. Rule khong biet muc dich nen khong chan.
+    severity: WARNING
+    message: >-
+      CWE-338: System.Random khong phai bo sinh so ngau nhien an toan mat ma - doan
+      duoc gia tri tiep theo. Token, mat khau, khoa phai dung RandomNumberGenerator.
+    metadata:
+      cwe: "CWE-338"
+      category: security
+      subcategory: [audit]
+      confidence: MEDIUM
+    pattern: new Random(...)

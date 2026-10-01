@@ -19,6 +19,9 @@ using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Security;
+using System.Security.Cryptography;
+using System.Text;
+using Microsoft.Extensions.Configuration;
 using System.Xml;
 using Microsoft.AspNetCore.Mvc;
 
@@ -82,6 +85,62 @@ namespace KiemThuRule
             var an = Path.GetFileName(tenTep);
             var day = Path.Combine("/var/data", an);
             return File.ReadAllText(day);
+        }
+
+        // CWE-22 (taint): File.Exists roi doc - nhung chi doc ten tep da cat bo thu muc
+        public string Path_KiemTraRoiDoc(string tenTep)
+        {
+            var an = Path.GetFileName(tenTep);
+            var duongDan = Path.Combine("/var/data", an);
+            if (File.Exists(duongDan))
+            {
+                using var sr = new StreamReader(duongDan);
+                return sr.ReadToEnd();
+            }
+            return "";
+        }
+
+        // ------------------------------------------------------------------
+        // CWE-470 : chi khoi tao kieu nam trong danh sach biet truoc
+        // ------------------------------------------------------------------
+        public object Reflection_DanhSachTrang(string tenLop)
+        {
+            Type kieu = typeof(object);
+            if (tenLop == "chuoi")
+            {
+                kieu = typeof(StringBuilder);
+            }
+            return Activator.CreateInstance(kieu);
+        }
+
+        // ------------------------------------------------------------------
+        // CWE-259 / CWE-321 : bi mat lay tu cau hinh, khong viet cung
+        // ------------------------------------------------------------------
+        public NetworkCredential MatKhau_TuCauHinh(IConfiguration cfg)
+        {
+            var matKhau = cfg["Smtp:MatKhau"];
+            return new NetworkCredential("user", matKhau, "domain");
+        }
+
+        public byte[] Khoa_TuBienMoiTruong(byte[] duLieu)
+        {
+            var khoa = Convert.FromBase64String(Environment.GetEnvironmentVariable("KHOA_MA_HOA"));
+            using var aes = Aes.Create();
+            var enc = aes.CreateEncryptor(khoa, aes.IV);
+            return enc.TransformFinalBlock(duLieu, 0, duLieu.Length);
+        }
+
+        // ------------------------------------------------------------------
+        // CWE-328 / CWE-338 : thuat toan manh
+        // ------------------------------------------------------------------
+        public byte[] Bam_Sha256(byte[] duLieu)
+        {
+            return SHA256.HashData(duLieu);
+        }
+
+        public int NgauNhien_AnToan()
+        {
+            return RandomNumberGenerator.GetInt32(1000000);
         }
 
         // ------------------------------------------------------------------
