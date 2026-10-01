@@ -9,6 +9,12 @@ name: Phong do DAST
 #   cao      : ho rule ung voi CWE (SQLi, XSS, OS command...) day len HIGH / LOW
 # roi cham voi dap an biet truoc (tools/cham_dast.py). Khong sua gi o app.
 #
+# G3.2 them cau hinh thu ba:
+#   kich-ban : cuong do MEDIUM + lop error-based rieng cho Microsoft.Data.Sqlite
+#              (dast_scan.py --kich-ban-loi-sqlite). Day la hanh vi se dua vao
+#              pipeline that: bat ca ngu canh WHERE = '...' ma ZAP bo sot, ma
+#              khong phai day ZAP len HIGH (HIGH bao nham tren LIKE da tham so).
+#
 # CHI chay tren pull_request, KHONG co workflow_dispatch: job nay build va chay
 # code cua repo khac (VulnShop-App). Chay tu nhanh mac dinh thi cache cua job
 # thuoc pham vi main - code do ghi duoc cache ma workflow cua main doc lai
@@ -80,8 +86,9 @@ jobs:
           done
           docker logs zap; exit 1
 
-      # Thu tu bat buoc: mac-dinh TRUOC. Che do "cao" ghi vao policy cua ca
-      # phien ZAP, chay truoc thi lan sau khong con la policy goc nua.
+      # Thu tu bat buoc: mac-dinh va kich-ban (deu dung policy goc) TRUOC, "cao"
+      # SAU. Che do "cao" ghi vao policy cua ca phien ZAP, chay truoc thi hai
+      # lan sau khong con la policy goc nua.
       - name: ZAP - do nhay mac dinh (nhu pipeline hien tai)
         continue-on-error: true
         run: |
@@ -89,6 +96,13 @@ jobs:
           python toolkit/tools/dast_scan.py --routes routes_map.json --base-url http://localhost:5000 \
             --zap http://localhost:8090 --timeout 900 --phien-moi --do-nhay mac-dinh \
             --out ket-qua/mac-dinh.json
+
+      - name: ZAP - mac dinh + kich ban loi SQLite (G3.2)
+        continue-on-error: true
+        run: |
+          python toolkit/tools/dast_scan.py --routes routes_map.json --base-url http://localhost:5000 \
+            --zap http://localhost:8090 --timeout 900 --phien-moi --do-nhay mac-dinh --kich-ban-loi-sqlite \
+            --out ket-qua/kich-ban.json
 
       - name: ZAP - do nhay cao (HIGH / LOW)
         continue-on-error: true
@@ -101,7 +115,8 @@ jobs:
         if: always()
         run: |
           python toolkit/tools/cham_dast.py --muc-tieu "${{ matrix.ten }}" \
-            --ket-qua mac-dinh=ket-qua/mac-dinh.json --ket-qua cao=ket-qua/cao.json \
+            --ket-qua mac-dinh=ket-qua/mac-dinh.json --ket-qua kich-ban=ket-qua/kich-ban.json \
+            --ket-qua cao=ket-qua/cao.json \
             | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Luu ket qua
