@@ -1243,6 +1243,11 @@ rules:
           - pattern-inside: |
               public $RET $M(..., $T $P, ...) { ... }
           - focus-metavariable: $P
+    # Juliet goodB2G: System.Security.SecurityElement.Escape (doi ' thanh &apos;).
+    # CodeQL khong coi ham nay la lam sach nen bao nham 76% CWE-643.
+    pattern-sanitizers:
+      - pattern: SecurityElement.Escape(...)
+      - pattern: System.Security.SecurityElement.Escape(...)
     pattern-sinks:
       - patterns:
           - pattern-either:
