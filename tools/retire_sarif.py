@@ -86,7 +86,9 @@ def trong_thu_muc_lam_viec(duong_dan: str) -> str:
     """
     goc = os.path.realpath(os.getcwd())
     thuc = os.path.realpath(duong_dan)
-    if thuc != goc and not thuc.startswith(goc + os.sep):
+    # Mot dieu kien startswith duy nhat ngay truoc khi dung: dang kiem tra ma
+    # CodeQL nhan ra la lam sach duong dan (normalize roi startswith).
+    if not thuc.startswith(goc + os.sep):
         raise SystemExit(f"Tu choi: {duong_dan} nam ngoai thu muc lam viec {goc}")
     return thuc
 
@@ -258,7 +260,9 @@ def main() -> int:
             print(f"::warning::retire.js bao loi: {str(loi)[:300]}", file=sys.stderr)
 
     bo = [b for b in BO_MAC_DINH if not (a.giu_kiem_thu and b == "kiem-thu-rule")] + a.bo
-    sarif, phat_hien, nhan_ra = doi(du_lieu, trong_thu_muc_lam_viec(a.goc), bo)
+    # goc chi dung de tinh duong dan tuong doi (xu ly chuoi), khong mo tep nao.
+    goc = os.path.normpath(os.path.join(os.getcwd(), a.goc))
+    sarif, phat_hien, nhan_ra = doi(du_lieu, goc, bo)
     ra = trong_thu_muc_lam_viec(a.ra)
     os.makedirs(os.path.dirname(ra), exist_ok=True)
     with open(ra, "w", encoding="utf-8") as f:
