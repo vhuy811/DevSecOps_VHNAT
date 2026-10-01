@@ -60,6 +60,11 @@ jobs:
           # Xoa ban giai nen day du (105 CWE). De lai thi CodeQL C# (build-mode none)
           # doc ca 57.372 tep cua no - lan do dau mat 41 phut chi rieng buoc CodeQL.
           rm -rf juliet_raw juliet.zip
+          # Ma mau bien the 01 (co ban) cua moi test case: de doc sink THAT cua cac
+          # CWE ma chua cong cu nao bat, truoc khi viet rule cho chung.
+          mkdir -p ket-qua/mau
+          find bench/src/testcases -name '*_01.cs' -exec cp {} ket-qua/mau/ \;
+          echo "Ma mau: $(ls ket-qua/mau | wc -l) tep"
 
       - name: Semgrep - rule du an (dang co quyen chan trong pipeline)
         run: |
@@ -76,6 +81,7 @@ jobs:
             --sarif --output ket-qua/semgrep-cong-dong.sarif bench/src
 
       - name: CodeQL - khoi tao (C#, khong can build, security-extended)
+        id: cq_init
         uses: github/codeql-action/init@v4
         with:
           languages: csharp
@@ -90,6 +96,21 @@ jobs:
           output: ket-qua/codeql
           category: phong-do-juliet
 
+      # Mac dinh CodeQL chi coi du lieu tu mang (HTTP, socket) la nguon nguy hiem
+      # (threat model "remote"), nen nguon CSDL va cuc bo do duoc 0%. Phan tich
+      # lai CUNG CSDL voi threat model "local" (them CSDL, tep, bien moi truong,
+      # console) de biet bat them bao nhieu va bao nham them bao nhieu - so lieu
+      # de quyet dinh co bat cho pipeline hay khong. Loi o buoc nay khong lam
+      # hong phep do chinh.
+      - name: CodeQL - phan tich lai voi threat model local (do them)
+        continue-on-error: true
+        run: |
+          CQ="${{ steps.cq_init.outputs.codeql-path }}"
+          "$CQ" database analyze "$RUNNER_TEMP/codeql_databases/csharp" \
+            codeql/csharp-queries:codeql-suites/csharp-security-extended.qls \
+            --threat-model=local --format=sarif-latest \
+            --output=ket-qua/codeql-local.sarif --threads=0
+
       - name: Cham diem
         run: |
           CQ=$(ls ket-qua/codeql/*.sarif 2>/dev/null | head -1)
@@ -97,6 +118,7 @@ jobs:
             --sarif semgrep-du-an=ket-qua/semgrep-du-an.sarif \
             --sarif semgrep-cong-dong=ket-qua/semgrep-cong-dong.sarif \
             --sarif codeql="$CQ" \
+            --sarif codeql-local=ket-qua/codeql-local.sarif \
             --chan "pipeline-hien-tai=semgrep-du-an:level=error" \
             --chan "pipeline-muc-tieu=semgrep-du-an:level=error" \
             --chan "pipeline-muc-tieu=codeql:sev>=4" \
