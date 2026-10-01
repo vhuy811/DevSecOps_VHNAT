@@ -109,7 +109,10 @@ jobs:
           "$CQ" database analyze "$RUNNER_TEMP/codeql_databases/csharp" \
             codeql/csharp-queries:codeql-suites/csharp-security-extended.qls \
             --threat-model=local --format=sarif-latest \
-            --output=ket-qua/codeql-local.sarif --threads=0
+            --output=ket-qua/codeql-local.sarif --threads=0 --rerun
+          # --rerun bat buoc: khong co no, CodeQL dung lai ket qua da luu trong CSDL
+          # tu buoc phan tich truoc ("No need to rerun ...") va bo qua threat model
+          # moi - lan do #4 ra cot codeql-local giong het codeql vi ly do do.
 
       - name: Cham diem
         run: |
@@ -124,6 +127,12 @@ jobs:
             --chan "pipeline-muc-tieu=codeql:sev>=4" \
             --out ket-qua/juliet.json --md ket-qua/juliet.md
           cat ket-qua/juliet.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Ma mau cac CWE chua cong cu nao bat (ham Bad)
+        run: |
+          python tools/cham_diem.py mau --goc bench/src/testcases \
+            --cwe "23,36,81,113,470,259,321,328,338,319,89:CommandText" --md ket-qua/mau.md > /dev/null
+          cat ket-qua/mau.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Luu ket qua
         if: always()
