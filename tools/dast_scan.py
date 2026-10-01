@@ -19,19 +19,32 @@ Thiet ke moi: SAST va DAST la HAI NGUON PHAT HIEN DOC LAP, ket qua CONG DON.
   - Doi chieu voi SAST chi con dung de gan nhan "da khai thac duoc" -> uu tien
     sua truoc. Khong bao gio dung de bo qua mot canh bao.
 
+TANG DAST THU HAI (G3.2): --kich-ban-loi-sqlite
+  Phong do G3.1 cho thay rule SQLi 40018 cua ZAP mu voi stack ASP.NET Core +
+  Microsoft.Data.Sqlite: o nguong MEDIUM no tat nhan dang loi CSDL chung chung,
+  va dù co bat thi mau loi cua no khong khop thong bao cua Microsoft.Data.Sqlite
+  ("SQLite Error 1: '...'"). Ngu canh WHERE Category = '...' (PR #1) vi the lot
+  qua o MOI cuong do. Co --kich-ban-loi-sqlite them mot lop error-based rieng:
+  voi tung endpoint trong ban do route, chen mot dau nháy va doi chieu phan hoi
+  voi chu ky loi Microsoft.Data.Sqlite. Lop nay doc lap voi policy ZAP nen bat
+  duoc ca ngu canh = ma khong phai day ZAP len HIGH (vi HIGH bao nham tren cac
+  endpoint LIKE da tham so hoa - xem G3.1).
+
 Chay:
     python tools/dast_scan.py --routes routes_map.json \
         --base-url http://localhost:5000 --zap http://localhost:8090 \
-        --out reports/zap-alerts.json
+        --kich-ban-loi-sqlite --out reports/zap-alerts.json
 """
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 import time
 import urllib.request
 from pathlib import Path
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -42,6 +55,93 @@ RISK_RANK = {"Informational": 0, "Low": 1, "Medium": 2, "High": 3}
 # duong dan dac ta API ma cac framework pho bien tu phuc vu
 DUONG_OPENAPI = ("/swagger/v1/swagger.json", "/openapi/v1.json", "/openapi.json",
                  "/v3/api-docs", "/api-docs", "/swagger.json", "/docs/openapi.json")
+
+# ---------------------------------------------------------------------------
+# TANG DAST THU HAI: nhan dang loi CSDL Microsoft.Data.Sqlite (G3.2)
+# ---------------------------------------------------------------------------
+# Chu ky rieng cho SQLite / Microsoft.Data.Sqlite, du hep de khong bao nham
+# tren repo khac. Thong bao loi cua Microsoft.Data.Sqlite luon co dang
+# "SQLite Error <ma>: '<chi tiet>'." nen "SQLite Error \d" la neo dang tin
+# nhat; them vai mau dac trung khac cua SQLite phong truong hop wrapper doi
+# dinh dang. KHONG dung cac cum chung chung ("syntax error", "SQL") de tranh
+# bat nham noi dung binh thuong cua trang.
+CHU_KY_SQLITE = re.compile(
+    r"SQLite Error \d"
+    r"|SqliteException"
+    r"|Microsoft\.Data\.Sqlite"
+    r"|unrecognized token"
+    r"|SQL logic error",
+    re.IGNORECASE,
+)
+
+
+def co_loi_sqlite(text: str) -> bool:
+    """True neu phan hoi chua chu ky loi Microsoft.Data.Sqlite."""
+    return bool(text) and CHU_KY_SQLITE.search(text) is not None
+
+
+def _tai_trang(url: str, timeout: float) -> tuple[int | None, str]:
+    """GET url, tra ve (ma_http, body). Doc ca body khi loi HTTP 4xx/5xx."""
+    req = urllib.request.Request(url, headers={"User-Agent": "dast-kich-ban-sqlite"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.getcode(), r.read().decode("utf-8", "replace")
+    except HTTPError as e:
+        try:
+            body = e.read().decode("utf-8", "replace")
+        except Exception:
+            body = ""
+        return e.code, body
+    except (URLError, OSError):
+        return None, ""
+
+
+def quet_loi_sqlite(routes_path: str, base: str, moi_timeout: float = 8.0) -> list[dict]:
+    """Lop error-based: voi moi endpoint kiem thu duoc, chen mot dau nháy va
+    doi chieu phan hoi voi chu ky loi Microsoft.Data.Sqlite.
+
+    Logic (error-based SQLi kinh dien):
+      1. Dau vao lanh (test_seed) KHONG duoc gay loi CSDL - neu co san thi moc
+         so sanh hong, bo qua endpoint do de tranh bao nham.
+      2. Chen them mot dau nháy ('): neu phan hoi xuat hien loi CSDL thi gia tri
+         dang duoc noi thang vao cau SQL -> SQL injection (CWE-89).
+    Lop nay goi HTTP thang toi app, doc lap voi policy ZAP.
+    """
+    ra: list[dict] = []
+    rp = Path(routes_path)
+    if not rp.is_file():
+        return ra
+    routes = json.loads(rp.read_text(encoding="utf-8")).get("routes", [])
+    for r in routes:
+        if r.get("status") != "testable":
+            continue
+        seed = str(r.get("test_seed") or "a")
+        path = r["url_path"]
+        for p in r.get("params", []):
+            lanh = f"{base}{path}?{urlencode({p: seed})}"
+            _, body_lanh = _tai_trang(lanh, moi_timeout)
+            if co_loi_sqlite(body_lanh):
+                # app bao loi ngay voi dau vao lanh -> khong ket luan duoc
+                continue
+            payload = seed + "'"
+            tan_cong = f"{base}{path}?{urlencode({p: payload})}"
+            _, body = _tai_trang(tan_cong, moi_timeout)
+            m = CHU_KY_SQLITE.search(body or "")
+            if not m:
+                continue
+            ra.append({
+                "alert": "SQL Injection (loi Microsoft.Data.Sqlite)",
+                "risk": "High",
+                "confidence": "High",
+                "cweid": "89",
+                "plugin": "kich-ban-loi-sqlite",
+                "url": tan_cong,
+                "param": p,
+                "attack": payload,
+                "evidence": (body[m.start():m.start() + 120]).strip(),
+                "nguon": "kich-ban",
+            })
+    return ra
 
 
 def nap_openapi(zap: Zap, base: str, tep: list[str]) -> list[str]:
@@ -101,6 +201,9 @@ def main() -> int:
     ap.add_argument("--do-nhay", choices=["mac-dinh", "cao"], default="mac-dinh",
                     help="mac-dinh: policy goc cua ZAP (MEDIUM/MEDIUM). cao: day cac ho rule "
                          "ung voi CWE trong CWE_ZAP_SCANNER len cuong do HIGH, nguong LOW")
+    ap.add_argument("--kich-ban-loi-sqlite", action="store_true",
+                    help="bat lop error-based rieng cho Microsoft.Data.Sqlite (G3.2) - bat "
+                         "ngu canh WHERE = '...' ma rule 40018 cua ZAP bo sot")
     ap.add_argument("--phien-moi", action="store_true",
                     help="mo phien ZAP moi truoc khi quet (xoa alert/cay Sites cu - dung khi do A/B)")
     args = ap.parse_args()
@@ -199,11 +302,26 @@ def main() -> int:
             seen.add(k)
             uniq.append(a)
 
+    # 4b) Lop DAST thu hai: error-based cho Microsoft.Data.Sqlite (G3.2).
+    #     Doc lap voi ZAP nen van chay duoc ke ca khi active scan qua gio.
+    kich_ban = []
+    if args.kich_ban_loi_sqlite:
+        kich_ban = quet_loi_sqlite(args.routes, base)
+        them = 0
+        for a in kich_ban:
+            k = (a["plugin"], a["url"].split("?")[0], a["param"])
+            if k not in seen:
+                seen.add(k)
+                uniq.append(a)
+                them += 1
+        print(f"[*] Kich ban loi SQLite: {them} alert error-based")
+
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps({"base_url": base, "scanned_urls": len(diem),
                                "openapi": openapi,
                                "do_nhay": args.do_nhay,
+                               "kich_ban_loi_sqlite": args.kich_ban_loi_sqlite,
                                "rule_da_chinh": da_chinh,
                                "giay": round(time.time() - bat_dau),
                                "timed_out": timed_out,
