@@ -27,11 +27,12 @@ Pipeline **không tự chặn**. Nó đưa kết quả từng scanner lên GitHu
 | **Semgrep-du-an** — 43 rule tự viết (10 rule lần theo luồng dữ liệu) | cảnh báo mức ERROR **mới** trong PR | Alerts = Errors, Security ≥ High |
 | **CodeQL** — lần theo luồng dữ liệu qua biến, hàm, tệp; mọi ngôn ngữ tự nhận; nguồn: request + CSDL, tệp, biến môi trường | cảnh báo Medium trở lên **mới** trong PR | Alerts = Errors, Security ≥ Medium |
 | **OWASP-ZAP** — quét toàn bộ app dựng từ code PR | alert risk High **mới** | Security ≥ High |
+| **retire.js** — thư viện JS chép sẵn trong repo (`wwwroot/lib`, `vendor/`) | PR **thêm hoặc đổi** tệp thư viện dính CVE Medium trở lên | Alerts = Errors, Security ≥ Medium |
 | **dependency-review** — job riêng của GitHub | PR **thêm hoặc nâng** gói dính CVE ≥ High | required check |
 | **Push protection** của GitHub | secret trong commit — chặn ngay lúc `git push` | bật trong Settings |
-| Semgrep-cong-dong, Trivy, Gitleaks, retire.js (thư viện JS nhúng sẵn) | không chặn | tham khảo / theo dõi |
+| Semgrep-cong-dong, Trivy, Gitleaks | không chặn | tham khảo / theo dõi |
 
-Năm nguồn chặn **cộng dồn** — không nguồn nào gạt được nguồn khác. Cho qua chỉ theo hai cách, cả hai để lại dấu vết:
+Sáu nguồn chặn **cộng dồn** — không nguồn nào gạt được nguồn khác. Cho qua chỉ theo hai cách, cả hai để lại dấu vết:
 
 - **Dismiss alert** trong tab Security, chọn lý do (false positive / won't fix / used in tests) và ghi chú. GitHub ghi audit log; lần chạy sau không báo lại. Không sửa code để né, không `nosemgrep`.
 - **Hạ rule** xuống WARNING ở cấp bộ công cụ, khi một rule bị dismiss quá ~10% (ngưỡng Google dùng để tắt analyzer). Sửa ở nguồn, không sửa từng PR.
@@ -109,7 +110,7 @@ Chỉ quét khi **mở PR** và khi push vào `main` — mỗi PR một check, m
 
 Rồi bật cổng phía GitHub — Settings của repo:
 
-1. **Rules → Rulesets** → ruleset cho `main`: *Require a pull request* (1 approval) · *Require code scanning results* → thêm `Semgrep-du-an` (Alerts: Errors, Security: High or higher), `CodeQL` (Alerts: Errors, Security: **Medium** or higher) và `OWASP-ZAP` (Security: High or higher) · *Require status checks* → `security / dependency-review` · bypass list **để trống**.
+1. **Rules → Rulesets** → ruleset cho `main`: *Require a pull request* (1 approval) · *Require code scanning results* → thêm `Semgrep-du-an` (Alerts: Errors, Security: High or higher), `CodeQL` (Alerts: Errors, Security: **Medium** or higher) `OWASP-ZAP` (Security: High or higher) và `retire.js` (Alerts: Errors, Security: **Medium** or higher — retire.js xếp mọi CVE của jQuery cũ ở mức medium/low, đặt High thì thêm jQuery cũ vẫn lọt) · *Require status checks* → `security / dependency-review` · bypass list **để trống**.
 2. **Code security** → bật *Secret scanning* + *Push protection*, *Dependabot alerts* + *security updates*.
 
 Tên công cụ trong ruleset chỉ xuất hiện sau khi pipeline đã chạy ít nhất một lần trên `main` — push một lần trước rồi mới cấu hình.
