@@ -788,21 +788,28 @@ rules:
         - https://cwe.mitre.org/data/definitions/22.html
     pattern-sources:
       - pattern: $R.QueryString[$K]
+      - pattern: $R.QueryString.Get(...)
       - pattern: $R.Params[$K]
+      - pattern: $R.Params.Get(...)
       - pattern: $R.Form[$K]
+      - pattern: $R.Form.Get(...)
       - pattern: $R.Cookies
       - pattern: $R.Headers[$K]
       - pattern: $R.Query[$K]
       - pattern: $R.RouteValues[$K]
       - patterns:
+          # Tham so cua action trong lop ke thua Controller / ControllerBase /
+          # PageModel. Phai viet "class $C : $B" - Semgrep C# KHONG khop
+          # "class $C { ... }" voi lop co lop cha (da thu tren playground).
+          # Va dung focus-metavariable de chi dung tham so lam nguon.
           - pattern-inside: |
-              class $C { ... }
+              class $C : $B { ... }
           - metavariable-regex:
-              metavariable: $C
-              regex: (Controller|PageModel)$
+              metavariable: $B
+              regex: (Controller|ControllerBase|PageModel)$
           - pattern-inside: |
               public $RET $M(..., $T $P, ...) { ... }
-          - pattern: $P
+          - focus-metavariable: $P
     pattern-sanitizers:
       - pattern: Path.GetFileName(...)
       - pattern: System.IO.Path.GetFileName(...)
@@ -839,21 +846,28 @@ rules:
         - https://cwe.mitre.org/data/definitions/113.html
     pattern-sources:
       - pattern: $R.QueryString[$K]
+      - pattern: $R.QueryString.Get(...)
       - pattern: $R.Params[$K]
+      - pattern: $R.Params.Get(...)
       - pattern: $R.Form[$K]
+      - pattern: $R.Form.Get(...)
       - pattern: $R.Cookies
       - pattern: $R.Headers[$K]
       - pattern: $R.Query[$K]
       - pattern: $R.RouteValues[$K]
       - patterns:
+          # Tham so cua action trong lop ke thua Controller / ControllerBase /
+          # PageModel. Phai viet "class $C : $B" - Semgrep C# KHONG khop
+          # "class $C { ... }" voi lop co lop cha (da thu tren playground).
+          # Va dung focus-metavariable de chi dung tham so lam nguon.
           - pattern-inside: |
-              class $C { ... }
+              class $C : $B { ... }
           - metavariable-regex:
-              metavariable: $C
-              regex: (Controller|PageModel)$
+              metavariable: $B
+              regex: (Controller|ControllerBase|PageModel)$
           - pattern-inside: |
               public $RET $M(..., $T $P, ...) { ... }
-          - pattern: $P
+          - focus-metavariable: $P
     pattern-sanitizers:
       - pattern: HttpUtility.UrlEncode(...)
       - pattern: WebUtility.UrlEncode(...)
@@ -888,21 +902,28 @@ rules:
         - https://cwe.mitre.org/data/definitions/470.html
     pattern-sources:
       - pattern: $R.QueryString[$K]
+      - pattern: $R.QueryString.Get(...)
       - pattern: $R.Params[$K]
+      - pattern: $R.Params.Get(...)
       - pattern: $R.Form[$K]
+      - pattern: $R.Form.Get(...)
       - pattern: $R.Cookies
       - pattern: $R.Headers[$K]
       - pattern: $R.Query[$K]
       - pattern: $R.RouteValues[$K]
       - patterns:
+          # Tham so cua action trong lop ke thua Controller / ControllerBase /
+          # PageModel. Phai viet "class $C : $B" - Semgrep C# KHONG khop
+          # "class $C { ... }" voi lop co lop cha (da thu tren playground).
+          # Va dung focus-metavariable de chi dung tham so lam nguon.
           - pattern-inside: |
-              class $C { ... }
+              class $C : $B { ... }
           - metavariable-regex:
-              metavariable: $C
-              regex: (Controller|PageModel)$
+              metavariable: $B
+              regex: (Controller|ControllerBase|PageModel)$
           - pattern-inside: |
               public $RET $M(..., $T $P, ...) { ... }
-          - pattern: $P
+          - focus-metavariable: $P
     pattern-sinks:
       - patterns:
           - pattern-either:
@@ -933,21 +954,28 @@ rules:
         - https://cwe.mitre.org/data/definitions/81.html
     pattern-sources:
       - pattern: $R.QueryString[$K]
+      - pattern: $R.QueryString.Get(...)
       - pattern: $R.Params[$K]
+      - pattern: $R.Params.Get(...)
       - pattern: $R.Form[$K]
+      - pattern: $R.Form.Get(...)
       - pattern: $R.Cookies
       - pattern: $R.Headers[$K]
       - pattern: $R.Query[$K]
       - pattern: $R.RouteValues[$K]
       - patterns:
+          # Tham so cua action trong lop ke thua Controller / ControllerBase /
+          # PageModel. Phai viet "class $C : $B" - Semgrep C# KHONG khop
+          # "class $C { ... }" voi lop co lop cha (da thu tren playground).
+          # Va dung focus-metavariable de chi dung tham so lam nguon.
           - pattern-inside: |
-              class $C { ... }
+              class $C : $B { ... }
           - metavariable-regex:
-              metavariable: $C
-              regex: (Controller|PageModel)$
+              metavariable: $B
+              regex: (Controller|ControllerBase|PageModel)$
           - pattern-inside: |
               public $RET $M(..., $T $P, ...) { ... }
-          - pattern: $P
+          - focus-metavariable: $P
     pattern-sanitizers:
       - pattern: WebUtility.HtmlEncode(...)
       - pattern: HttpUtility.HtmlEncode(...)
