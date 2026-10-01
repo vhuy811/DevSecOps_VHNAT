@@ -1,0 +1,69 @@
+{
+  "_mo_ta": "Chinh sach DAST phien ban hoa (G3.3). Mot noi duy nhat, review qua git, dast_scan.py doc va ap dung. Gom hai phan: active (cau hinh active scan cua ZAP) va runtime (rule kiem tra header/cookie luc chay).",
+
+  "active": {
+    "_mo_ta": "Cau hinh active scan. Pipeline chay policy goc cua ZAP (mac dinh); che do --do-nhay cao day cac ho rule ung voi CWE len strength/threshold duoi day. Danh sach CWE lay tu tools/correlate.py (CWE_ZAP_SCANNER).",
+    "mac_dinh": { "strength": "MEDIUM", "threshold": "MEDIUM" },
+    "do_nhay_cao": { "strength": "HIGH", "threshold": "LOW" }
+  },
+
+  "runtime": {
+    "_mo_ta": "Rule kiem tra luc chay (header bao mat + co cookie). Soi phan hoi HTTP that cua ung dung dang chay. Mac dinh REPORT-ONLY: cong merge dang chan o muc High, cac phat hien nay Medium/Low nen hien de biet chu khong chan. Muon chan thi nang muc o day va them cong tuong ung.",
+    "header": [
+      {
+        "id": "rt-csp",
+        "header": "Content-Security-Policy",
+        "muc": "Medium",
+        "cwe": "693",
+        "cach_sua": "Them header Content-Security-Policy voi chinh sach that chat (vd default-src 'self') de giam XSS va chen tai nguyen."
+      },
+      {
+        "id": "rt-xfo",
+        "header": "X-Frame-Options",
+        "muc": "Medium",
+        "cwe": "1021",
+        "cach_sua": "Them X-Frame-Options: DENY (hoac SAMEORIGIN) de chong clickjacking; hoac dung frame-ancestors trong CSP."
+      },
+      {
+        "id": "rt-xcto",
+        "header": "X-Content-Type-Options",
+        "gia_tri": "nosniff",
+        "muc": "Low",
+        "cwe": "693",
+        "cach_sua": "Them X-Content-Type-Options: nosniff de trinh duyet khong tu doan MIME."
+      },
+      {
+        "id": "rt-hsts",
+        "header": "Strict-Transport-Security",
+        "muc": "Low",
+        "cwe": "319",
+        "chi_https": true,
+        "cach_sua": "Tren HTTPS, them Strict-Transport-Security de ep trinh duyet luon dung HTTPS."
+      }
+    ],
+    "cookie": [
+      {
+        "id": "rt-cookie-httponly",
+        "co": "HttpOnly",
+        "muc": "Low",
+        "cwe": "1004",
+        "cach_sua": "Dat co HttpOnly cho cookie phien de JavaScript (XSS) khong doc duoc."
+      },
+      {
+        "id": "rt-cookie-secure",
+        "co": "Secure",
+        "muc": "Low",
+        "cwe": "614",
+        "chi_https": true,
+        "cach_sua": "Tren HTTPS, dat co Secure de cookie khong bi gui qua ket noi khong ma hoa."
+      },
+      {
+        "id": "rt-cookie-samesite",
+        "co": "SameSite",
+        "muc": "Low",
+        "cwe": "1275",
+        "cach_sua": "Dat SameSite=Lax hoac Strict de giam CSRF."
+      }
+    ]
+  }
+}
