@@ -24,7 +24,7 @@ Pipeline **không tự chặn**. Nó đưa kết quả từng scanner lên GitHu
 
 | Nguồn | Chặn merge khi | Ngưỡng ruleset |
 |---|---|---|
-| **Semgrep-du-an** — 39 rule tự viết (6 rule lần theo luồng dữ liệu) | cảnh báo mức ERROR **mới** trong PR | Alerts = Errors, Security ≥ High |
+| **Semgrep-du-an** — 43 rule tự viết (10 rule lần theo luồng dữ liệu) | cảnh báo mức ERROR **mới** trong PR | Alerts = Errors, Security ≥ High |
 | **CodeQL** — lần theo luồng dữ liệu qua biến, hàm, tệp; mọi ngôn ngữ tự nhận; nguồn: request + CSDL, tệp, biến môi trường | cảnh báo Medium trở lên **mới** trong PR | Alerts = Errors, Security ≥ Medium |
 | **OWASP-ZAP** — quét toàn bộ app dựng từ code PR | alert risk High **mới** | Security ≥ High |
 | **dependency-review** — job riêng của GitHub | PR **thêm hoặc nâng** gói dính CVE ≥ High | required check |
@@ -168,7 +168,7 @@ tools/
   pre_commit_scan.py    hook pre-commit — tư vấn, không phải hàng rào
 
 semgrep-rules/
-  sast-detect.yaml      39 rule phát hiện (tiền tố dso-), 17 CWE — ERROR chặn, WARNING tham khảo
+  sast-detect.yaml      43 rule phát hiện (tiền tố dso-), 17 CWE — ERROR chặn, WARNING tham khảo
   sanitizer-check.yaml  rule tìm bằng chứng khử độc (dashboard cục bộ)
   kiem-thu-rule/        fixture tự kiểm chứng bộ rule (mã có lỗi cố ý)
 
@@ -193,7 +193,7 @@ Rule của dự án **cố ý không phủ hết mọi loại lỗ hổng**. Nó
 | Xử lý input | 79 XSS · 22 path traversal · 113 response splitting |
 | Gọi ra ngoài | 918 SSRF · 601 open redirect · 611 XXE |
 
-Trong 39 rule, 33 rule ở mức **ERROR** (có quyền chặn) và 6 rule ở mức **WARNING** (chỉ chú thích): 3 rule bắt theo tên biến, rule đường dẫn dạng mẫu (bản lần theo luồng dữ liệu giữ quyền chặn), MD5/SHA-1 và `System.Random` (rule không biết mục đích sử dụng). Quy tắc là *chỉ chặn bằng thứ gần như không báo nhầm*.
+Trong 43 rule, 28 rule ở mức **ERROR** (có quyền chặn) và 15 rule ở mức **WARNING** (chỉ chú thích): 3 rule bắt theo tên biến, 10 rule dạng mẫu "nối chuỗi" cho SQLi / lệnh hệ điều hành / LDAP / XPath / đường dẫn (bản lần theo luồng dữ liệu của chúng giữ quyền chặn — trên Juliet, bản mẫu bắt 100% case lỗi nhưng cũng báo nhầm 100% case đã sửa), MD5/SHA-1 và `System.Random` (rule không biết mục đích sử dụng). Quy tắc là *chỉ chặn bằng thứ gần như không báo nhầm*.
 
 Phần bề rộng — mã hoá yếu, mật khẩu cứng, deserialization, cấu hình sai — để `p/csharp` và `p/security-audit` lo; kết quả vào `Semgrep-cong-dong`, tham khảo. Viết lại chỉ tạo báo trùng, trong khi hai bộ đó được cập nhật hằng ngày.
 
