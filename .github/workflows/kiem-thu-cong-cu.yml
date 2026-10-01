@@ -8,6 +8,8 @@ on:
   pull_request:
     paths:
       - tools/retire_sarif.py
+      - tools/dast_scan.py
+      - tools/kiem_thu_dast_sqlite.py
       - semgrep-rules/kiem-thu-rule/thu-vien-js/**
       - .github/workflows/kiem-thu-cong-cu.yml
       - .github/workflows/devsecops-reusable.yml
@@ -17,6 +19,16 @@ permissions:
   contents: read
 
 jobs:
+  dast_sqlite:
+    # G3.2: lop error-based Microsoft.Data.Sqlite cua dast_scan.py chay voi mot
+    # app gia, kiem tra bat dung endpoint co loi va khong bao nham. Chi stdlib.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Kiem thu lop error-based Microsoft.Data.Sqlite
+        run: python tools/kiem_thu_dast_sqlite.py
+
   retire:
     runs-on: ubuntu-latest
     timeout-minutes: 10
