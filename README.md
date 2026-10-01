@@ -29,7 +29,7 @@ Pipeline **không tự chặn**. Nó đưa kết quả từng scanner lên GitHu
 | **OWASP-ZAP** — quét toàn bộ app dựng từ code PR | alert risk High **mới** | Security ≥ High |
 | **dependency-review** — job riêng của GitHub | PR **thêm hoặc nâng** gói dính CVE ≥ High | required check |
 | **Push protection** của GitHub | secret trong commit — chặn ngay lúc `git push` | bật trong Settings |
-| Semgrep-cong-dong, Trivy, Gitleaks | không chặn | tham khảo / theo dõi |
+| Semgrep-cong-dong, Trivy, Gitleaks, retire.js (thư viện JS nhúng sẵn) | không chặn | tham khảo / theo dõi |
 
 Năm nguồn chặn **cộng dồn** — không nguồn nào gạt được nguồn khác. Cho qua chỉ theo hai cách, cả hai để lại dấu vết:
 
@@ -46,6 +46,7 @@ Dev chỉ thấy hai trạng thái: **CHẶN** — tệp:dòng, lỗi gì, cách
 |---|---|---|---|
 | 0 | Gitleaks | toàn bộ tệp | secret lộ trong mã nguồn |
 | 1 | `sca.py` + dotnet; dependency-review | `*.csproj` | CVE trong gói NuGet; gói mới dính CVE |
+| 1b | retire.js (`retire_sarif.py` đổi sang SARIF) | tệp JS trong repo — `wwwroot/lib`, `vendor/`, `*.min.js` | thư viện JS **chép sẵn** dính CVE: không nằm trong tệp khai báo gói nào nên tầng 1 không thấy |
 | 2 | Semgrep — rule dự án + rule cộng đồng | mọi ngôn ngữ tự nhận | cảnh báo theo **hình dạng** dòng code, tách hai mức tin cậy |
 | 2b | CodeQL `security-extended` — job riêng, chạy song song | mọi ngôn ngữ CodeQL hỗ trợ (C#, JS/TS, Python, Java, Go, Actions...) | cảnh báo theo **luồng dữ liệu**: từ tham số request tới câu SQL, `innerHTML`, lệnh hệ điều hành... qua biến, hàm, tệp |
 | 3 | `gen_routes_map.py` | Controller, Razor Pages | bản đồ (URL, tham số) và **phạm vi DAST tới được** |
@@ -153,6 +154,7 @@ Tệp tuỳ chọn ở gốc repo đích: `devsecops-seeds.json` — giá trị 
 ```
 tools/
   sca.py                tầng 1 — đối chiếu NuGet với CSDL lỗ hổng
+  retire_sarif.py       tầng 1b — kết quả retire.js (thư viện JS nhúng sẵn) → SARIF cho Code Scanning
   gen_routes_map.py     tầng 3 — bản đồ endpoint, Controller và Razor Pages
   trivy.py              tầng 4 — cấu hình, SBOM, so sánh image trước/sau gia cố
   dast_scan.py          tầng 5 — ZAP quét toàn bộ app tạm, nạp OpenAPI nếu có

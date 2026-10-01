@@ -293,6 +293,22 @@ jobs:
           fi
 
       # ===============================================================
+      # TANG 1b - Thu vien JS NHUNG SAN (wwwroot/lib, vendor/, *.min.js)
+      # Chep thang vao repo nen KHONG nam trong package.json / lockfile nao:
+      # sca.py (NuGet), dependency-review va SBOM deu khong thay. retire.js nhan
+      # thu vien theo NOI DUNG tep (chu thich dau tep, ten tep, bam) roi doi
+      # chieu voi CSDL lo hong cua no. Ghim ban cong cu; CSDL van tai moi.
+      # Loi -> KHONG ghi SARIF: "chua quet" khac "quet xong, sach".
+      # ===============================================================
+      - name: SCA - thu vien JS nhung san (retire.js)
+        if: steps.pham_vi.outputs.chi_tai_lieu != 'true'
+        run: |
+          npx --yes retire@5.7.0 --path . --verbose --outputformat json \
+            --outputpath reports/retire.json --exitwith 0 || echo "::warning::retire.js thoat voi ma $?"
+          python "$TOOLKIT/tools/retire_sarif.py" --vao reports/retire.json \
+            --ra reports/thu-vien-nhung.sarif --bo "$TOOLKIT" --summary >> "$GITHUB_STEP_SUMMARY" || true
+
+      # ===============================================================
       # TANG 2 - Ma nguon (SAST) - Semgrep, HAI luot quet
       #
       #   Luot 1 - rule cua bo cong cu + rule rieng cua repo (.devsecops/rules/*.yaml)
@@ -543,6 +559,8 @@ jobs:
           sca = j("reports/sca.json")
           if sca:
               s = sca["summary"]; print(f"| 1. Thu vien | {s['packages']} goi dinh CVE ({s['by_severity']['Critical']} Critical, {s['by_severity']['High']} High) - goi MOI trong PR do dependency-review xet |")
+          tv = n_sarif("reports/thu-vien-nhung.sarif")
+          print(f"| 1b. Thu vien JS nhung san | {'CHUA quet duoc' if tv is None else f'{tv} lo hong (retire.js)'} |")
           a, b = n_sarif("reports/semgrep-du-an.sarif"), n_sarif("reports/semgrep-cong-dong.sarif")
           if a is not None: print(f"| 2. Ma nguon | rule du an {a} · rule cong dong {b} |")
           rm = j("routes_map.json")
@@ -618,6 +636,13 @@ jobs:
         with:
           sarif_file: reports/trivy-config.sarif
           category: ha-tang
+
+      - name: Code Scanning - thu vien JS nhung san
+        if: always() && hashFiles('reports/thu-vien-nhung.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: reports/thu-vien-nhung.sarif
+          category: thu-vien-nhung
 
       - name: Luu bao cao lam artifact
         if: always()
