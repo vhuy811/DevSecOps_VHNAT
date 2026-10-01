@@ -43,9 +43,10 @@ TEN_CONG_CU = "retire.js"
 DIEM = {"critical": "9.5", "high": "8.0", "medium": "5.5", "low": "2.5"}
 MUC = {"critical": "error", "high": "error", "medium": "warning", "low": "note"}
 THU_TU = ["critical", "high", "medium", "low"]
-# Thu muc khong phai cua repo duoc quet: ban checkout bo cong cu, goi npm
-# (do dependency-review lo), thu muc cua git.
-BO_MAC_DINH = ["node_modules", ".git"]
+# Thu muc khong phai cua repo duoc quet: goi npm (do dependency-review lo),
+# thu muc cua git, va fixture kiem thu cua bo cong cu (kiem-thu-rule - co tep
+# jQuery GIA de kiem thu chinh tang nay, khong duoc thanh canh bao that).
+BO_MAC_DINH = ["node_modules", ".git", "kiem-thu-rule"]
 
 
 def ma_lo_hong(v: dict) -> str:
@@ -214,6 +215,8 @@ def main() -> int:
     ap.add_argument("--goc", default=".", help="thu muc goc repo (de doi duong dan tuong doi)")
     ap.add_argument("--bo", action="append", default=[], help="thu muc bo qua (lap lai duoc)")
     ap.add_argument("--summary", action="store_true", help="in bang Markdown ra stdout")
+    ap.add_argument("--giu-kiem-thu", action="store_true",
+                    help="KHONG loai tru kiem-thu-rule (chi dung khi kiem thu chinh cong cu nay)")
     a = ap.parse_args()
 
     vao = Path(a.vao)
@@ -233,7 +236,8 @@ def main() -> int:
         for loi in du_lieu["errors"][:5]:
             print(f"::warning::retire.js bao loi: {str(loi)[:300]}", file=sys.stderr)
 
-    sarif, phat_hien, nhan_ra = doi(du_lieu, Path(a.goc), BO_MAC_DINH + a.bo)
+    bo = [b for b in BO_MAC_DINH if not (a.giu_kiem_thu and b == "kiem-thu-rule")] + a.bo
+    sarif, phat_hien, nhan_ra = doi(du_lieu, Path(a.goc), bo)
     Path(a.ra).parent.mkdir(parents=True, exist_ok=True)
     Path(a.ra).write_text(json.dumps(sarif, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"retire.js: {len(phat_hien)} lo hong, {len(sarif['runs'][0]['tool']['driver']['rules'])} rule -> {a.ra}",
