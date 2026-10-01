@@ -35,7 +35,7 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from correlate import Zap  # noqa: E402
+from correlate import CWE_ZAP_SCANNER, Zap  # noqa: E402
 
 RISK_RANK = {"Informational": 0, "Low": 1, "Medium": 2, "High": 3}
 
@@ -98,12 +98,32 @@ def main() -> int:
     ap.add_argument("--openapi", default="",
                     help="tep dac ta OpenAPI/Swagger trong repo, cach nhau dau phay (duong dan tuong doi)")
     ap.add_argument("--out", default="reports/zap-alerts.json")
+    ap.add_argument("--do-nhay", choices=["mac-dinh", "cao"], default="mac-dinh",
+                    help="mac-dinh: policy goc cua ZAP (MEDIUM/MEDIUM). cao: day cac ho rule "
+                         "ung voi CWE trong CWE_ZAP_SCANNER len cuong do HIGH, nguong LOW")
+    ap.add_argument("--phien-moi", action="store_true",
+                    help="mo phien ZAP moi truoc khi quet (xoa alert/cay Sites cu - dung khi do A/B)")
     args = ap.parse_args()
 
     base = args.base_url.rstrip("/")
     zap = Zap(args.zap, args.zap_api_key, timeout=args.timeout)
-    print(f"[*] ZAP {zap.ping()} | muc tieu {base}")
-    han = time.time() + args.timeout
+    print(f"[*] ZAP {zap.ping()} | muc tieu {base} | do nhay {args.do_nhay}")
+    bat_dau = time.time()
+    han = bat_dau + args.timeout
+
+    if args.phien_moi:
+        zap._get("/JSON/core/action/newSession/", name="", overwrite="true")
+
+    # Do nhay: policy mac dinh cua ZAP chay MEDIUM/MEDIUM. O muc do rule SQL
+    # injection chi thu 6 payload boolean (bo qua nhom payload cho ngu canh
+    # LIKE '%...%') va tat nhan dang loi CSDL chung chung. Xem G3.1.
+    # LUU Y: chinh nay ghi vao policy cua CA phien ZAP - do A/B thi chay
+    # mac-dinh truoc, cao sau.
+    da_chinh: list[str] = []
+    if args.do_nhay == "cao":
+        for cwe in CWE_ZAP_SCANNER:
+            da_chinh += zap.tune_scanners(cwe)
+        print(f"[*] Da day {len(da_chinh)} rule len HIGH/LOW")
 
     # 1) Nap diem vao: trang goc + moi endpoint trong ban do route, kem gia tri
     #    moi. Spider chi thay trang co link toi - endpoint khong ai link toi
@@ -183,6 +203,9 @@ def main() -> int:
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps({"base_url": base, "scanned_urls": len(diem),
                                "openapi": openapi,
+                               "do_nhay": args.do_nhay,
+                               "rule_da_chinh": da_chinh,
+                               "giay": round(time.time() - bat_dau),
                                "timed_out": timed_out,
                                "alerts": uniq}, indent=2, ensure_ascii=False),
                    encoding="utf-8")
