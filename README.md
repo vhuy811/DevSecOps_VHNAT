@@ -24,14 +24,15 @@ Pipeline **không tự chặn**. Nó đưa kết quả từng scanner lên GitHu
 
 | Nguồn | Chặn merge khi | Ngưỡng ruleset |
 |---|---|---|
-| **Semgrep-du-an** — 39 rule tự viết (6 rule lần theo luồng dữ liệu) | cảnh báo mức ERROR **mới** trong PR | Alerts = Errors, Security ≥ High |
+| **Semgrep-du-an** — 43 rule tự viết (10 rule lần theo luồng dữ liệu) | cảnh báo mức ERROR **mới** trong PR | Alerts = Errors, Security ≥ High |
 | **CodeQL** — lần theo luồng dữ liệu qua biến, hàm, tệp; mọi ngôn ngữ tự nhận; nguồn: request + CSDL, tệp, biến môi trường | cảnh báo Medium trở lên **mới** trong PR | Alerts = Errors, Security ≥ Medium |
 | **OWASP-ZAP** — quét toàn bộ app dựng từ code PR | alert risk High **mới** | Security ≥ High |
+| **retire.js** — thư viện JS chép sẵn trong repo (`wwwroot/lib`, `vendor/`) | PR **thêm hoặc đổi** tệp thư viện dính CVE Medium trở lên | Alerts = Errors, Security ≥ Medium |
 | **dependency-review** — job riêng của GitHub | PR **thêm hoặc nâng** gói dính CVE ≥ High | required check |
 | **Push protection** của GitHub | secret trong commit — chặn ngay lúc `git push` | bật trong Settings |
 | Semgrep-cong-dong, Trivy, Gitleaks | không chặn | tham khảo / theo dõi |
 
-Năm nguồn chặn **cộng dồn** — không nguồn nào gạt được nguồn khác. Cho qua chỉ theo hai cách, cả hai để lại dấu vết:
+Sáu nguồn chặn **cộng dồn** — không nguồn nào gạt được nguồn khác. Cho qua chỉ theo hai cách, cả hai để lại dấu vết:
 
 - **Dismiss alert** trong tab Security, chọn lý do (false positive / won't fix / used in tests) và ghi chú. GitHub ghi audit log; lần chạy sau không báo lại. Không sửa code để né, không `nosemgrep`.
 - **Hạ rule** xuống WARNING ở cấp bộ công cụ, khi một rule bị dismiss quá ~10% (ngưỡng Google dùng để tắt analyzer). Sửa ở nguồn, không sửa từng PR.
@@ -46,6 +47,7 @@ Dev chỉ thấy hai trạng thái: **CHẶN** — tệp:dòng, lỗi gì, cách
 |---|---|---|---|
 | 0 | Gitleaks | toàn bộ tệp | secret lộ trong mã nguồn |
 | 1 | `sca.py` + dotnet; dependency-review | `*.csproj` | CVE trong gói NuGet; gói mới dính CVE |
+| 1b | retire.js (`retire_sarif.py` đổi sang SARIF) | tệp JS trong repo — `wwwroot/lib`, `vendor/`, `*.min.js` | thư viện JS **chép sẵn** dính CVE: không nằm trong tệp khai báo gói nào nên tầng 1 không thấy |
 | 2 | Semgrep — rule dự án + rule cộng đồng | mọi ngôn ngữ tự nhận | cảnh báo theo **hình dạng** dòng code, tách hai mức tin cậy |
 | 2b | CodeQL `security-extended` — job riêng, chạy song song | mọi ngôn ngữ CodeQL hỗ trợ (C#, JS/TS, Python, Java, Go, Actions...) | cảnh báo theo **luồng dữ liệu**: từ tham số request tới câu SQL, `innerHTML`, lệnh hệ điều hành... qua biến, hàm, tệp |
 | 3 | `gen_routes_map.py` | Controller, Razor Pages | bản đồ (URL, tham số) và **phạm vi DAST tới được** |
@@ -108,7 +110,7 @@ Chỉ quét khi **mở PR** và khi push vào `main` — mỗi PR một check, m
 
 Rồi bật cổng phía GitHub — Settings của repo:
 
-1. **Rules → Rulesets** → ruleset cho `main`: *Require a pull request* (1 approval) · *Require code scanning results* → thêm `Semgrep-du-an` (Alerts: Errors, Security: High or higher), `CodeQL` (Alerts: Errors, Security: **Medium** or higher) và `OWASP-ZAP` (Security: High or higher) · *Require status checks* → `security / dependency-review` · bypass list **để trống**.
+1. **Rules → Rulesets** → ruleset cho `main`: *Require a pull request* (1 approval) · *Require code scanning results* → thêm `Semgrep-du-an` (Alerts: Errors, Security: High or higher), `CodeQL` (Alerts: Errors, Security: **Medium** or higher) `OWASP-ZAP` (Security: High or higher) và `retire.js` (Alerts: Errors, Security: **Medium** or higher — retire.js xếp mọi CVE của jQuery cũ ở mức medium/low, đặt High thì thêm jQuery cũ vẫn lọt) · *Require status checks* → `security / dependency-review` · bypass list **để trống**.
 2. **Code security** → bật *Secret scanning* + *Push protection*, *Dependabot alerts* + *security updates*.
 
 Tên công cụ trong ruleset chỉ xuất hiện sau khi pipeline đã chạy ít nhất một lần trên `main` — push một lần trước rồi mới cấu hình.
@@ -153,6 +155,7 @@ Tệp tuỳ chọn ở gốc repo đích: `devsecops-seeds.json` — giá trị 
 ```
 tools/
   sca.py                tầng 1 — đối chiếu NuGet với CSDL lỗ hổng
+  retire_sarif.py       tầng 1b — kết quả retire.js (thư viện JS nhúng sẵn) → SARIF cho Code Scanning
   gen_routes_map.py     tầng 3 — bản đồ endpoint, Controller và Razor Pages
   trivy.py              tầng 4 — cấu hình, SBOM, so sánh image trước/sau gia cố
   dast_scan.py          tầng 5 — ZAP quét toàn bộ app tạm, nạp OpenAPI nếu có
@@ -168,7 +171,7 @@ tools/
   pre_commit_scan.py    hook pre-commit — tư vấn, không phải hàng rào
 
 semgrep-rules/
-  sast-detect.yaml      39 rule phát hiện (tiền tố dso-), 17 CWE — ERROR chặn, WARNING tham khảo
+  sast-detect.yaml      43 rule phát hiện (tiền tố dso-), 17 CWE — ERROR chặn, WARNING tham khảo
   sanitizer-check.yaml  rule tìm bằng chứng khử độc (dashboard cục bộ)
   kiem-thu-rule/        fixture tự kiểm chứng bộ rule (mã có lỗi cố ý)
 
@@ -193,7 +196,7 @@ Rule của dự án **cố ý không phủ hết mọi loại lỗ hổng**. Nó
 | Xử lý input | 79 XSS · 22 path traversal · 113 response splitting |
 | Gọi ra ngoài | 918 SSRF · 601 open redirect · 611 XXE |
 
-Trong 39 rule, 33 rule ở mức **ERROR** (có quyền chặn) và 6 rule ở mức **WARNING** (chỉ chú thích): 3 rule bắt theo tên biến, rule đường dẫn dạng mẫu (bản lần theo luồng dữ liệu giữ quyền chặn), MD5/SHA-1 và `System.Random` (rule không biết mục đích sử dụng). Quy tắc là *chỉ chặn bằng thứ gần như không báo nhầm*.
+Trong 43 rule, 28 rule ở mức **ERROR** (có quyền chặn) và 15 rule ở mức **WARNING** (chỉ chú thích): 3 rule bắt theo tên biến, 10 rule dạng mẫu "nối chuỗi" cho SQLi / lệnh hệ điều hành / LDAP / XPath / đường dẫn (bản lần theo luồng dữ liệu của chúng giữ quyền chặn — trên Juliet, bản mẫu bắt 100% case lỗi nhưng cũng báo nhầm 100% case đã sửa), MD5/SHA-1 và `System.Random` (rule không biết mục đích sử dụng). Quy tắc là *chỉ chặn bằng thứ gần như không báo nhầm*.
 
 Phần bề rộng — mã hoá yếu, mật khẩu cứng, deserialization, cấu hình sai — để `p/csharp` và `p/security-audit` lo; kết quả vào `Semgrep-cong-dong`, tham khảo. Viết lại chỉ tạo báo trùng, trong khi hai bộ đó được cập nhật hằng ngày.
 

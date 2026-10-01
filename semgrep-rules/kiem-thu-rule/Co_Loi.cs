@@ -40,7 +40,7 @@ namespace KiemThuRule
         // CWE-89 : SQL Injection
         // ------------------------------------------------------------------
 
-        // rule: dso-sqli-commandtext-concat
+        // rule: dso-sqli-commandtext-concat, dso-taint-sqli
         public void Sqli_CommandTextConcat(SqlCommand cmd, string ten)
         {
             cmd.CommandText = "SELECT * FROM SanPham WHERE Ten = '" + ten + "'";
@@ -120,7 +120,7 @@ namespace KiemThuRule
         // CWE-78 : OS Command Injection
         // ------------------------------------------------------------------
 
-        // rule: dso-cmdi-process-start-concat
+        // rule: dso-cmdi-process-start-concat, dso-taint-cmdi
         public void Cmdi_ProcessStart(string tenTep)
         {
             Process.Start("convert " + tenTep + " out.png");
@@ -170,7 +170,7 @@ namespace KiemThuRule
         // CWE-643 : XPath Injection
         // ------------------------------------------------------------------
 
-        // rule: dso-xpathi-select-concat
+        // rule: dso-xpathi-select-concat, dso-taint-xpathi
         public XmlNode XPathi_SelectSingleNode(XmlDocument doc, string ten)
         {
             return doc.SelectSingleNode("//NguoiDung[@ten='" + ten + "']");
@@ -237,7 +237,7 @@ namespace KiemThuRule
         // CWE-90 : LDAP Injection
         // ------------------------------------------------------------------
 
-        // rule: dso-ldapi-filter-concat
+        // rule: dso-ldapi-filter-concat, dso-taint-ldapi
         public void Ldapi_Filter(DirectorySearcher s, string ten)
         {
             s.Filter = "(&(objectClass=user)(cn=" + ten + "))";

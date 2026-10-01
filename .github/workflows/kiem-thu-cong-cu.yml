@@ -1,0 +1,75 @@
+name: Kiem thu cong cu (tang 1b)
+
+# Kiem thu dau-cuoi cho tang thu vien JS nhung san: chay retire.js THAT tren
+# mot tep jQuery GIA (chi co chu thich dau tep "jQuery v1.8.1"), doi sang SARIF
+# bang tools/retire_sarif.py, roi kiem tra ket qua. Giong chay_kiem_thu.py cua
+# bo rule: cong cu chua chay thu tren dau vao biet truoc dap an thi chua tin duoc.
+on:
+  pull_request:
+    paths:
+      - tools/retire_sarif.py
+      - semgrep-rules/kiem-thu-rule/thu-vien-js/**
+      - .github/workflows/kiem-thu-cong-cu.yml
+      - .github/workflows/devsecops-reusable.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  retire:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: retire.js tren fixture
+        run: |
+          mkdir -p ket-qua
+          npx --yes retire@5.7.0 --path semgrep-rules/kiem-thu-rule/thu-vien-js --verbose \
+            --outputformat json --outputpath ket-qua/retire.json --exitwith 0
+          python -m json.tool ket-qua/retire.json | head -60
+
+      - name: Doi sang SARIF va kiem tra dap an
+        run: |
+          # 1) Fixture phai bi bat: jQuery 1.8.1 co nhieu CVE da cong bo.
+          #    --giu-kiem-thu: TAT loai tru mac dinh kiem-thu-rule o rieng lan nay.
+          python tools/retire_sarif.py --vao ket-qua/retire.json --ra ket-qua/co-loi.sarif \
+            --giu-kiem-thu --summary >> "$GITHUB_STEP_SUMMARY"
+          # 2) Chay nhu trong pipeline (loai tru kiem-thu-rule): phai ra 0 ket qua.
+          python tools/retire_sarif.py --vao ket-qua/retire.json --ra ket-qua/loai-tru.sarif
+          # 3) Thieu dau vao: phai thoat ma khac 0 va KHONG ghi SARIF.
+          #    (2>/dev/null: annotation ::error:: o day la DU KIEN, khong de hien do.)
+          if python tools/retire_sarif.py --vao ket-qua/khong-co.json --ra ket-qua/loi.sarif 2>/dev/null; then
+            echo "::error::Thieu dau vao ma van thoat 0"; exit 1
+          fi
+          test ! -f ket-qua/loi.sarif || { echo "::error::Loi ma van ghi SARIF"; exit 1; }
+          # 4) Duong dan ngoai thu muc lam viec: phai bi tu choi.
+          if python tools/retire_sarif.py --vao /etc/hostname --ra ket-qua/ngoai.sarif 2>/dev/null; then
+            echo "::error::Doc tep ngoai thu muc lam viec ma khong bi tu choi"; exit 1
+          fi
+          test ! -f ket-qua/ngoai.sarif || { echo "::error::Bi tu choi ma van ghi SARIF"; exit 1; }
+          python - <<'PY'
+          import json, sys
+          a = json.load(open("ket-qua/co-loi.sarif"))["runs"][0]
+          b = json.load(open("ket-qua/loai-tru.sarif"))["runs"][0]
+          loi = []
+          if a["tool"]["driver"]["name"] != "retire.js":
+              loi.append("ten cong cu trong SARIF phai la retire.js (ruleset dua vao ten nay)")
+          if not a["results"]:
+              loi.append("retire.js + retire_sarif.py KHONG bat duoc jQuery 1.8.1 - tang 1b mu")
+          for r in a["results"]:
+              uri = r["locations"][0]["physicalLocation"]["artifactLocation"]["uri"]
+              if not uri.endswith("thu-vien-js/jquery-1.8.1.min.js") or uri.startswith("/"):
+                  loi.append(f"duong dan sai: {uri}")
+                  break
+          diem = {x["id"]: float(x["properties"]["security-severity"]) for x in a["tool"]["driver"]["rules"]}
+          if not all(0 < d <= 10 for d in diem.values()):
+              loi.append(f"security-severity ngoai khoang: {diem}")
+          if b["results"]:
+              loi.append(f"loai tru kiem-thu-rule khong chay: con {len(b['results'])} ket qua")
+          print(f"{len(a['results'])} ket qua, {len(diem)} rule:", ", ".join(sorted(diem)))
+          if loi:
+              print("KIEM THU THAT BAI:"); [print("  -", x) for x in loi]; sys.exit(1)
+          print("KIEM THU DAT")
+          PY

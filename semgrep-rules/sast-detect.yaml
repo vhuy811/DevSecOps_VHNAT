@@ -78,7 +78,10 @@ rules:
 
   - id: dso-sqli-commandtext-concat
     languages: [csharp]
-    severity: ERROR
+    # G2.3b: ha tu ERROR xuong WARNING. Rule mau khong phan biet noi hang so
+    # voi noi input (Juliet: bat 100%, bao nham 100%). Quyen chan chuyen sang
+    # dso-taint-sqli (lan theo luong du lieu).
+    severity: WARNING
     message: >-
       CWE-89: CommandText duoc dung tu phep noi chuoi. Neu mot phan chuoi den tu
       input nguoi dung thi day la lo hong SQL Injection.
@@ -97,7 +100,10 @@ rules:
 
   - id: dso-sqli-commandtext-interpolated
     languages: [csharp]
-    severity: ERROR
+    # G2.3b: ha tu ERROR xuong WARNING. Rule mau khong phan biet noi hang so
+    # voi noi input (Juliet: bat 100%, bao nham 100%). Quyen chan chuyen sang
+    # dso-taint-sqli (lan theo luong du lieu).
+    severity: WARNING
     message: >-
       CWE-89: CommandText duoc dung bang chuoi noi suy hoac string.Format.
       Gia tri duoc noi thang vao cau lenh, khong qua tham so hoa.
@@ -132,7 +138,10 @@ rules:
 
   - id: dso-sqli-sqlcommand-ctor-concat
     languages: [csharp]
-    severity: ERROR
+    # G2.3b: ha tu ERROR xuong WARNING. Rule mau khong phan biet noi hang so
+    # voi noi input (Juliet: bat 100%, bao nham 100%). Quyen chan chuyen sang
+    # dso-taint-sqli (lan theo luong du lieu).
+    severity: WARNING
     message: >-
       CWE-89: Cau lenh SQL duoc noi chuoi ngay trong ham dung SqlCommand /
       OleDbCommand / MySqlCommand / NpgsqlCommand.
@@ -153,7 +162,10 @@ rules:
 
   - id: dso-sqli-efcore-raw
     languages: [csharp]
-    severity: ERROR
+    # G2.3b: ha tu ERROR xuong WARNING. Rule mau khong phan biet noi hang so
+    # voi noi input (Juliet: bat 100%, bao nham 100%). Quyen chan chuyen sang
+    # dso-taint-sqli (lan theo luong du lieu).
+    severity: WARNING
     message: >-
       CWE-89: Entity Framework chay SQL tho voi chuoi duoc noi hoac noi suy.
       Ban FromSqlInterpolated / ExecuteSqlInterpolated moi la ban tham so hoa;
@@ -177,7 +189,10 @@ rules:
 
   - id: dso-sqli-dapper-concat
     languages: [csharp]
-    severity: ERROR
+    # G2.3b: ha tu ERROR xuong WARNING. Rule mau khong phan biet noi hang so
+    # voi noi input (Juliet: bat 100%, bao nham 100%). Quyen chan chuyen sang
+    # dso-taint-sqli (lan theo luong du lieu).
+    severity: WARNING
     message: >-
       CWE-89: Dapper nhan cau lenh duoc noi chuoi. Dapper co ho tro tham so
       (doi tuong an danh o doi so thu hai) nhung chuoi lenh van phai la hang.
@@ -307,7 +322,10 @@ rules:
 
   - id: dso-cmdi-process-start-concat
     languages: [csharp]
-    severity: ERROR
+    # G2.3b: ha tu ERROR xuong WARNING. Rule mau khong phan biet noi hang so
+    # voi noi input (Juliet: bat 100%, bao nham 100%). Quyen chan chuyen sang
+    # dso-taint-cmdi (lan theo luong du lieu).
+    severity: WARNING
     message: >-
       CWE-78: Lenh he dieu hanh duoc dung tu noi chuoi. Input nguoi dung lot vao
       day la chay duoc lenh tuy y tren may chu.
@@ -327,7 +345,10 @@ rules:
 
   - id: dso-cmdi-processstartinfo-arguments
     languages: [csharp]
-    severity: ERROR
+    # G2.3b: ha tu ERROR xuong WARNING. Rule mau khong phan biet noi hang so
+    # voi noi input (Juliet: bat 100%, bao nham 100%). Quyen chan chuyen sang
+    # dso-taint-cmdi (lan theo luong du lieu).
+    severity: WARNING
     message: >-
       CWE-78: Thuoc tinh Arguments duoc gan bang chuoi ghep. Dung ArgumentList
       thay cho Arguments thi tung doi so duoc tach rieng, khong con cho chen lenh.
@@ -456,7 +477,10 @@ rules:
 
   - id: dso-xpathi-select-concat
     languages: [csharp]
-    severity: ERROR
+    # G2.3b: ha tu ERROR xuong WARNING. Rule mau khong phan biet noi hang so
+    # voi noi input (Juliet: bat 100%, bao nham 100%). Quyen chan chuyen sang
+    # dso-taint-xpathi (lan theo luong du lieu).
+    severity: WARNING
     message: >-
       CWE-643: Bieu thuc XPath duoc dung tu noi chuoi. Ke tan cong chen
       " or '1'='1' " de lay toan bo nut, y het SQL Injection nhung tren XML.
@@ -643,7 +667,10 @@ rules:
 
   - id: dso-ldapi-filter-concat
     languages: [csharp]
-    severity: ERROR
+    # G2.3b: ha tu ERROR xuong WARNING. Rule mau khong phan biet noi hang so
+    # voi noi input (Juliet: bat 100%, bao nham 100%). Quyen chan chuyen sang
+    # dso-taint-ldapi (lan theo luong du lieu).
+    severity: WARNING
     message: >-
       CWE-90: Bo loc LDAP duoc dung tu noi chuoi. Ky tu ) ( * | & trong input
       lam doi hoan toan y nghia cua bo loc.
@@ -985,6 +1012,254 @@ rules:
           - pattern-either:
               - pattern: $RESP.StatusDescription = $X
               - pattern: $FEAT.ReasonPhrase = $X
+          - focus-metavariable: $X
+
+  # ===========================================================================
+  # G2.3b - BAN LAN THEO LUONG DU LIEU (taint) CHO CAC LOAI CHEN LENH
+  #
+  # Phong do Juliet C# (PR #7) cho thay cac rule mau "noi chuoi vao CommandText /
+  # Process.Start / Filter" bat 100% case loi NHUNG cung bao nham 100% case da
+  # sua: ham goodG2B cua Juliet cung noi chuoi, chi la noi HANG SO. Rule mau
+  # khong phan biet duoc hai truong hop do (Youden = 0, khong hon doan mo).
+  #
+  # Cac rule duoi day chi bao khi chuoi noi vao THAT SU mang du lieu tu request
+  # (cung bo nguon voi nhom rule taint G2.3). Rule mau cu duoc giu lai o muc
+  # WARNING: van hien chu thich de nguoi review nhin, nhung khong chan merge.
+  #
+  # Gioi han can biet: Semgrep CE chi lan trong MOT ham. Du lieu di qua ham
+  # khac, tep khac, collection... thi rule nay khong thay - phan do CodeQL
+  # (threat model local) bat.
+  # ===========================================================================
+
+  - id: dso-taint-sqli
+    mode: taint
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      CWE-89: Du lieu tu request duoc noi vao cau lenh SQL (CommandText, ham dung
+      SqlCommand, FromSqlRaw / ExecuteSqlRaw, Dapper) ma khong qua tham so hoa.
+      Dung tham so (@ten + Parameters.Add) hoac ban ...Interpolated cua EF Core.
+    metadata:
+      cwe: "CWE-89"
+      category: security
+      subcategory: [vuln]
+      confidence: HIGH
+      references:
+        - https://cwe.mitre.org/data/definitions/89.html
+    pattern-sources:
+      - pattern: $R.QueryString[$K]
+      - pattern: $R.QueryString.Get(...)
+      - pattern: $R.Params[$K]
+      - pattern: $R.Params.Get(...)
+      - pattern: $R.Form[$K]
+      - pattern: $R.Form.Get(...)
+      - pattern: $R.Cookies
+      - pattern: $R.Headers[$K]
+      - pattern: $R.Query[$K]
+      - pattern: $R.RouteValues[$K]
+      - patterns:
+          # Tham so cua action trong lop ke thua Controller / ControllerBase /
+          # PageModel. Phai viet "class $C : $B" - Semgrep C# KHONG khop
+          # "class $C { ... }" voi lop co lop cha (da thu tren playground).
+          # Va dung focus-metavariable de chi dung tham so lam nguon.
+          - pattern-inside: |
+              class $C : $B { ... }
+          - metavariable-regex:
+              metavariable: $B
+              regex: (Controller|ControllerBase|PageModel)$
+          - pattern-inside: |
+              public $RET $M(..., $T $P, ...) { ... }
+          - focus-metavariable: $P
+    pattern-sanitizers:
+      - pattern: int.Parse(...)
+      - pattern: long.Parse(...)
+      - pattern: Guid.Parse(...)
+      - pattern: Convert.ToInt32(...)
+      - pattern: Convert.ToInt64(...)
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: $CMD.CommandText = $X
+              - pattern: $CMD.CommandText += $X
+              - pattern: new SqlCommand($X, ...)
+              - pattern: new OleDbCommand($X, ...)
+              - pattern: new MySqlCommand($X, ...)
+              - pattern: new NpgsqlCommand($X, ...)
+              - pattern: new SqliteCommand($X, ...)
+              - pattern: new SqlDataAdapter($X, ...)
+              - pattern: $CTX.$T.FromSqlRaw($X, ...)
+              - pattern: $CTX.Database.ExecuteSqlRaw($X, ...)
+              - pattern: $CTX.Database.ExecuteSqlRawAsync($X, ...)
+              - pattern: $CTX.Database.SqlQueryRaw<$T>($X, ...)
+              - pattern: $CONN.Query($X, ...)
+              - pattern: $CONN.Query<$T>($X, ...)
+              - pattern: $CONN.QueryAsync<$T>($X, ...)
+              - pattern: $CONN.QueryFirstOrDefault<$T>($X, ...)
+              - pattern: $CONN.QuerySingleOrDefault<$T>($X, ...)
+              - pattern: $CONN.Execute($X, ...)
+              - pattern: $CONN.ExecuteAsync($X, ...)
+          - focus-metavariable: $X
+
+  - id: dso-taint-cmdi
+    mode: taint
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      CWE-78: Du lieu tu request di vao lenh he dieu hanh (Process.Start,
+      ProcessStartInfo.FileName / Arguments). Dung ArgumentList de tach tung doi
+      so va khong goi qua shell.
+    metadata:
+      cwe: "CWE-78"
+      category: security
+      subcategory: [vuln]
+      confidence: HIGH
+      references:
+        - https://cwe.mitre.org/data/definitions/78.html
+    pattern-sources:
+      - pattern: $R.QueryString[$K]
+      - pattern: $R.QueryString.Get(...)
+      - pattern: $R.Params[$K]
+      - pattern: $R.Params.Get(...)
+      - pattern: $R.Form[$K]
+      - pattern: $R.Form.Get(...)
+      - pattern: $R.Cookies
+      - pattern: $R.Headers[$K]
+      - pattern: $R.Query[$K]
+      - pattern: $R.RouteValues[$K]
+      - patterns:
+          # Tham so cua action trong lop ke thua Controller / ControllerBase /
+          # PageModel. Phai viet "class $C : $B" - Semgrep C# KHONG khop
+          # "class $C { ... }" voi lop co lop cha (da thu tren playground).
+          # Va dung focus-metavariable de chi dung tham so lam nguon.
+          - pattern-inside: |
+              class $C : $B { ... }
+          - metavariable-regex:
+              metavariable: $B
+              regex: (Controller|ControllerBase|PageModel)$
+          - pattern-inside: |
+              public $RET $M(..., $T $P, ...) { ... }
+          - focus-metavariable: $P
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: Process.Start($X)
+              - pattern: Process.Start($X, $A)
+              - pattern: Process.Start($F, $X)
+              - pattern: System.Diagnostics.Process.Start($X, ...)
+              - pattern: new ProcessStartInfo($X, ...)
+              - pattern: new ProcessStartInfo($F, $X)
+              - pattern: $PSI.FileName = $X
+              - pattern: $PSI.Arguments = $X
+          - focus-metavariable: $X
+
+  - id: dso-taint-ldapi
+    mode: taint
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      CWE-90: Du lieu tu request duoc noi vao bo loc / duong dan LDAP. Ky tu
+      ) ( * | & trong input doi hoan toan y nghia bo loc. Ma hoa bang
+      Encoder.LdapFilterEncode truoc khi noi.
+    metadata:
+      cwe: "CWE-90"
+      category: security
+      subcategory: [vuln]
+      confidence: HIGH
+      references:
+        - https://cwe.mitre.org/data/definitions/90.html
+    pattern-sources:
+      - pattern: $R.QueryString[$K]
+      - pattern: $R.QueryString.Get(...)
+      - pattern: $R.Params[$K]
+      - pattern: $R.Params.Get(...)
+      - pattern: $R.Form[$K]
+      - pattern: $R.Form.Get(...)
+      - pattern: $R.Cookies
+      - pattern: $R.Headers[$K]
+      - pattern: $R.Query[$K]
+      - pattern: $R.RouteValues[$K]
+      - patterns:
+          # Tham so cua action trong lop ke thua Controller / ControllerBase /
+          # PageModel. Phai viet "class $C : $B" - Semgrep C# KHONG khop
+          # "class $C { ... }" voi lop co lop cha (da thu tren playground).
+          # Va dung focus-metavariable de chi dung tham so lam nguon.
+          - pattern-inside: |
+              class $C : $B { ... }
+          - metavariable-regex:
+              metavariable: $B
+              regex: (Controller|ControllerBase|PageModel)$
+          - pattern-inside: |
+              public $RET $M(..., $T $P, ...) { ... }
+          - focus-metavariable: $P
+    pattern-sanitizers:
+      - pattern: Encoder.LdapFilterEncode(...)
+      - pattern: Encoder.LdapDistinguishedNameEncode(...)
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: $S.Filter = $X
+              - pattern: new DirectorySearcher($X)
+              - pattern: new DirectorySearcher($E, $X, ...)
+              - pattern: new DirectoryEntry($X, ...)
+              - pattern: new SearchRequest($DN, $X, ...)
+          - focus-metavariable: $X
+
+  - id: dso-taint-xpathi
+    mode: taint
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      CWE-643: Du lieu tu request duoc noi vao bieu thuc XPath. Chen
+      " or '1'='1' " la lay duoc moi nut - y het SQL Injection nhung tren XML.
+      Dung bien XPath (XsltArgumentList / XPathExpression.SetContext).
+    metadata:
+      cwe: "CWE-643"
+      category: security
+      subcategory: [vuln]
+      confidence: HIGH
+      references:
+        - https://cwe.mitre.org/data/definitions/643.html
+    pattern-sources:
+      - pattern: $R.QueryString[$K]
+      - pattern: $R.QueryString.Get(...)
+      - pattern: $R.Params[$K]
+      - pattern: $R.Params.Get(...)
+      - pattern: $R.Form[$K]
+      - pattern: $R.Form.Get(...)
+      - pattern: $R.Cookies
+      - pattern: $R.Headers[$K]
+      - pattern: $R.Query[$K]
+      - pattern: $R.RouteValues[$K]
+      - patterns:
+          # Tham so cua action trong lop ke thua Controller / ControllerBase /
+          # PageModel. Phai viet "class $C : $B" - Semgrep C# KHONG khop
+          # "class $C { ... }" voi lop co lop cha (da thu tren playground).
+          # Va dung focus-metavariable de chi dung tham so lam nguon.
+          - pattern-inside: |
+              class $C : $B { ... }
+          - metavariable-regex:
+              metavariable: $B
+              regex: (Controller|ControllerBase|PageModel)$
+          - pattern-inside: |
+              public $RET $M(..., $T $P, ...) { ... }
+          - focus-metavariable: $P
+    # Juliet goodB2G: System.Security.SecurityElement.Escape (doi ' thanh &apos;).
+    # CodeQL khong coi ham nay la lam sach nen bao nham 76% CWE-643.
+    pattern-sanitizers:
+      - pattern: SecurityElement.Escape(...)
+      - pattern: System.Security.SecurityElement.Escape(...)
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: $NAV.Evaluate($X, ...)
+              - pattern: $NAV.Select($X, ...)
+              - pattern: $NAV.SelectSingleNode($X, ...)
+              - pattern: $DOC.SelectNodes($X, ...)
+              - pattern: XPathExpression.Compile($X, ...)
+              - pattern: $NAV.Compile($X)
+              - pattern: $EL.XPathSelectElements($X, ...)
+              - pattern: $EL.XPathSelectElement($X, ...)
+              - pattern: $EL.XPathEvaluate($X, ...)
           - focus-metavariable: $X
 
   # ===========================================================================

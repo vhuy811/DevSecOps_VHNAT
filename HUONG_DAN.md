@@ -212,6 +212,7 @@ Trên trang PR, các check:
 | `Code scanning results / CodeQL` | **có** | cảnh báo Medium trở lên **mới** — dữ liệu từ request chảy tới chỗ nguy hiểm |
 | `security / codeql (<ngôn ngữ>)` | không | job CodeQL không chạy xong — xem log |
 | `Code scanning results / OWASP-ZAP` | **có** | ZAP khai thác được lỗi High trên app dựng từ PR |
+| `Code scanning results / retire.js` | **có** | PR thêm/đổi thư viện JS chép sẵn dính CVE Medium trở lên |
 | `security / dependency-review` | **có** | gói mới thêm/nâng dính CVE ≥ High |
 | `Code scanning results / Semgrep-cong-dong`, `/ gitleaks`, `/ Trivy` | không | tham khảo |
 
@@ -226,7 +227,7 @@ Settings của repo:
 **Rules → Rulesets → New branch ruleset**, tên `main`, Enforcement **Active**, target *default branch*, bypass list **trống**:
 
 - ☑ Require a pull request before merging → Required approvals **1**
-- ☑ Require code scanning results → Add tool `Semgrep-du-an` (Alerts: **Errors**, Security: **High or higher**) · Add tool `CodeQL` (Alerts: **Errors**, Security: **Medium or higher**) · Add tool `OWASP-ZAP` (Security: **High or higher**)
+- ☑ Require code scanning results → Add tool `Semgrep-du-an` (Alerts: **Errors**, Security: **High or higher**) · Add tool `CodeQL` (Alerts: **Errors**, Security: **Medium or higher**) · Add tool `OWASP-ZAP` (Security: **High or higher**) · Add tool `retire.js` (Alerts: **Errors**, Security: **Medium or higher**)
 
   CodeQL để **Medium**, không phải High: chuyển hướng mở (6.1), lộ thông tin qua lỗi (5.4), cookie thiếu `Secure` (5.0) được CodeQL bắt với 0–3% báo nhầm trên Juliet nhưng đều dưới 7 điểm — để High thì cả ba loại lọt cổng. Nếu repo đang bật CodeQL *Default setup* thì tắt đi (Settings → Code security → CodeQL analysis → Disable): GitHub từ chối kết quả CodeQL của workflow khi Default setup đang bật.
 - ☑ Require status checks to pass → `security / dependency-review` · ☑ Require branches to be up to date
@@ -250,7 +251,7 @@ Chỉnh loại email nhận ở github.com/settings/notifications (mục *Action
 
 ## 6. Commit chỉ sửa tài liệu
 
-**PR luôn được quét đầy đủ**, kể cả PR chỉ sửa README. Lý do: ruleset *Require code scanning results* đòi `Semgrep-du-an`, `CodeQL` và `OWASP-ZAP` có kết quả cho từng commit của PR. Bỏ qua các tầng đó thì PR treo mãi ở "Code scanning is waiting for results" và không merge được.
+**PR luôn được quét đầy đủ**, kể cả PR chỉ sửa README. Lý do: ruleset *Require code scanning results* đòi `Semgrep-du-an`, `CodeQL`, `OWASP-ZAP` và `retire.js` có kết quả cho từng commit của PR. Bỏ qua các tầng đó thì PR treo mãi ở "Code scanning is waiting for results" và không merge được.
 
 Chỉ commit trên `main` (sau khi merge) mà toàn là `.md`, `.txt`, ảnh, `docs/`, `LICENSE` mới được rút gọn: CI bỏ qua các tầng cần build và chạy app, xong trong khoảng 20 giây. Gitleaks **vẫn chạy**, vì một tệp `.md` hoàn toàn có thể chứa token bị dán nhầm.
 
@@ -316,7 +317,7 @@ Lưu ý khi chọn action cho bước 2: action có **tham số GET** thì ZAP m
 ## 9. Giới hạn cần biết
 
 - Bộ rule của dự án là **C#** và phủ **12 mã CWE** mà ZAP xác nhận động được. Repo ngôn ngữ khác thì chỉ còn rule cộng đồng chạy.
-- **33/39 rule dự án có quyền chặn** (mức ERROR); 6 rule chỉ chú thích. Rule cộng đồng không chặn.
+- **28/43 rule dự án có quyền chặn** (mức ERROR); 15 rule chỉ chú thích. Rule cộng đồng không chặn.
 - Cảnh báo thuộc CWE **ngoài bảng ánh xạ** (deserialization, IDOR, mã hoá yếu…) hiện trong báo cáo ở mục riêng và **không tính vào cổng chặn** — không có công cụ nào kiểm chứng chúng được.
 - Tầng 5 chỉ chạy với **ứng dụng tự chứa** — app cần SQL Server, Redis hay dịch vụ ngoài thì phải thêm service container vào CI.
 - Tầng 5 chỉ phủ được endpoint có **tham số GET kiểu đơn giản**. VulnShop phủ 43%, eShopOnWeb phủ 9%. Tầng 3 đo và công bố con số này thay vì giấu.
