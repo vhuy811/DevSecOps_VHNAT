@@ -25,6 +25,7 @@ name: DevSecOps - nam tang kiem thu (dung chung)
 #   Semgrep-du-an  : Alerts = Errors, Security >= High   (rule tu viet, tin cay cao)
 #   CodeQL         : Alerts = Errors, Security >= Medium (lan theo luong du lieu - job codeql)
 #   OWASP-ZAP      : Security >= High                   (DAST tren app dung tu PR)
+#   DAST-runtime   : Security >= Medium                 (rule runtime chon lam_khoa: CSP, X-Frame-Options)
 #   dependency-review (job rieng): required check      (goi MOI dinh CVE >= High)
 # Rule cong dong, Trivy, Gitleaks day len de tham khao/theo doi. Bao nham xu ly
 # bang Dismiss + ly do trong tab Security - co audit, khong sua code de ne.
@@ -528,6 +529,12 @@ jobs:
             python "$TOOLKIT/tools/sarif_tools.py" zap \
               --in reports/zap-alerts.json --routes routes_map.json \
               --fallback-file "$FB" --out reports/zap.sarif
+            # G3.3: rule runtime da chon (lam_khoa) -> cong cu RIENG 'DAST-runtime'
+            # (nguong Medium, tach khoi cong High cua ZAP). Luon ghi SARIF (rong
+            # khi main sach) de thiet lap baseline; PR lam mat header -> alert MOI -> chan.
+            python "$TOOLKIT/tools/sarif_tools.py" runtime \
+              --in reports/zap-alerts.json \
+              --fallback-file "$FB" --out reports/runtime.sarif
           fi
 
       # ===============================================================
@@ -572,7 +579,9 @@ jobs:
           if z:
               al = z.get("alerts", []); print(f"| 4. DAST | High {sum(1 for x in al if x['risk']=='High')} · Medium {sum(1 for x in al if x['risk']=='Medium')} · Low/Info {sum(1 for x in al if x['risk'] in ('Low','Informational'))} |")
               rt = z.get("rule_runtime", [])
-              if rt: print(f"| 4b. Rule runtime (report-only) | {len(rt)} phat hien header/cookie: {', '.join(sorted({x['alert'].split(':')[0] for x in rt}))} |")
+              if rt:
+                  nk = sum(1 for x in rt if x.get("lam_khoa"))
+                  print(f"| 4b. Rule runtime | {len(rt)} phat hien header/cookie ({nk} lam_khoa -> DAST-runtime CHAN, {len(rt)-nk} report-only) |")
           print()
           PY
 
@@ -626,6 +635,13 @@ jobs:
         with:
           sarif_file: reports/zap.sarif
           category: zap
+
+      - name: Code Scanning - DAST runtime (rule chon lam khoa, nguong Medium)
+        if: always() && hashFiles('reports/runtime.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: reports/runtime.sarif
+          category: runtime
 
       - name: Code Scanning - secret
         if: always() && hashFiles('reports/gitleaks.sarif') != ''
