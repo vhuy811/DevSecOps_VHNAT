@@ -117,7 +117,7 @@ jobs:
 
     steps:
       - name: Lay ma nguon cua repo goi
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -208,7 +208,7 @@ jobs:
           echo "GITLEAKS_COUNT=$N" >> $GITHUB_ENV
 
       - name: Keo bo cong cu DevSecOps ve
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: vhuy811/DevSecOps_VHNAT
           ref: ${{ inputs.toolkit-ref }}
@@ -268,7 +268,7 @@ jobs:
 
       - name: Cai .NET SDK
         if: steps.pham_vi.outputs.chi_tai_lieu != 'true' && steps.du_an.outputs.project_file != ''
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: ${{ inputs.dotnet-version }}
 
@@ -666,7 +666,7 @@ jobs:
 
       - name: Luu bao cao lam artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: bao-cao-bao-mat
           path: reports/
@@ -700,10 +700,10 @@ jobs:
       codeql: ${{ steps.nn.outputs.codeql_matrix }}
       nhung: ${{ steps.nn.outputs.thu_muc_nhung }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Keo bo cong cu DevSecOps ve
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: vhuy811/DevSecOps_VHNAT
           ref: ${{ inputs.toolkit-ref }}
@@ -727,7 +727,7 @@ jobs:
       matrix:
         include: ${{ fromJSON(needs.nhan-dien.outputs.codeql) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Tep cau hinh phai nam TRONG workspace (codeql-action tu choi duong dan
       # ngoai workspace). Tep tam cua CI, repo khong bi dong toi.
@@ -816,8 +816,8 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/dependency-review-action@v4
+      - uses: actions/checkout@v7
+      - uses: actions/dependency-review-action@v5
         with:
           fail-on-severity: high
           comment-summary-in-pr: never
