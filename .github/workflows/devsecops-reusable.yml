@@ -106,7 +106,7 @@ on:
 
 jobs:
   scan:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       security-events: write   # can de day SARIF len Code Scanning
@@ -693,7 +693,7 @@ jobs:
   # 0-3% bao nham nhung deu duoi 7 - dat nguong High thi ca ba loai lot cong.
   # =====================================================================
   nhan-dien:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     outputs:
@@ -717,7 +717,7 @@ jobs:
     needs: nhan-dien
     if: needs.nhan-dien.outputs.codeql != '' && needs.nhan-dien.outputs.codeql != '[]'
     name: codeql (${{ matrix.language }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     permissions:
       contents: read
@@ -812,7 +812,7 @@ jobs:
   # =====================================================================
   dependency-review:
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     steps:
