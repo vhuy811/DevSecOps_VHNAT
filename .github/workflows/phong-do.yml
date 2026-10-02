@@ -49,7 +49,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Kiem thu nhanh tren fixture: moi rule phat hien phai bat case cua no
       # trong Co_Loi.*, khong rule nao duoc bat Da_Khu_Doc.cs. Hong o day thi
@@ -162,7 +162,7 @@ jobs:
 
       - name: Luu ket qua
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: phong-do-juliet
           path: ket-qua/

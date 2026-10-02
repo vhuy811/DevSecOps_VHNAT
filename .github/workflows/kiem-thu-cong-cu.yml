@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Kiem thu lop error-based Microsoft.Data.Sqlite
         run: python tools/kiem_thu_dast_sqlite.py
 
@@ -37,7 +37,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Kiem thu rule runtime (header/cookie)
         run: python tools/kiem_thu_runtime.py >> "$GITHUB_STEP_SUMMARY"
 
@@ -45,7 +45,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: retire.js tren fixture
         run: |

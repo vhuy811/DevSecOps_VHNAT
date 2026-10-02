@@ -47,18 +47,18 @@ jobs:
             ref: 217f4762aed3e2d9a03d01811d7fcf3f68f46f48   # PR #1 truoc khi va
     steps:
       - name: Lay bo cong cu
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: toolkit
 
       - name: Lay VulnShop-App o ban co loi
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: vhuy811/VulnShop-App
           ref: ${{ matrix.ref }}
           path: app
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '9.0.x'
 
@@ -121,7 +121,7 @@ jobs:
 
       - name: Luu ket qua
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: phong-do-dast-${{ matrix.ten }}
           path: |
