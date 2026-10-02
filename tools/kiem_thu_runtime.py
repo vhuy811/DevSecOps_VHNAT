@@ -73,6 +73,30 @@ def main() -> int:
     if not all(f.get("cweid") for f in got):
         loi.append("moi phat hien phai co cweid")
 
+    # G3.3 lam_khoa: chi CSP + X-Frame-Options duoc chon lam khoa (Medium), con lai report-only.
+    khoa = {f["alert"].split(": ", 1)[1] for f in got
+            if f["alert"].startswith("Thieu header") and f.get("lam_khoa")}
+    if khoa != {"Content-Security-Policy", "X-Frame-Options"}:
+        loi.append(f"lam_khoa sai: {sorted(khoa)} (mong CSP + X-Frame-Options)")
+
+    # Rule lam_khoa -> sarif_tools runtime sinh cong cu RIENG 'DAST-runtime' (nguong Medium).
+    import json as _json, subprocess as _sp, tempfile as _tf, os as _os
+    tmp = _tf.mkdtemp()
+    vao, ra = _os.path.join(tmp, "zap-alerts.json"), _os.path.join(tmp, "runtime.sarif")
+    _json.dump({"rule_runtime": got}, open(vao, "w"))
+    _sp.check_call([sys.executable, str(Path(__file__).resolve().parent / "sarif_tools.py"),
+                    "runtime", "--in", vao, "--fallback-file", "Program.cs", "--out", ra],
+                   stdout=_sp.DEVNULL)
+    run0 = _json.load(open(ra))["runs"][0]
+    if run0["tool"]["driver"]["name"] != "DAST-runtime":
+        loi.append("SARIF runtime phai co driver name 'DAST-runtime'")
+    ids = {r["ruleId"] for r in run0["results"]}
+    if ids != {"rt-csp", "rt-xfo"}:
+        loi.append(f"SARIF runtime chi gom rt-csp, rt-xfo; got {sorted(ids)}")
+    sevs = {ru["id"]: ru["properties"]["security-severity"] for ru in run0["tool"]["driver"]["rules"]}
+    if any(sevs.get(i) != "5.0" for i in ("rt-csp", "rt-xfo")):
+        loi.append(f"security-severity rule khoa phai 5.0 (Medium); got {sevs}")
+
     # Bang phong do
     print("### Phong do rule runtime (G3.3)\n")
     print("| Rule | Muc | Bat tren `/` |")

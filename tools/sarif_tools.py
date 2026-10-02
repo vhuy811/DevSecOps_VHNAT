@@ -282,6 +282,70 @@ def lenh_zap(a: argparse.Namespace) -> int:
     return 0
 
 
+# ---------------------------------------------------------------------------
+def lenh_runtime(a: argparse.Namespace) -> int:
+    """Rule runtime da chon lam khoa -> SARIF cho MOT cong cu RIENG tren Code Scanning.
+
+    Chi dua phat hien co lam_khoa=True len (CSP, X-Frame-Options theo chinh sach);
+    phan con lai van report-only o trang Summary. Cong cu rieng ten 'DAST-runtime'
+    de ruleset dat nguong rieng (Medium) - KHONG dinh vao cong High cua OWASP-ZAP.
+    Header la cau hinh muc ung dung, khong co dong code endpoint, nen moi phat hien
+    gan vao fallback-file (tep du an). GitHub so baseline (main sach = 0) voi PR;
+    PR nao lam mat header se tao alert MOI -> cong chan.
+    LUON ghi SARIF (ket qua rong khi sach) de thiet lap baseline va check luon bao cao.
+    """
+    data = doc(a.inp)
+    rt = [f for f in data.get("rule_runtime", []) if f.get("lam_khoa")]
+    fallback = a.fallback_file or "README.md"
+    rules: dict[str, dict] = {}
+    results = []
+    for f in rt:
+        rid = f.get("rule_id") or ("rt-" + re.sub(r"[^a-z0-9]+", "-", f.get("alert", "").lower()).strip("-"))
+        risk = f.get("risk", "Medium")
+        cwe = str(f.get("cweid") or "")
+        if rid not in rules:
+            rules[rid] = {
+                "id": rid,
+                "name": f.get("alert", rid),
+                "shortDescription": {"text": f.get("alert", rid)},
+                "fullDescription": {"text": f.get("cach_sua", "") or f.get("alert", "")},
+                "defaultConfiguration": {"level": ZAP_RISK_LEVEL.get(risk, "warning")},
+                "properties": {
+                    "security-severity": ZAP_RISK_SEV.get(risk, "5.0"),
+                    "tags": ["security", "dast", "runtime"] + ([f"external/cwe/cwe-{cwe}"] if cwe else []),
+                    "precision": "very-high",
+                },
+            }
+        text = f.get("alert", "")
+        if f.get("evidence"):
+            text += f" | bang chung: {f['evidence'][:80]}"
+        if f.get("cach_sua"):
+            text += f" | sua: {f['cach_sua'][:100]}"
+        results.append({
+            "ruleId": rid,
+            "level": ZAP_RISK_LEVEL.get(risk, "warning"),
+            "message": {"text": text},
+            "locations": [{"physicalLocation": {"artifactLocation": {"uri": fallback, "uriBaseId": "%SRCROOT%"},
+                                                "region": {"startLine": 1}}}],
+            "partialFingerprints": {"dastRuntime/v1": f"{rid}|{f.get('param', '')}"},
+            "properties": {"risk": risk, "url": f.get("url"), "cwe": cwe},
+        })
+
+    sarif = {
+        "version": "2.1.0",
+        "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+        "runs": [{
+            "tool": {"driver": {"name": "DAST-runtime",
+                                "informationUri": "https://owasp.org/www-project-secure-headers/",
+                                "rules": list(rules.values())}},
+            "results": results,
+        }],
+    }
+    ghi(a.out, sarif)
+    print(f"DAST-runtime: {len(results)} phat hien lam_khoa -> {a.out}")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -297,8 +361,16 @@ def main() -> int:
     z.add_argument("--routes", default="")
     z.add_argument("--fallback-file", default="")
     z.add_argument("--out", default="reports/zap.sarif")
+    rt = sub.add_parser("runtime")
+    rt.add_argument("--in", dest="inp", required=True, help="zap-alerts.json (co khoa rule_runtime)")
+    rt.add_argument("--fallback-file", default="")
+    rt.add_argument("--out", default="reports/runtime.sarif")
     a = ap.parse_args()
-    return lenh_semgrep(a) if a.cmd == "semgrep" else lenh_zap(a)
+    if a.cmd == "semgrep":
+        return lenh_semgrep(a)
+    if a.cmd == "runtime":
+        return lenh_runtime(a)
+    return lenh_zap(a)
 
 
 if __name__ == "__main__":
