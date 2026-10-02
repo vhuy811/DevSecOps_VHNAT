@@ -502,6 +502,7 @@ jobs:
             --zap http://localhost:8090 \
             --timeout 600 \
             --kich-ban-loi-sqlite \
+            --rule-runtime \
             --out reports/zap-alerts.json
 
       # ===============================================================
@@ -570,6 +571,8 @@ jobs:
           z = j("reports/zap-alerts.json")
           if z:
               al = z.get("alerts", []); print(f"| 4. DAST | High {sum(1 for x in al if x['risk']=='High')} · Medium {sum(1 for x in al if x['risk']=='Medium')} · Low/Info {sum(1 for x in al if x['risk'] in ('Low','Informational'))} |")
+              rt = z.get("rule_runtime", [])
+              if rt: print(f"| 4b. Rule runtime (report-only) | {len(rt)} phat hien header/cookie: {', '.join(sorted({x['alert'].split(':')[0] for x in rt}))} |")
           print()
           PY
 

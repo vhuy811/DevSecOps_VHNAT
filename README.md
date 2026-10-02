@@ -58,6 +58,11 @@ Tầng 5 chạy **độc lập** với tầng 2: ZAP quét toàn bộ app, khôn
 
 Mỗi PR có một bản app riêng: GitHub tạo máy ảo, `dotnet build`, `dotnet run` ở `localhost:5000` của máy ảo đó, ZAP bắn vào, rồi máy ảo bị huỷ. Không server, không deploy.
 
+Tầng 5 có hai lớp phát hiện riêng cộng thêm vào ZAP, cùng đọc **chính sách phiên bản hoá** `tools/chinh-sach-zap.json` (policy as code — cấu hình quét và rule để trong git, review qua PR):
+
+- **Lớp lỗi Microsoft.Data.Sqlite** (`--kich-ban-loi-sqlite`): với mỗi endpoint, chèn một dấu nháy rồi dò thông báo lỗi của Microsoft.Data.Sqlite. Bắt được SQLi ngữ cảnh `WHERE = '...'` mà rule 40018 của ZAP bỏ sót ở mọi cường độ — mà không cần đẩy ZAP lên HIGH (HIGH báo nhầm trên LIKE đã tham số hoá). Alert risk High → **có quyền chặn** như mọi alert ZAP.
+- **Rule runtime** (`--rule-runtime`): soi header bảo mật (CSP, X-Frame-Options, X-Content-Type-Options, HSTS) và cờ cookie (HttpOnly, Secure, SameSite) trên phản hồi thật. Các phát hiện Medium/Low nên **report-only** dưới cổng High hiện tại — hiện ở trang Summary để biết mà sửa, không chặn. Muốn chặn thì nâng mức trong `chinh-sach-zap.json` và thêm cổng tương ứng.
+
 ---
 
 ## Bắt đầu
@@ -158,7 +163,8 @@ tools/
   retire_sarif.py       tầng 1b — kết quả retire.js (thư viện JS nhúng sẵn) → SARIF cho Code Scanning
   gen_routes_map.py     tầng 3 — bản đồ endpoint, Controller và Razor Pages
   trivy.py              tầng 4 — cấu hình, SBOM, so sánh image trước/sau gia cố
-  dast_scan.py          tầng 5 — ZAP quét toàn bộ app tạm, nạp OpenAPI nếu có
+  dast_scan.py          tầng 5 — ZAP + lớp lỗi Microsoft.Data.Sqlite + rule runtime
+  chinh-sach-zap.json   chính sách DAST phiên bản hoá: cấu hình active scan + rule runtime
   nhan_ngon_ngu.py      tự nhận ngôn ngữ → công cụ, bộ rule; tách thư viện nhúng sẵn
   khoi_dong_app.py      tự khởi động app cho DAST: compose / dotnet / Dockerfile / npm
   cham_diem.py          phòng đo: chấm công cụ quét trên Juliet C# 1.3 của NIST

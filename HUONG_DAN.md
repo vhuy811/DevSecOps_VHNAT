@@ -137,6 +137,10 @@ App vẫn chạy bình thường ở `localhost:5000`, chỉ ô này điền kh�
 
 Ba nhãn này là cách **dashboard** trình bày kết quả đối chiếu để điều tra tại máy. Trên GitHub, cổng không dùng chúng: mọi cảnh báo ERROR mới của rule dự án đều chặn, ZAP chỉ thêm nhãn *đã khai thác được* để ưu tiên — không bao giờ để bỏ qua.
 
+**Tầng 5 có hai lớp thêm vào ZAP** (cùng đọc `tools/chinh-sach-zap.json`):
+- *Lớp lỗi Microsoft.Data.Sqlite* — bắt SQLi ngữ cảnh `WHERE = '...'` mà ZAP bỏ sót; alert High, **có quyền chặn**.
+- *Rule runtime* — soi header bảo mật (CSP, X-Frame-Options, X-Content-Type-Options, HSTS) và cờ cookie (HttpOnly, Secure, SameSite). Mức Medium/Low nên **report-only** (hiện ở trang Summary, không chặn); muốn chặn thì nâng mức trong `chinh-sach-zap.json` và thêm cổng ở ruleset.
+
 ---
 
 ## 5. Cách 2 — CI trên GitHub
