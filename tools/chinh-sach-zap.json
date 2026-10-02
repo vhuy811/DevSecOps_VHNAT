@@ -8,13 +8,14 @@
   },
 
   "runtime": {
-    "_mo_ta": "Rule kiem tra luc chay (header bao mat + co cookie). Soi phan hoi HTTP that cua ung dung dang chay. Mac dinh REPORT-ONLY: cong merge dang chan o muc High, cac phat hien nay Medium/Low nen hien de biet chu khong chan. Muon chan thi nang muc o day va them cong tuong ung.",
+    "_mo_ta": "Rule kiem tra luc chay (header bao mat + co cookie). Soi phan hoi HTTP that cua ung dung dang chay. Mac dinh REPORT-ONLY. Rule nao danh dau lam_khoa=true thi dua len Code Scanning duoi mot cong cu RIENG ten 'DAST-runtime' (nguong Medium, tach khoi cong High cua OWASP-ZAP) va CO QUYEN CHAN merge khi xuat hien phat hien MOI; cac rule con lai van report-only o trang Summary. G3.3 chon CSP va X-Frame-Options (Medium, 0 bao nham) lam khoa sau khi main da sach.",
     "header": [
       {
         "id": "rt-csp",
         "header": "Content-Security-Policy",
         "muc": "Medium",
         "cwe": "693",
+        "lam_khoa": true,
         "cach_sua": "Them header Content-Security-Policy voi chinh sach that chat (vd default-src 'self') de giam XSS va chen tai nguyen."
       },
       {
@@ -22,6 +23,7 @@
         "header": "X-Frame-Options",
         "muc": "Medium",
         "cwe": "1021",
+        "lam_khoa": true,
         "cach_sua": "Them X-Frame-Options: DENY (hoac SAMEORIGIN) de chong clickjacking; hoac dung frame-ancestors trong CSP."
       },
       {
