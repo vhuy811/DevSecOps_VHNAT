@@ -1,0 +1,11 @@
+# G4.2: Code owners - thay doi vao duong dan an ninh phai co review cua chu repo.
+# Khai bao AI phai duyet. De CHAN that su, bat "Require review from Code Owners"
+# trong ruleset cua main (can 2FA; xem HUONG_DAN).
+
+# Mac dinh: moi thay doi
+*                 @vhuy811
+
+# Nhay cam nhat: bo cong cu quet, cong (gate), bo rule
+/tools/           @vhuy811
+/.github/         @vhuy811
+/semgrep-rules/   @vhuy811
