@@ -1,0 +1,19 @@
+# G4.1: Dependabot giu cac GitHub Actions luon moi va canh bao khi co ban va.
+# Chi ecosystem github-actions: bo cong cu khong co Dockerfile/lockfile rieng.
+# Cac image quet (Trivy/ZAP/Semgrep/Gitleaks) CO Y dung :latest de CSDL lo hong
+# luon moi (xem chu thich trong devsecops-reusable.yml), nen khong ghim o day.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "ci"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    groups:
+      actions:
+        patterns:
+          - "*"

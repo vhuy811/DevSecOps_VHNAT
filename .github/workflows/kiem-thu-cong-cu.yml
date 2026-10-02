@@ -24,7 +24,7 @@ jobs:
   dast_sqlite:
     # G3.2: lop error-based Microsoft.Data.Sqlite cua dast_scan.py chay voi mot
     # app gia, kiem tra bat dung endpoint co loi va khong bao nham. Chi stdlib.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -34,7 +34,7 @@ jobs:
   runtime:
     # G3.3: rule runtime (header bao mat + co cookie) theo chinh-sach-zap.json,
     # chay voi app gia thieu/du header. Chi stdlib.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -42,7 +42,7 @@ jobs:
         run: python tools/kiem_thu_runtime.py >> "$GITHUB_STEP_SUMMARY"
 
   retire:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
