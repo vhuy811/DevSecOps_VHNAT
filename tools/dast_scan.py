@@ -215,6 +215,7 @@ def quet_runtime(base: str, urls: list[str], rt: dict, moi_timeout: float = 8.0)
                     "alert": f"Thieu header bao mat: {rule['header']}",
                     "risk": rule.get("muc", "Low"), "confidence": "High",
                     "cweid": str(rule.get("cwe", "")), "plugin": "rule-runtime",
+                    "rule_id": rule["id"], "lam_khoa": bool(rule.get("lam_khoa")),
                     "url": duong, "param": "", "attack": "",
                     "evidence": (f"{rule['header']}: {co}" if co is not None
                                  else f"{rule['header']} vang mat"),
@@ -237,6 +238,7 @@ def quet_runtime(base: str, urls: list[str], rt: dict, moi_timeout: float = 8.0)
                     "alert": f"Cookie thieu co {rule['co']}: {ten_cookie}",
                     "risk": rule.get("muc", "Low"), "confidence": "High",
                     "cweid": str(rule.get("cwe", "")), "plugin": "rule-runtime",
+                    "rule_id": rule["id"], "lam_khoa": bool(rule.get("lam_khoa")),
                     "url": duong, "param": ten_cookie, "attack": "",
                     "evidence": raw[:120], "cach_sua": rule.get("cach_sua", ""),
                     "nguon": "rule-runtime",
