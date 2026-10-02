@@ -1,0 +1,83 @@
+name: SLA bao mat (tuan)
+
+# G4.4: Cong chan code moi hong, nhung lo hong CU (da Dismiss sai, hoac co tu
+# truoc baseline) van nam do neu khong ai theo. SLA bien "se sua" thanh "phai sua
+# truoc ngay X". Moi tuan: dem alert Code Scanning dang mo theo muc do, tinh tuoi
+# tung cai, danh dau cai QUA HAN theo SLA, va ghi vao MOT Issue theo doi co dinh.
+#
+# SLA theo muc do (ngay) - sua o buoc script neu muon:
+#   Critical 7 | High 30 | Medium 90 | Low 180
+
+on:
+  schedule:
+    - cron: "23 1 * * 1"   # 01:23 UTC moi thu Hai
+  workflow_dispatch:
+
+permissions:
+  security-events: read
+  issues: write
+
+jobs:
+  sla:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Tong hop alert + han SLA -> Issue theo doi
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const SLA = { critical: 7, high: 30, medium: 90, low: 180 };
+            const sev = a => (a.rule && (a.rule.security_severity_level || a.rule.severity)) || "low";
+            const ngay = ms => Math.floor(ms / 86400000);
+            const alerts = await github.paginate(
+              github.rest.codeScanning.listAlertsForRepo,
+              { owner: context.repo.owner, repo: context.repo.repo, state: "open", per_page: 100 }
+            );
+            const now = Date.now();
+            const dem = { critical: 0, high: 0, medium: 0, low: 0 };
+            const quaHan = [];
+            for (const a of alerts) {
+              const s = String(sev(a)).toLowerCase();
+              const key = dem[s] !== undefined ? s : "low";
+              dem[key]++;
+              const tuoi = ngay(now - new Date(a.created_at).getTime());
+              const han = SLA[key] ?? 180;
+              if (tuoi > han) {
+                quaHan.push({ n: a.number, s: key, tuoi, han,
+                  rule: (a.rule && a.rule.id) || "?", url: a.html_url,
+                  tool: (a.tool && a.tool.name) || "?" });
+              }
+            }
+            quaHan.sort((x, y) => (y.tuoi - y.han) - (x.tuoi - x.han));
+            const hh = new Date().toISOString().slice(0, 10);
+            let body = `## SLA bao mat - tuan ${hh}\n\n`;
+            body += `| Muc do | Dang mo | SLA (ngay) |\n|---|---|---|\n`;
+            for (const k of ["critical", "high", "medium", "low"])
+              body += `| ${k} | ${dem[k]} | ${SLA[k]} |\n`;
+            body += `\n**Qua han: ${quaHan.length}**\n\n`;
+            if (quaHan.length) {
+              body += `| Alert | Muc | Tuoi | SLA | Cong cu | Rule |\n|---|---|---|---|---|---|\n`;
+              for (const q of quaHan.slice(0, 50))
+                body += `| [#${q.n}](${q.url}) | ${q.s} | ${q.tuoi}d | ${q.han}d | ${q.tool} | \`${q.rule}\` |\n`;
+            } else {
+              body += `Khong co alert nao qua han. :tada:\n`;
+            }
+            body += `\n_Tu dong cap nhat boi workflow sla-bao-mat._`;
+
+            const title = "SLA bao mat - theo doi alert Code Scanning";
+            const found = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo,
+              state: "open", labels: "sla-bao-mat",
+            });
+            if (found.data.length) {
+              await github.rest.issues.update({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: found.data[0].number, title, body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner, repo: context.repo.repo,
+                title, body, labels: ["sla-bao-mat", "bao-mat"],
+              });
+            }
+            core.summary.addRaw(body).write();

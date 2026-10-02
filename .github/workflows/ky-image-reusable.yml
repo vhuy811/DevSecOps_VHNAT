@@ -1,0 +1,122 @@
+name: Ky image + SBOM + provenance (dung chung)
+
+# G4.5: Mot container image chi dang tin khi biet NO tu dau ra va KHONG bi sua.
+# Workflow dung chung nay: build image tu Dockerfile cua repo goi, day len GHCR,
+# roi:
+#   - KY image bang cosign keyless (OIDC cua GitHub, khong can quan ly khoa)
+#   - sinh SBOM (CycloneDX) va dinh kem image nhu mot attestation
+#   - sinh PROVENANCE (SLSA) chung thuc image nay do chinh workflow nay build
+# Repo goi them mot tep nho:
+#   jobs:
+#     ky:
+#       uses: vhuy811/DevSecOps_VHNAT/.github/workflows/ky-image-reusable.yml@v1.0.0
+#   (chi chay o nhanh chinh / khi release - xem 'if' ben repo goi)
+#
+# Action ngoai (khong thuoc actions/*) GHIM theo commit SHA + chu thich phien ban
+# de Dependabot (github-actions) nang duoc; moi ${{ }} dua qua env roi dung $VAR
+# trong run de khong co code injection (chinh dieu bo cong cu nay bat o noi khac).
+
+on:
+  workflow_call:
+    inputs:
+      image-name:
+        description: 'Ten image (khong tag). De trong = ghcr.io/<owner>/<repo>.'
+        type: string
+        required: false
+        default: ''
+      dockerfile:
+        description: 'Duong dan Dockerfile. De trong = tu tim cai dau tien.'
+        type: string
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+  packages: write        # day image len GHCR
+  id-token: write        # cosign keyless + provenance (OIDC)
+  attestations: write    # luu provenance attestation
+
+jobs:
+  ky:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Xac dinh image + Dockerfile
+        id: cfg
+        env:
+          IMG_IN: ${{ inputs.image-name }}
+          DF_IN: ${{ inputs.dockerfile }}
+          REPO: ${{ github.repository }}
+        run: |
+          IMG="$IMG_IN"
+          if [ -z "$IMG" ]; then
+            IMG="ghcr.io/$(echo "$REPO" | tr '[:upper:]' '[:lower:]')"
+          fi
+          DF="$DF_IN"
+          if [ -z "$DF" ]; then
+            DF=$(find . -path ./.git -prune -o -type f -iname 'Dockerfile' -print | sort | head -1 | sed 's#^\./##')
+          fi
+          if [ -z "$DF" ] || [ ! -f "$DF" ]; then
+            echo "::error::Khong tim thay Dockerfile - khong co image de ky."; exit 1
+          fi
+          echo "image=$IMG" >> "$GITHUB_OUTPUT"
+          echo "dockerfile=$DF" >> "$GITHUB_OUTPUT"
+          echo "Image: $IMG | Dockerfile: $DF"
+
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build + push image
+        id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: ${{ steps.cfg.outputs.dockerfile }}
+          push: true
+          tags: ${{ steps.cfg.outputs.image }}:${{ github.sha }}
+
+      - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
+
+      - name: Ky image (cosign keyless)
+        env:
+          IMG: ${{ steps.cfg.outputs.image }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: cosign sign --yes "${IMG}@${DIGEST}"
+
+      - name: Sinh SBOM (CycloneDX) va dinh kem
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          image: ${{ steps.cfg.outputs.image }}@${{ steps.build.outputs.digest }}
+          format: cyclonedx-json
+          output-file: sbom.cdx.json
+
+      - name: Dinh kem SBOM nhu attestation (cosign)
+        env:
+          IMG: ${{ steps.cfg.outputs.image }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: cosign attest --yes --predicate sbom.cdx.json --type cyclonedx "${IMG}@${DIGEST}"
+
+      - name: Chung thuc provenance (SLSA)
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ steps.cfg.outputs.image }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      - name: Tom tat
+        if: always()
+        env:
+          IMG: ${{ steps.cfg.outputs.image }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          {
+            echo "## Ky image + SBOM + provenance"
+            echo "- Image: \`${IMG}@${DIGEST}\`"
+            echo "- Da ky bang cosign keyless (OIDC), SBOM CycloneDX + provenance SLSA dinh kem."
+            echo "- Kiem tra: \`cosign verify\` / \`cosign verify-attestation\` voi identity cua workflow."
+          } >> "$GITHUB_STEP_SUMMARY"
