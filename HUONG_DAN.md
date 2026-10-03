@@ -322,7 +322,7 @@ Lưu ý khi chọn action cho bước 2: action có **tham số GET** thì ZAP m
 
 - Bộ rule của dự án là **C#** và phủ **12 mã CWE** mà ZAP xác nhận động được. Repo ngôn ngữ khác thì chỉ còn rule cộng đồng chạy.
 - **28/43 rule dự án có quyền chặn** (mức ERROR); 15 rule chỉ chú thích. Rule cộng đồng không chặn.
-- Cảnh báo thuộc CWE **ngoài bảng ánh xạ** (deserialization, IDOR, mã hoá yếu…) hiện trong báo cáo ở mục riêng và **không tính vào cổng chặn** — không có công cụ nào kiểm chứng chúng được.
+- Cảnh báo thuộc CWE **ngoài bảng ánh xạ** (deserialization, mã hoá yếu…) hiện trong báo cáo ở mục riêng và **không tính vào cổng chặn** — không có công cụ nào kiểm chứng chúng được. *Ngoại lệ:* IDOR/BOLA (CWE-639) nay **có** bộ kiểm động có xác thực (`--kiem-idor`) → phát thành `DAST-idor` mức High.
 - Tầng 5 chỉ chạy với **ứng dụng tự chứa** — app cần SQL Server, Redis hay dịch vụ ngoài thì phải thêm service container vào CI.
 - Tầng 5 chỉ phủ được endpoint có **tham số GET kiểu đơn giản**. VulnShop phủ 43%, eShopOnWeb phủ 9%. Tầng 3 đo và công bố con số này thay vì giấu.
 - **DAST cần giá trị mồi sinh ra dữ liệu.** Mồi tự đoán theo kiểu tham số không biết gì về dữ liệu thật; với phép so bằng (`Category = ...`) nó trả về trang trống và ZAP mất mốc so sánh. Pipeline phát hiện mốc rỗng và không tính là đã kiểm chứng; muốn ZAP kiểm chứng được thì khai mồi thật trong `devsecops-seeds.json` (mục 5, bước 2b).
