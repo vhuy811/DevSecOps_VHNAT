@@ -27,12 +27,13 @@ Pipeline **không tự chặn**. Nó đưa kết quả từng scanner lên GitHu
 | **Semgrep-du-an** — 43 rule tự viết (10 rule lần theo luồng dữ liệu) | cảnh báo mức ERROR **mới** trong PR | Alerts = Errors, Security ≥ High |
 | **CodeQL** — lần theo luồng dữ liệu qua biến, hàm, tệp; mọi ngôn ngữ tự nhận; nguồn: request + CSDL, tệp, biến môi trường | cảnh báo Medium trở lên **mới** trong PR | Alerts = Errors, Security ≥ Medium |
 | **OWASP-ZAP** — quét toàn bộ app dựng từ code PR | alert risk High **mới** | Security ≥ High |
+| **DAST-idor** — kiểm IDOR/BOLA có xác thực (đăng nhập nhiều người dùng, thử truy cập chéo) | phát hiện truy cập chéo **mới** (CWE-639) | Security ≥ High (thêm vào ruleset khi repo có bề mặt xác thực) |
 | **retire.js** — thư viện JS chép sẵn trong repo (`wwwroot/lib`, `vendor/`) | PR **thêm hoặc đổi** tệp thư viện dính CVE Medium trở lên | Alerts = Errors, Security ≥ Medium |
 | **dependency-review** — job riêng của GitHub | PR **thêm hoặc nâng** gói dính CVE ≥ High | required check |
 | **Push protection** của GitHub | secret trong commit — chặn ngay lúc `git push` | bật trong Settings |
 | Semgrep-cong-dong, Trivy, Gitleaks | không chặn | tham khảo / theo dõi |
 
-Sáu nguồn chặn **cộng dồn** — không nguồn nào gạt được nguồn khác. Cho qua chỉ theo hai cách, cả hai để lại dấu vết:
+Bảy nguồn chặn **cộng dồn** — không nguồn nào gạt được nguồn khác. Cho qua chỉ theo hai cách, cả hai để lại dấu vết:
 
 - **Dismiss alert** trong tab Security, chọn lý do (false positive / won't fix / used in tests) và ghi chú. GitHub ghi audit log; lần chạy sau không báo lại. Không sửa code để né, không `nosemgrep`.
 - **Hạ rule** xuống WARNING ở cấp bộ công cụ, khi một rule bị dismiss quá ~10% (ngưỡng Google dùng để tắt analyzer). Sửa ở nguồn, không sửa từng PR.
@@ -52,16 +53,17 @@ Dev chỉ thấy hai trạng thái: **CHẶN** — tệp:dòng, lỗi gì, cách
 | 2b | CodeQL `security-extended` — job riêng, chạy song song | mọi ngôn ngữ CodeQL hỗ trợ (C#, JS/TS, Python, Java, Go, Actions...) | cảnh báo theo **luồng dữ liệu**: từ tham số request tới câu SQL, `innerHTML`, lệnh hệ điều hành... qua biến, hàm, tệp |
 | 3 | `gen_routes_map.py` | Controller, Razor Pages | bản đồ (URL, tham số) và **phạm vi DAST tới được** |
 | 4 | Trivy | Dockerfile, manifest | lỗi cấu hình, SBOM, CVE trong image |
-| 5 | `dast_scan.py` + OWASP ZAP | app dựng từ code PR, chạy trong máy ảo tạm | alert DAST, **ánh xạ về Controller:dòng** qua bản đồ route |
+| 5 | `dast_scan.py` + OWASP ZAP (+ lớp lỗi SQLite · rule runtime · kiểm IDOR) | app dựng từ code PR, chạy trong máy ảo tạm | alert DAST **ánh xạ về Controller:dòng**; IDOR/BOLA có xác thực → `DAST-idor` |
 
 Tầng 5 chạy **độc lập** với tầng 2: ZAP quét toàn bộ app, không đi theo chỉ tay của SAST, nên nó tìm được thứ SAST bỏ sót. Đối chiếu tầng 2 × tầng 5 — cùng CWE, cùng endpoint — chỉ để gắn nhãn **ĐÃ KHAI THÁC ĐƯỢC** vào cảnh báo SAST: xếp ưu tiên sửa trước. Không bao giờ dùng để bỏ qua.
 
 Mỗi PR có một bản app riêng: GitHub tạo máy ảo, `dotnet build`, `dotnet run` ở `localhost:5000` của máy ảo đó, ZAP bắn vào, rồi máy ảo bị huỷ. Không server, không deploy.
 
-Tầng 5 có hai lớp phát hiện riêng cộng thêm vào ZAP, cùng đọc **chính sách phiên bản hoá** `tools/chinh-sach-zap.json` (policy as code — cấu hình quét và rule để trong git, review qua PR):
+Tầng 5 có ba lớp phát hiện riêng cộng thêm vào ZAP, cùng đọc **chính sách phiên bản hoá** `tools/chinh-sach-zap.json` (policy as code — cấu hình quét và rule để trong git, review qua PR):
 
 - **Lớp lỗi Microsoft.Data.Sqlite** (`--kich-ban-loi-sqlite`): với mỗi endpoint, chèn một dấu nháy rồi dò thông báo lỗi của Microsoft.Data.Sqlite. Bắt được SQLi ngữ cảnh `WHERE = '...'` mà rule 40018 của ZAP bỏ sót ở mọi cường độ — mà không cần đẩy ZAP lên HIGH (HIGH báo nhầm trên LIKE đã tham số hoá). Alert risk High → **có quyền chặn** như mọi alert ZAP.
 - **Rule runtime** (`--rule-runtime`): soi header bảo mật (CSP, X-Frame-Options, X-Content-Type-Options, HSTS) và cờ cookie (HttpOnly, Secure, SameSite) trên phản hồi thật. Các phát hiện Medium/Low nên **report-only** dưới cổng High hiện tại — hiện ở trang Summary để biết mà sửa, không chặn. Muốn chặn thì nâng mức trong `chinh-sach-zap.json` và thêm cổng tương ứng.
+- **Kiểm IDOR/BOLA có xác thực** (`--kiem-idor .devsecops/idor.json`): đăng nhập bằng **nhiều người dùng thật** rồi thử lấy tài nguyên của người này bằng phiên của người kia; lấy được (HTTP 200, nội dung trùng) → IDOR/BOLA (CWE-639). Đây là lỗi *điều khiển truy cập theo đối tượng* mà ZAP thường không thấy (nó không có khái niệm "tài nguyên này của ai"). Phát thành công cụ SARIF **riêng** `DAST-idor` (mức High → có quyền chặn như alert ZAP); muốn cổng chặn theo IDOR thì thêm `DAST-idor` (Security ≥ High) vào ruleset. Cấu hình (login + danh sách người dùng + tài nguyên) để ở `.devsecops/idor.json` của repo đích — không có tệp này thì bước IDOR được bỏ qua (ghi rõ ở Summary).
 
 ---
 
@@ -115,7 +117,7 @@ Chỉ quét khi **mở PR** và khi push vào `main` — mỗi PR một check, m
 
 Rồi bật cổng phía GitHub — Settings của repo:
 
-1. **Rules → Rulesets** → ruleset cho `main`: *Require a pull request* (1 approval) · *Require code scanning results* → thêm `Semgrep-du-an` (Alerts: Errors, Security: High or higher), `CodeQL` (Alerts: Errors, Security: **Medium** or higher) `OWASP-ZAP` (Security: High or higher) và `retire.js` (Alerts: Errors, Security: **Medium** or higher — retire.js xếp mọi CVE của jQuery cũ ở mức medium/low, đặt High thì thêm jQuery cũ vẫn lọt) · *Require status checks* → `security / dependency-review` · bypass list **để trống**.
+1. **Rules → Rulesets** → ruleset cho `main`: *Require a pull request* (1 approval) · *Require code scanning results* → thêm `Semgrep-du-an` (Alerts: Errors, Security: High or higher), `CodeQL` (Alerts: Errors, Security: **Medium** or higher) `OWASP-ZAP` (Security: High or higher) và `retire.js` (Alerts: Errors, Security: **Medium** or higher — retire.js xếp mọi CVE của jQuery cũ ở mức medium/low, đặt High thì thêm jQuery cũ vẫn lọt) · *Require status checks* → `security / dependency-review` · bypass list **để trống**. Repo có bề mặt xác thực thì thêm `DAST-idor` (Security: High or higher) để cổng chặn theo IDOR.
 2. **Code security** → bật *Secret scanning* + *Push protection*, *Dependabot alerts* + *security updates*.
 
 Tên công cụ trong ruleset chỉ xuất hiện sau khi pipeline đã chạy ít nhất một lần trên `main` — push một lần trước rồi mới cấu hình.
@@ -151,7 +153,7 @@ Mọi tham số đều **tuỳ chọn** — chỉ dùng để ghi đè khi việ
 
 Không còn tham số bật/tắt cổng. Ngưỡng chặn nằm ở ruleset của GitHub — thay đổi được mà không sửa workflow, và có audit.
 
-Tệp tuỳ chọn ở gốc repo đích: `devsecops-seeds.json` — giá trị mồi thật cho từng endpoint để DAST có mốc so sánh (`{"/Product/Filter": "Phu kien"}`). Không có thì pipeline tự đoán theo kiểu tham số.
+Tệp tuỳ chọn ở gốc repo đích: `devsecops-seeds.json` — giá trị mồi thật cho từng endpoint để DAST có mốc so sánh (`{"/Product/Filter": "Phu kien"}`). Không có thì pipeline tự đoán theo kiểu tham số. `.devsecops/idor.json` — cấu hình kiểm IDOR/BOLA có xác thực (login, người dùng, tài nguyên).
 
 ---
 
@@ -163,13 +165,14 @@ tools/
   retire_sarif.py       tầng 1b — kết quả retire.js (thư viện JS nhúng sẵn) → SARIF cho Code Scanning
   gen_routes_map.py     tầng 3 — bản đồ endpoint, Controller và Razor Pages
   trivy.py              tầng 4 — cấu hình, SBOM, so sánh image trước/sau gia cố
-  dast_scan.py          tầng 5 — ZAP + lớp lỗi Microsoft.Data.Sqlite + rule runtime
+  dast_scan.py          tầng 5 — ZAP + lớp lỗi Microsoft.Data.Sqlite + rule runtime + kiểm IDOR
+  idor.py               tầng 5 — kiểm IDOR/BOLA có xác thực (CWE-639): đăng nhập nhiều người, thử truy cập chéo
   chinh-sach-zap.json   chính sách DAST phiên bản hoá: cấu hình active scan + rule runtime
   nhan_ngon_ngu.py      tự nhận ngôn ngữ → công cụ, bộ rule; tách thư viện nhúng sẵn
   khoi_dong_app.py      tự khởi động app cho DAST: compose / dotnet / Dockerfile / npm
   cham_diem.py          phòng đo: chấm công cụ quét trên Juliet C# 1.3 của NIST
   sarif_tools.py        chuẩn hoá SARIF cho Code Scanning: tách rule dự án/cộng đồng,
-                        ZAP → SARIF ánh xạ về mã nguồn, gắn nhãn đã khai thác
+                        ZAP → SARIF ánh xạ về mã nguồn, gắn nhãn đã khai thác, phát DAST-idor
   gate.py               tóm tắt CHẶN/QUA cho dev trên trang Summary — không chặn
   correlate.py          bản đồ route + đối sánh (dùng bởi dashboard cục bộ)
   report.py             báo cáo HTML
@@ -206,6 +209,8 @@ Trong 43 rule, 28 rule ở mức **ERROR** (có quyền chặn) và 15 rule ở 
 
 Phần bề rộng — mã hoá yếu, mật khẩu cứng, deserialization, cấu hình sai — để `p/csharp` và `p/security-audit` lo; kết quả vào `Semgrep-cong-dong`, tham khảo. Viết lại chỉ tạo báo trùng, trong khi hai bộ đó được cập nhật hằng ngày.
 
+**IDOR/BOLA (CWE-639) là lỗi logic phân quyền** — không bắt được bằng rule tĩnh (không có mẫu code cố định). Nó được kiểm riêng bằng lớp **DAST có xác thực** ở tầng 5 (`idor.py`): đăng nhập nhiều người dùng rồi thử truy cập chéo. Đây là phần bù cho giới hạn "lỗi logic không công cụ tĩnh nào bắt".
+
 ### Tự kiểm chứng bộ rule
 
 ```bash
@@ -238,11 +243,11 @@ Những điều dưới đây được đo và công bố, không phải giấu 
 
 **Bộ rule không đầy đủ, và sẽ bỏ sót.** Rule bắt theo dấu hiệu bề mặt, không truy vết luồng dữ liệu. Đưa chuỗi qua một hàm trung gian, gán vào một trường của lớp, hay ghép bằng `StringBuilder` là thoát. DAST độc lập bù một phần — không bù hết.
 
-**Lỗi logic không có công cụ nào bắt.** Thiếu kiểm tra phân quyền, sai nghiệp vụ — SAST không có mẫu, DAST không có payload. Đây là giới hạn của mọi công cụ tự động; nó thuộc về review và thiết kế.
+**Lỗi logic phần lớn không có công cụ nào bắt.** Thiếu kiểm tra phân quyền, sai nghiệp vụ — SAST không có mẫu, DAST không có payload. Đây là giới hạn của mọi công cụ tự động; nó thuộc về review và thiết kế. *Ngoại lệ đã bù:* IDOR/BOLA (CWE-639) nay có lớp kiểm động có xác thực ở tầng 5 (`--kiem-idor`).
 
 **Tầng 5 chỉ chạy với ứng dụng tự chứa.** App cần SQL Server, Redis hay dịch vụ ngoài thì phải thêm service container vào CI, hoặc đặt `run-dast: false` và chấp nhận bốn tầng tĩnh — trang kết quả nói rõ tầng động đã bị bỏ qua.
 
-**Tầng 5 chỉ tới được endpoint có tham số GET kiểu đơn giản.** 43% với ứng dụng mẫu, 9% với eShopOnWeb của Microsoft. Không quét sau đăng nhập.
+**Tầng 5 chỉ tới được endpoint có tham số GET kiểu đơn giản.** 43% với ứng dụng mẫu, 9% với eShopOnWeb của Microsoft. Không quét sau đăng nhập — **trừ** lớp kiểm IDOR, vốn đăng nhập nhiều người dùng để kiểm truy cập chéo.
 
 **DAST chỉ kết luận được khi giá trị mồi sinh ra dữ liệu.** Mồi trả về trang trống thì mọi payload đều trống như nhau. `devsecops-seeds.json` cho phép chỉ mồi thật; không có thì DAST mù ở những endpoint so bằng. Với thiết kế mới điều này chỉ làm mất nhãn *đã khai thác được*, không làm mất cổng — SAST vẫn chặn.
 
