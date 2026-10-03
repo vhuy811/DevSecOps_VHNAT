@@ -23,7 +23,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Tong hop alert + han SLA -> Issue theo doi
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const SLA = { critical: 7, high: 30, medium: 90, low: 180 };
