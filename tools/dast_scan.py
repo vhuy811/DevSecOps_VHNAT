@@ -49,6 +49,7 @@ from urllib.parse import urlencode, urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from correlate import CWE_ZAP_SCANNER, Zap  # noqa: E402
+import idor as _idor  # noqa: E402
 
 RISK_RANK = {"Informational": 0, "Low": 1, "Medium": 2, "High": 3}
 
@@ -309,6 +310,9 @@ def main() -> int:
     ap.add_argument("--rule-runtime", action="store_true",
                     help="bat rule runtime (G3.3): soi header bao mat + co cookie theo "
                          "chinh-sach-zap.json. Ket qua report-only, ghi rieng o 'rule_runtime'")
+    ap.add_argument("--kiem-idor", default="",
+                    help="tep cau hinh IDOR/BOLA (G3.4): dang nhap nhieu user, thu truy cap cheo "
+                         "tai nguyen. Ket qua ghi rieng o 'idor'. De trong = bo qua.")
     ap.add_argument("--phien-moi", action="store_true",
                     help="mo phien ZAP moi truoc khi quet (xoa alert/cay Sites cu - dung khi do A/B)")
     args = ap.parse_args()
@@ -439,6 +443,20 @@ def main() -> int:
         for f in rule_runtime:
             print(f"    {f['risk']:<6} {f['alert']}")
 
+
+    # 4d) Kiem IDOR/BOLA co xac thuc (G3.4): dang nhap nhieu user, thu truy cap
+    #     cheo. Ghi RIENG o 'idor'. ZAP khong co khai niem quyen so huu nen
+    #     loai loi nay phai kiem bang phien that cua tung nguoi dung.
+    idor_kq = []
+    if args.kiem_idor:
+        cfg_idor = _idor.doc_cau_hinh(args.kiem_idor)
+        if cfg_idor:
+            idor_kq = _idor.quet_idor(base, cfg_idor)
+            print(f"[*] Kiem IDOR: {len(idor_kq)} phat hien (truy cap cheo nguoi dung)")
+            for f in idor_kq:
+                print(f"    HIGH   {f['alert']}")
+        else:
+            print(f"[*] Kiem IDOR: bo qua (khong doc duoc cau hinh {args.kiem_idor})")
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps({"base_url": base, "scanned_urls": len(diem),
@@ -450,6 +468,7 @@ def main() -> int:
                                "giay": round(time.time() - bat_dau),
                                "timed_out": timed_out,
                                "rule_runtime": rule_runtime,
+                               "idor": idor_kq,
                                "alerts": uniq}, indent=2, ensure_ascii=False),
                    encoding="utf-8")
 
