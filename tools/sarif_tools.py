@@ -346,6 +346,51 @@ def lenh_runtime(a: argparse.Namespace) -> int:
     return 0
 
 
+# ---------------------------------------------------------------------------
+def lenh_idor(a: argparse.Namespace) -> int:
+    """Phat hien IDOR/BOLA (khoa 'idor' trong zap-alerts.json) -> SARIF 'DAST-idor'.
+
+    Deu la loi kiem soat truy cap muc doi tuong (CWE-639), muc High -> gate duoc
+    nhu ZAP. Gan vao fallback-file vi IDOR la loi logic, khong buoc vao mot dong.
+    """
+    data = doc(a.inp)
+    items = data.get("idor", [])
+    fallback = a.fallback_file or "README.md"
+    rid = "idor-bola"
+    rule = {
+        "id": rid, "name": "IDOR / Broken Object Level Authorization",
+        "shortDescription": {"text": "IDOR/BOLA (CWE-639)"},
+        "fullDescription": {"text": "Nguoi dung xem/sua duoc tai nguyen cua nguoi khac - "
+                                    "thieu kiem tra quyen so huu muc doi tuong."},
+        "defaultConfiguration": {"level": "error"},
+        "properties": {"security-severity": "8.0",
+                       "tags": ["security", "dast", "idor", "external/cwe/cwe-639"],
+                       "precision": "high"},
+    }
+    results = []
+    for f in items:
+        text = f.get("alert", "")
+        if f.get("attack"):
+            text += f" | {f['attack']}"
+        if f.get("cach_sua"):
+            text += f" | sua: {f['cach_sua'][:100]}"
+        results.append({
+            "ruleId": rid, "level": "error", "message": {"text": text},
+            "locations": [{"physicalLocation": {"artifactLocation": {"uri": fallback, "uriBaseId": "%SRCROOT%"},
+                                                "region": {"startLine": 1}}}],
+            "partialFingerprints": {"idor/v1": f"{f.get('url', '')}|{f.get('attack', '')}"},
+            "properties": {"risk": "High", "url": f.get("url"), "cwe": "639"},
+        })
+    sarif = {"version": "2.1.0", "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+             "runs": [{"tool": {"driver": {"name": "DAST-idor",
+                                           "informationUri": "https://owasp.org/www-project-api-security/",
+                                           "rules": [rule]}},
+                       "results": results}]}
+    ghi(a.out, sarif)
+    print(f"DAST-idor: {len(results)} phat hien -> {a.out}")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -365,11 +410,17 @@ def main() -> int:
     rt.add_argument("--in", dest="inp", required=True, help="zap-alerts.json (co khoa rule_runtime)")
     rt.add_argument("--fallback-file", default="")
     rt.add_argument("--out", default="reports/runtime.sarif")
+    ii = sub.add_parser("idor")
+    ii.add_argument("--in", dest="inp", required=True, help="zap-alerts.json (co khoa idor)")
+    ii.add_argument("--fallback-file", default="")
+    ii.add_argument("--out", default="reports/idor.sarif")
     a = ap.parse_args()
     if a.cmd == "semgrep":
         return lenh_semgrep(a)
     if a.cmd == "runtime":
         return lenh_runtime(a)
+    if a.cmd == "idor":
+        return lenh_idor(a)
     return lenh_zap(a)
 
 

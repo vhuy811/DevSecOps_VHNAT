@@ -26,6 +26,7 @@ name: DevSecOps - nam tang kiem thu (dung chung)
 #   CodeQL         : Alerts = Errors, Security >= Medium (lan theo luong du lieu - job codeql)
 #   OWASP-ZAP      : Security >= High                   (DAST tren app dung tu PR)
 #   DAST-runtime   : Security >= Medium                 (rule runtime chon lam_khoa: CSP, X-Frame-Options)
+#   DAST-idor      : Security >= High                    (IDOR/BOLA CWE-639 - kiem co xac thuc, G3.4)
 #   dependency-review (job rieng): required check      (goi MOI dinh CVE >= High)
 # Rule cong dong, Trivy, Gitleaks day len de tham khao/theo doi. Bao nham xu ly
 # bang Dismiss + ly do trong tab Security - co audit, khong sua code de ne.
@@ -504,6 +505,7 @@ jobs:
             --timeout 600 \
             --kich-ban-loi-sqlite \
             --rule-runtime \
+            --kiem-idor .devsecops/idor.json \
             --out reports/zap-alerts.json
 
       # ===============================================================
@@ -535,6 +537,11 @@ jobs:
             python "$TOOLKIT/tools/sarif_tools.py" runtime \
               --in reports/zap-alerts.json \
               --fallback-file "$FB" --out reports/runtime.sarif
+            # G3.4: phat hien IDOR/BOLA (neu repo co .devsecops/idor.json) -> cong cu
+            # RIENG 'DAST-idor' (CWE-639, muc High -> gate nhu ZAP).
+            python "$TOOLKIT/tools/sarif_tools.py" idor \
+              --in reports/zap-alerts.json \
+              --fallback-file "$FB" --out reports/idor.sarif
           fi
 
       # ===============================================================
@@ -582,6 +589,9 @@ jobs:
               if rt:
                   nk = sum(1 for x in rt if x.get("lam_khoa"))
                   print(f"| 4b. Rule runtime | {len(rt)} phat hien header/cookie ({nk} lam_khoa -> DAST-runtime CHAN, {len(rt)-nk} report-only) |")
+                  idor = z.get("idor", [])
+                  if idor:
+                      print(f"| 4d. IDOR/BOLA (co xac thuc) | {len(idor)} phat hien truy cap cheo -> DAST-idor (High, CHAN) |")
           print()
           PY
 
@@ -642,6 +652,13 @@ jobs:
         with:
           sarif_file: reports/runtime.sarif
           category: runtime
+
+      - name: Code Scanning - DAST IDOR/BOLA (CWE-639, muc High)
+        if: always() && hashFiles('reports/idor.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: reports/idor.sarif
+          category: idor
 
       - name: Code Scanning - secret
         if: always() && hashFiles('reports/gitleaks.sarif') != ''
