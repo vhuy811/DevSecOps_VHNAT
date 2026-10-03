@@ -11,6 +11,9 @@ on:
       - tools/dast_scan.py
       - tools/kiem_thu_dast_sqlite.py
       - tools/kiem_thu_runtime.py
+      - tools/kiem_thu_idor.py
+      - tools/idor.py
+      - tools/sarif_tools.py
       - tools/chinh-sach-zap.json
       - semgrep-rules/kiem-thu-rule/thu-vien-js/**
       - .github/workflows/kiem-thu-cong-cu.yml
@@ -40,6 +43,16 @@ jobs:
       - uses: actions/checkout@v7
       - name: Kiem thu rule runtime (header/cookie)
         run: python tools/kiem_thu_runtime.py >> "$GITHUB_STEP_SUMMARY"
+
+  idor:
+    # G3.4: kiem IDOR/BOLA co xac thuc - app gia co endpoint lo va endpoint an
+    # toan, khang dinh bo kiem bat dung lo va khong bao nham. Chi stdlib.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - name: Kiem thu kiem IDOR/BOLA
+        run: python tools/kiem_thu_idor.py >> "$GITHUB_STEP_SUMMARY"
 
   retire:
     runs-on: ubuntu-24.04
