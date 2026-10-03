@@ -18,7 +18,7 @@ import sys
 import threading
 import time
 from pathlib import Path
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, quote, urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import idor as d  # noqa: E402
@@ -46,8 +46,9 @@ class _App(http.server.BaseHTTPRequestHandler):
             u = (form.get("username") or [""])[0]
             p = (form.get("password") or [""])[0]
             if MAT_KHAU.get(u) == p:
+                sid = quote(u, safe="")
                 self.send_response(302)
-                self.send_header("Set-Cookie", f"sid={u}; Path=/; HttpOnly")
+                self.send_header("Set-Cookie", f"sid={sid}; Path=/; HttpOnly")
                 self.send_header("Location", "/")
                 self.end_headers()
                 return
