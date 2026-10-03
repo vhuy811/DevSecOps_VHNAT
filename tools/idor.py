@@ -124,6 +124,9 @@ def quet_idor(base: str, cfg: dict, moi_timeout: float = 8.0) -> list[dict]:
 def doc_cau_hinh(duong: str) -> dict:
     """Doc tep cau hinh IDOR. Thieu/hong -> {} (pipeline bo qua buoc IDOR)."""
     try:
-        return json.loads(Path(duong).read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+        goc_an_toan = Path.cwd().resolve()
+        p = Path(duong).resolve()
+        p.relative_to(goc_an_toan)  # chan path traversal: chi doc trong thu muc lam viec
+        return json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError, json.JSONDecodeError):
         return {}
