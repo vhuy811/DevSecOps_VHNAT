@@ -64,6 +64,24 @@ def ghi(p: str, d: dict) -> None:
     Path(p).write_text(json.dumps(d, indent=1, ensure_ascii=False), encoding="utf-8")
 
 
+def tep_cau_hinh_app() -> str | None:
+    """Tim tep khoi tao middleware (Program.cs/Startup.cs) de neo phat hien header.
+
+    Header bao mat (CSP, X-Frame-Options) la middleware muc ung dung, cau hinh o
+    day chu khong o mot action nao. Neo alert DAST-runtime vao dung tep nay thi PR
+    nao sua no lam mat header se tao alert MOI trong code da thay doi -> cong Code
+    Scanning CHAN duoc, thay vi chi bao cao. Chon tep nong nhat (gan goc repo nhat),
+    bo qua bo cong cu va thu muc build.
+    """
+    bo = {".git", ".devsecops-toolkit", "bin", "obj", "node_modules"}
+    for ten in ("Program.cs", "Startup.cs"):
+        cands = [p for p in Path(".").rglob(ten) if not (set(p.parts) & bo)]
+        if cands:
+            cands.sort(key=lambda p: len(p.parts))
+            return cands[0].as_posix()
+    return None
+
+
 def sec_sev_hop_le(v) -> str | None:
     """Tra ve chuoi so '0.0'-'10.0' hoac None."""
     if v is None:
@@ -289,14 +307,17 @@ def lenh_runtime(a: argparse.Namespace) -> int:
     Chi dua phat hien co lam_khoa=True len (CSP, X-Frame-Options theo chinh sach);
     phan con lai van report-only o trang Summary. Cong cu rieng ten 'DAST-runtime'
     de ruleset dat nguong rieng (Medium) - KHONG dinh vao cong High cua OWASP-ZAP.
-    Header la cau hinh muc ung dung, khong co dong code endpoint, nen moi phat hien
-    gan vao fallback-file (tep du an). GitHub so baseline (main sach = 0) voi PR;
-    PR nao lam mat header se tao alert MOI -> cong chan.
-    LUON ghi SARIF (ket qua rong khi sach) de thiet lap baseline va check luon bao cao.
+    Header la cau hinh muc ung dung (middleware), khong buoc vao mot action nao, nen
+    moi phat hien duoc NEO vao tep khoi tao app (Program.cs/Startup.cs) neu tim thay.
+    Nho the PR nao sua tep do lam mat header se tao alert MOI trong code da thay doi
+    -> cong Code Scanning CHAN duoc (khong tim thay tep thi ve fallback-file).
+    GitHub so baseline (main sach = 0) voi PR. LUON ghi SARIF (ket qua rong khi sach)
+    de thiet lap baseline va check luon bao cao.
     """
     data = doc(a.inp)
     rt = [f for f in data.get("rule_runtime", []) if f.get("lam_khoa")]
     fallback = a.fallback_file or "README.md"
+    neo = tep_cau_hinh_app() or fallback
     rules: dict[str, dict] = {}
     results = []
     for f in rt:
@@ -325,7 +346,7 @@ def lenh_runtime(a: argparse.Namespace) -> int:
             "ruleId": rid,
             "level": ZAP_RISK_LEVEL.get(risk, "warning"),
             "message": {"text": text},
-            "locations": [{"physicalLocation": {"artifactLocation": {"uri": fallback, "uriBaseId": "%SRCROOT%"},
+            "locations": [{"physicalLocation": {"artifactLocation": {"uri": neo, "uriBaseId": "%SRCROOT%"},
                                                 "region": {"startLine": 1}}}],
             "partialFingerprints": {"dastRuntime/v1": f"{rid}|{f.get('param', '')}"},
             "properties": {"risk": risk, "url": f.get("url"), "cwe": cwe},
@@ -342,7 +363,7 @@ def lenh_runtime(a: argparse.Namespace) -> int:
         }],
     }
     ghi(a.out, sarif)
-    print(f"DAST-runtime: {len(results)} phat hien lam_khoa -> {a.out}")
+    print(f"DAST-runtime: {len(results)} phat hien lam_khoa (neo: {neo}) -> {a.out}")
     return 0
 
 
@@ -350,11 +371,16 @@ def lenh_runtime(a: argparse.Namespace) -> int:
 def lenh_idor(a: argparse.Namespace) -> int:
     """Phat hien IDOR/BOLA (khoa 'idor' trong zap-alerts.json) -> SARIF 'DAST-idor'.
 
-    Deu la loi kiem soat truy cap muc doi tuong (CWE-639), muc High -> gate duoc
-    nhu ZAP. Gan vao fallback-file vi IDOR la loi logic, khong buoc vao mot dong.
+    Deu la loi kiem soat truy cap muc doi tuong (CWE-639), muc High -> gate nhu ZAP.
+    Moi phat hien duoc ANH XA VE DONG CODE cua endpoint lo IDOR qua routes_map.json
+    (giong ZAP): URL -> Controller:dong. Nho the GitHub tinh day la 'alert MOI nam
+    trong code PR da sua' -> cong Code Scanning CHAN that su, khong chi bao cao.
+    Khong anh xa duoc (hiem) thi gan vao fallback-file.
     """
     data = doc(a.inp)
     items = data.get("idor", [])
+    routes_path = a.routes or "routes_map.json"
+    routes = doc(routes_path).get("routes", []) if Path(routes_path).is_file() else []
     fallback = a.fallback_file or "README.md"
     rid = "idor-bola"
     rule = {
@@ -368,16 +394,25 @@ def lenh_idor(a: argparse.Namespace) -> int:
                        "precision": "high"},
     }
     results = []
+    n_map = 0
     for f in items:
         text = f.get("alert", "")
         if f.get("attack"):
             text += f" | {f['attack']}"
         if f.get("cach_sua"):
             text += f" | sua: {f['cach_sua'][:100]}"
+        path = urlparse(f.get("url", "")).path
+        route = next((r for r in routes if r.get("url_path") == path), None)
+        if route:
+            uri, line = route["file"], int(route.get("line_start", 1) or 1)
+            n_map += 1
+        else:
+            uri, line = fallback, 1
+            text += " | (khong anh xa duoc ve action - gan vao tep du an)"
         results.append({
             "ruleId": rid, "level": "error", "message": {"text": text},
-            "locations": [{"physicalLocation": {"artifactLocation": {"uri": fallback, "uriBaseId": "%SRCROOT%"},
-                                                "region": {"startLine": 1}}}],
+            "locations": [{"physicalLocation": {"artifactLocation": {"uri": uri, "uriBaseId": "%SRCROOT%"},
+                                                "region": {"startLine": line}}}],
             "partialFingerprints": {"idor/v1": f"{f.get('url', '')}|{f.get('attack', '')}"},
             "properties": {"risk": "High", "url": f.get("url"), "cwe": "639"},
         })
@@ -387,7 +422,7 @@ def lenh_idor(a: argparse.Namespace) -> int:
                                            "rules": [rule]}},
                        "results": results}]}
     ghi(a.out, sarif)
-    print(f"DAST-idor: {len(results)} phat hien -> {a.out}")
+    print(f"DAST-idor: {len(results)} phat hien ({n_map} anh xa duoc ve ma nguon) -> {a.out}")
     return 0
 
 
@@ -412,6 +447,7 @@ def main() -> int:
     rt.add_argument("--out", default="reports/runtime.sarif")
     ii = sub.add_parser("idor")
     ii.add_argument("--in", dest="inp", required=True, help="zap-alerts.json (co khoa idor)")
+    ii.add_argument("--routes", default="", help="routes_map.json de anh xa URL -> Controller:dong (mac dinh doc routes_map.json o thu muc hien tai)")
     ii.add_argument("--fallback-file", default="")
     ii.add_argument("--out", default="reports/idor.sarif")
     a = ap.parse_args()
