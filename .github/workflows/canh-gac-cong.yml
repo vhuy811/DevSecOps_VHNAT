@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Cai phu thuoc Python
         run: pip install requests
@@ -57,7 +57,7 @@ jobs:
 
       - name: Mo Issue neu canh gac that bai
         if: failure()
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const title = "Canh gac cong: mot lop phat hien da NGUNG bat duoc";
