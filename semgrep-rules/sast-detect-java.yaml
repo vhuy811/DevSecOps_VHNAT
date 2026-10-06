@@ -1,0 +1,354 @@
+# =============================================================================
+# BO RULE PHAT HIEN - JAVA (tang 2, phan tich tinh)
+# =============================================================================
+#
+# Cung triet ly voi sast-detect.yaml (ban C#) va sast-detect-python.yaml:
+#   - Chi phu CWE ma OWASP ZAP CO active scan rule -> canh bao tinh con duong
+#     di toi nhan CONFIRMED. Phan be rong de cho bo rule cong dong p/java.
+#   - severity ERROR = co quyen CHAN merge.
+#   - "CWE-nnn:" o DAU message VA trong metadata.cwe.
+#
+# NGUON (pattern-sources) - BAN 1 CO Y HEP:
+# Chi dung cac loi goi TUONG MINH tren doi tuong request cua Servlet
+# (request.getParameter / getHeader / getReader ...). Day la dang chac chan
+# khop, va Spring cung tiem duoc HttpServletRequest nen van phu ca app Spring.
+#
+# Tham so co chu thich @RequestParam / @PathVariable CHUA dua vao ban nay: cu
+# phap khop chu thich cua Semgrep Java con nhieu bien the (@RequestParam vs
+# @RequestParam("x")), ma mot pattern sai cu phap lam HONG CA TEP RULE chu
+# khong chi mot rule. Se them sau khi job kiem thu rule trong CI xac nhan ban
+# nen chay dung - dung thu tu "chay thu truoc, mo rong sau".
+#
+# DIEM THEN CHOT - focus-metavariable O DOI SO THU NHAT:
+# Dang AN TOAN cua JDBC la PreparedStatement voi dau ?:
+#       ps = conn.prepareStatement("SELECT ... WHERE x = ?");
+#       ps.setString(1, giaTri);
+# Gia tri nhiem doc di qua setString, KHONG qua cau lenh. Nho focus vao doi so
+# thu nhat cua executeQuery/prepareStatement, rule khong bao nham dang nay.
+#
+# GIOI HAN THAT: Semgrep ban cong dong lan theo luong trong MOT ham. Lien ham /
+# lien tep la phan cua CodeQL (threat-models: local).
+# =============================================================================
+
+rules:
+
+  # ===========================================================================
+  # CWE-89 : SQL Injection          ZAP ascan 40018
+  # ===========================================================================
+  - id: dso-java-taint-sqli
+    mode: taint
+    languages: [java]
+    severity: ERROR
+    message: >-
+      CWE-89: Du lieu tu request duoc noi vao cau lenh SQL ma khong qua tham so
+      hoa. Dung PreparedStatement voi dau ? va setString/setInt, hoac tham so
+      dat ten cua JPA (setParameter) - chuoi cau lenh phai la hang.
+    metadata:
+      cwe: "CWE-89"
+      category: security
+      subcategory: [vuln]
+      confidence: HIGH
+      references:
+        - https://cwe.mitre.org/data/definitions/89.html
+    pattern-sources:
+      - pattern: $REQ.getParameter(...)
+      - pattern: $REQ.getParameterValues(...)
+      - pattern: $REQ.getHeader(...)
+      - pattern: $REQ.getQueryString()
+      - pattern: $REQ.getPathInfo()
+      - pattern: $REQ.getRequestURI()
+      - pattern: $REQ.getReader()
+      - pattern: $REQ.getInputStream()
+      - pattern: $REQ.getCookies()
+    pattern-sanitizers:
+      - pattern: Integer.parseInt(...)
+      - pattern: Long.parseLong(...)
+      - pattern: UUID.fromString(...)
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: $ST.executeQuery($X)
+              - pattern: $ST.execute($X)
+              - pattern: $ST.executeUpdate($X)
+              - pattern: $ST.executeLargeUpdate($X)
+              - pattern: $CONN.prepareStatement($X, ...)
+              - pattern: $CONN.prepareCall($X, ...)
+              - pattern: $EM.createQuery($X, ...)
+              - pattern: $EM.createNativeQuery($X, ...)
+              - pattern: $JT.query($X, ...)
+              - pattern: $JT.queryForObject($X, ...)
+              - pattern: $JT.queryForList($X, ...)
+              - pattern: $JT.update($X, ...)
+              - pattern: $JT.execute($X, ...)
+          - focus-metavariable: $X
+
+  # ===========================================================================
+  # CWE-78 : OS Command Injection   ZAP ascan 90020 / 90037
+  # ===========================================================================
+  - id: dso-java-taint-cmdi
+    mode: taint
+    languages: [java]
+    severity: ERROR
+    message: >-
+      CWE-78: Du lieu tu request di vao lenh he dieu hanh. Runtime.exec(String)
+      tu tach chuoi thanh lenh nen input lot vao la chay duoc lenh tuy y. Dung
+      ProcessBuilder voi tung doi so tach rieng va KHONG goi qua shell.
+    metadata:
+      cwe: "CWE-78"
+      category: security
+      subcategory: [vuln]
+      confidence: HIGH
+      references:
+        - https://cwe.mitre.org/data/definitions/78.html
+    pattern-sources:
+      - pattern: $REQ.getParameter(...)
+      - pattern: $REQ.getParameterValues(...)
+      - pattern: $REQ.getHeader(...)
+      - pattern: $REQ.getQueryString()
+      - pattern: $REQ.getPathInfo()
+      - pattern: $REQ.getReader()
+    pattern-sanitizers:
+      - pattern: Integer.parseInt(...)
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: $RT.exec($X, ...)
+              - pattern: Runtime.getRuntime().exec($X, ...)
+              - pattern: new ProcessBuilder($X, ...)
+          - focus-metavariable: $X
+
+  # ===========================================================================
+  # CWE-22 : Path Traversal         ZAP ascan 6
+  # ===========================================================================
+  - id: dso-java-taint-path-traversal
+    mode: taint
+    languages: [java]
+    severity: ERROR
+    message: >-
+      CWE-22: Du lieu tu request duoc dung lam duong dan tep ma khong cat bo
+      thu muc. Chuoi "../" cho phep doc hoac ghi ngoai thu muc du dinh. Lay ten
+      tep bang FilenameUtils.getName() / Path.getFileName(), roi kiem tra duong
+      dan chuan hoa van nam trong thu muc goc.
+    metadata:
+      cwe: "CWE-22"
+      category: security
+      subcategory: [vuln]
+      confidence: HIGH
+      references:
+        - https://cwe.mitre.org/data/definitions/22.html
+    pattern-sources:
+      - pattern: $REQ.getParameter(...)
+      - pattern: $REQ.getParameterValues(...)
+      - pattern: $REQ.getHeader(...)
+      - pattern: $REQ.getPathInfo()
+      - pattern: $REQ.getRequestURI()
+    pattern-sanitizers:
+      - pattern: FilenameUtils.getName(...)
+      - pattern: $P.getFileName()
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: new File($X, ...)
+              - pattern: new FileInputStream($X)
+              - pattern: new FileOutputStream($X, ...)
+              - pattern: new FileReader($X, ...)
+              - pattern: new FileWriter($X, ...)
+              - pattern: Files.readAllBytes($X)
+              - pattern: Files.readAllLines($X, ...)
+              - pattern: Files.newInputStream($X, ...)
+              - pattern: Files.delete($X)
+              - pattern: Paths.get($X, ...)
+          - focus-metavariable: $X
+
+  # ===========================================================================
+  # CWE-79 : Cross-Site Scripting   ZAP ascan 40012 / 40014 / 40026
+  # Neo vao writer CUA RESPONSE - khong dung $W.print(...) chung chung, vi the
+  # se bat ca System.out.print va thanh bao nham.
+  # ===========================================================================
+  - id: dso-java-taint-xss
+    mode: taint
+    languages: [java]
+    severity: ERROR
+    message: >-
+      CWE-79: Du lieu tu request duoc ghi thang vao than phan hoi ma khong ma
+      hoa HTML. Dung HtmlUtils.htmlEscape() / StringEscapeUtils.escapeHtml4()
+      truoc khi ghep, hoac tra ve qua template co auto-escape.
+    metadata:
+      cwe: "CWE-79"
+      category: security
+      subcategory: [vuln]
+      confidence: HIGH
+      references:
+        - https://cwe.mitre.org/data/definitions/79.html
+    pattern-sources:
+      - pattern: $REQ.getParameter(...)
+      - pattern: $REQ.getParameterValues(...)
+      - pattern: $REQ.getHeader(...)
+      - pattern: $REQ.getQueryString()
+      - pattern: $REQ.getCookies()
+    pattern-sanitizers:
+      - pattern: HtmlUtils.htmlEscape(...)
+      - pattern: StringEscapeUtils.escapeHtml4(...)
+      - pattern: StringEscapeUtils.escapeHtml(...)
+      - pattern: ESAPI.encoder().encodeForHTML(...)
+      - pattern: Integer.parseInt(...)
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: $RESP.getWriter().print($X)
+              - pattern: $RESP.getWriter().println($X)
+              - pattern: $RESP.getWriter().write($X, ...)
+              - pattern: $RESP.getWriter().append($X)
+              - pattern: $RESP.getWriter().format($X, ...)
+              - pattern: $RESP.getOutputStream().print($X)
+              - pattern: $RESP.getOutputStream().write($X, ...)
+          - focus-metavariable: $X
+
+  # ===========================================================================
+  # CWE-601 : Open Redirect         ZAP ascan 20019
+  # ===========================================================================
+  - id: dso-java-taint-open-redirect
+    mode: taint
+    languages: [java]
+    severity: ERROR
+    message: >-
+      CWE-601: Chuyen huong toi dia chi lay truc tiep tu request. Ke tan cong
+      gui link tro ve chinh trang cua ban roi day nan nhan sang trang gia mao.
+      Chi chuyen huong toi duong dan noi bo, hoac kiem tra host nam trong danh
+      sach cho phep.
+    metadata:
+      cwe: "CWE-601"
+      category: security
+      subcategory: [vuln]
+      confidence: HIGH
+      references:
+        - https://cwe.mitre.org/data/definitions/601.html
+    pattern-sources:
+      - pattern: $REQ.getParameter(...)
+      - pattern: $REQ.getHeader(...)
+      - pattern: $REQ.getQueryString()
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: $RESP.sendRedirect($X, ...)
+              - pattern: new RedirectView($X, ...)
+          - focus-metavariable: $X
+
+  # ===========================================================================
+  # CWE-918 : Server-Side Request Forgery   ZAP ascan 40046
+  # ===========================================================================
+  - id: dso-java-taint-ssrf
+    mode: taint
+    languages: [java]
+    severity: ERROR
+    message: >-
+      CWE-918: May chu goi HTTP toi dia chi lay tu request. Ke tan cong tro dia
+      chi ve mang noi bo hoac endpoint metadata cua nha cung cap dam may
+      (169.254.169.254). Chi cho phep mot danh sach may chu biet truoc.
+    metadata:
+      cwe: "CWE-918"
+      category: security
+      subcategory: [vuln]
+      confidence: MEDIUM
+      references:
+        - https://cwe.mitre.org/data/definitions/918.html
+    pattern-sources:
+      - pattern: $REQ.getParameter(...)
+      - pattern: $REQ.getHeader(...)
+      - pattern: $REQ.getQueryString()
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: new URL($X, ...)
+              - pattern: new URI($X, ...)
+              - pattern: URI.create($X)
+              - pattern: $RT.getForObject($X, ...)
+              - pattern: $RT.getForEntity($X, ...)
+              - pattern: $RT.exchange($X, ...)
+          - focus-metavariable: $X
+
+  # ===========================================================================
+  # CWE-643 : XPath Injection       ZAP ascan 90021
+  # ===========================================================================
+  - id: dso-java-taint-xpathi
+    mode: taint
+    languages: [java]
+    severity: ERROR
+    message: >-
+      CWE-643: Du lieu tu request duoc noi vao bieu thuc XPath. Chen
+      " or '1'='1' " la lay duoc moi nut - y het SQL Injection nhung tren XML.
+      Dung bien XPath (XPathVariableResolver) thay vi noi chuoi.
+    metadata:
+      cwe: "CWE-643"
+      category: security
+      subcategory: [vuln]
+      confidence: HIGH
+      references:
+        - https://cwe.mitre.org/data/definitions/643.html
+    pattern-sources:
+      - pattern: $REQ.getParameter(...)
+      - pattern: $REQ.getHeader(...)
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: $XP.evaluate($X, ...)
+              - pattern: $XP.compile($X)
+          - focus-metavariable: $X
+
+  # ===========================================================================
+  # CWE-90 : LDAP Injection         ZAP ascan 40015
+  # ===========================================================================
+  - id: dso-java-taint-ldapi
+    mode: taint
+    languages: [java]
+    severity: ERROR
+    message: >-
+      CWE-90: Bo loc LDAP duoc noi tu du lieu request. Ky tu ) ( * | & trong
+      input lam doi hoan toan y nghia cua bo loc. Ma hoa bang
+      Encode.forLdapFilter() truoc khi noi, hoac dung tham so hoa cua API.
+    metadata:
+      cwe: "CWE-90"
+      category: security
+      subcategory: [vuln]
+      confidence: HIGH
+      references:
+        - https://cwe.mitre.org/data/definitions/90.html
+    pattern-sources:
+      - pattern: $REQ.getParameter(...)
+      - pattern: $REQ.getHeader(...)
+    pattern-sanitizers:
+      - pattern: Encode.forLdapFilter(...)
+      - pattern: Encode.forLdap(...)
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: $CTX.search($BASE, $X, ...)
+              - pattern: new SearchRequest($BASE, $SCOPE, $X, ...)
+          - focus-metavariable: $X
+
+  # ===========================================================================
+  # CWE-611 : XML External Entity (XXE)   ZAP ascan 90023
+  # Khong dung taint: day la CAU HINH sai, biet chac khi doc dong code.
+  # ===========================================================================
+  - id: dso-java-xxe-dtd-enabled
+    languages: [java]
+    severity: ERROR
+    message: >-
+      CWE-611: Bo phan tich XML duoc bat xu ly DTD / thuc the ngoai, hoac tat
+      che do xu ly an toan. Tai lieu XML gui len co the khai bao thuc the tro
+      toi tep cuc bo hoac URL noi bo - doc tep may chu hoac gay SSRF. Dat
+      disallow-doctype-decl = true va FEATURE_SECURE_PROCESSING = true.
+    metadata:
+      cwe: "CWE-611"
+      category: security
+      subcategory: [vuln]
+      confidence: HIGH
+      references:
+        - https://cheatsheetseries.owasp.org/cheatsheets/XML_External_Entity_Prevention_Cheat_Sheet.html
+    pattern-either:
+      - pattern: '$F.setFeature("http://apache.org/xml/features/disallow-doctype-decl", false)'
+      - pattern: '$F.setFeature("http://xml.org/sax/features/external-general-entities", true)'
+      - pattern: '$F.setFeature("http://xml.org/sax/features/external-parameter-entities", true)'
+      - pattern: '$F.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, false)'
+      - pattern: '$F.setProperty(XMLInputFactory.SUPPORT_DTD, true)'
+      - pattern: '$F.setExpandEntityReferences(true)'

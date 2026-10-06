@@ -353,7 +353,15 @@ jobs:
           for d in $NHUNG; do LOAI="$LOAI --exclude $d"; done
 
           # Luot 1: rule cua bo cong cu + rule rieng cua repo
+          # Rule PHAT HIEN theo ngon ngu: C# (sast-detect) + Python + Java.
+          # Kiem ton tai tung tep de ban toolkit cu (toolkit-ref ghim tag chua
+          # co tep nay) van chay duoc, khong hong vi mot --config tro vao hu vo.
           CFG="--config $TOOLKIT/semgrep-rules/sast-detect.yaml"
+          for them in sast-detect-python.yaml sast-detect-java.yaml; do
+            if [ -f "$TOOLKIT/semgrep-rules/$them" ]; then
+              CFG="$CFG --config $TOOLKIT/semgrep-rules/$them"
+            fi
+          done
           if [ -d .devsecops/rules ] && ls .devsecops/rules/*.y*ml >/dev/null 2>&1; then
             CFG="$CFG --config .devsecops/rules"
             echo "Them rule rieng cua repo: .devsecops/rules/"
@@ -556,6 +564,7 @@ jobs:
           CHI_TAI_LIEU: ${{ steps.pham_vi.outputs.chi_tai_lieu }}
           CO_DAST: ${{ steps.app.outputs.chay == 'true' }}
           LY_DO_DAST: ${{ !inputs.run-dast && 'run-dast=false' || steps.app.outputs.ly_do }}
+          EV: ${{ github.event_name }}
         run: |
           # Bang tong quan tung tang
           python - <<'PY' >> $GITHUB_STEP_SUMMARY
@@ -606,6 +615,14 @@ jobs:
           # tep khai bao thu vien cua moi he sinh thai pho bien
           if [ -n "$MOC" ] && git diff --name-only "$MOC" HEAD | grep -qE '\.csproj$|packages\.lock\.json$|Directory\.Packages\.props$|(^|/)(package(-lock)?\.json|yarn\.lock|pnpm-lock\.yaml|requirements[^/]*\.txt|poetry\.lock|Pipfile\.lock|pom\.xml|build\.gradle(\.kts)?|go\.(mod|sum)|Gemfile\.lock|composer\.(json|lock)|Cargo\.lock)$'; then
             ARGS="$ARGS --deps-changed"
+          fi
+          # Quet dinh ky / chay tay: bat --cve-strict. Luc nay khong co moc baseline
+          # (quet day du), nen can chan-bao-cao ca CVE Critical tren thu vien KHONG
+          # doi - bat dung truong hop "code chua lo truoc day, nay thu vien bi cong
+          # bo CVE moi". PR thuong khong bat (de khong chan merge vi no cu cua nguoi khac).
+          if [ "$EV" = "schedule" ] || [ "$EV" = "workflow_dispatch" ]; then
+            ARGS="$ARGS --cve-strict"
+            echo "==> Quet dinh ky/tay: bat --cve-strict (xet ca CVE Critical tren thu vien khong doi)."
           fi
           python "$TOOLKIT/tools/gate.py" $ARGS "${DS[@]}" --routes routes_map.json \
             --title "$TITLE" --out reports/tom-tat.json || true
@@ -838,3 +855,67 @@ jobs:
         with:
           fail-on-severity: high
           comment-summary-in-pr: never
+
+  # =====================================================================
+  # CONG XAC NHAN (backstop) - bit lo "lo hong that o tep khong doi"
+  #
+  # Ruleset "Require code scanning results" cua GitHub chi chan canh bao MOI
+  # trong code PR DA DOI. Mot lo hong da bi ZAP khai thac thanh cong, hoac IDOR
+  # truy cap cheo tai khoan, nhung duoc neo vao tep PR khong dong vao (vi du SQLi
+  # o Data/Db.cs trong khi PR chi them Controller) thi GitHub khong tinh la moi
+  # va cho merge - do la PR #18 cua VulnShop-App.
+  #
+  # Job nay la MOT check RIENG, co quyen that bai (khac voi job scan luon xanh).
+  # No doc thang zap-alerts.json (khong qua buoc neo route), nen thay lo hong du
+  # no nam o dau, va CHAN bat ke dong do co thay doi hay khong - chi tinh phat
+  # hien DA KIEM CHUNG DONG (ZAP High tin cay khong-thap, IDOR/BOLA). Lo logic
+  # doanh nghiep khong co probe xac nhan nen tu nhien khong roi vao day.
+  #
+  # Cho qua co kiem soat: baseline (.devsecops/baseline-confirmed.json - no ky
+  # thuat da biet tren main) hoac ngoai le co ly_do/nguoi_duyet/het_han
+  # (.devsecops/ngoai-le.json, loai 'dast-xac-nhan'). Khong co file nao -> coi
+  # main sach -> moi phat hien xac nhan deu chan (fail-closed).
+  #
+  # DE CHECK NAY CHAN MERGE THAT: them "security / Cong xac nhan (DAST da chung
+  # minh)" vao danh sach Required status checks cua ruleset nhanh main.
+  # =====================================================================
+  cong-xac-nhan:
+    name: Cong xac nhan (DAST da chung minh)
+    needs: scan
+    if: always() && inputs.run-dast && github.event_name != 'push'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Keo bo cong cu DevSecOps ve
+        uses: actions/checkout@v7
+        with:
+          repository: vhuy811/DevSecOps_VHNAT
+          ref: ${{ inputs.toolkit-ref }}
+          path: .devsecops-toolkit
+
+      - name: Tai bao cao tu job scan
+        uses: actions/download-artifact@v7
+        with:
+          name: bao-cao-bao-mat
+          path: reports
+
+      - name: Chan lo hong DAST da chung minh (bat ke dong doi)
+        env:
+          TOOLKIT: .devsecops-toolkit
+        run: |
+          if [ ! -f reports/zap-alerts.json ]; then
+            echo "Khong co reports/zap-alerts.json (DAST khong chay hoac app khong len)."
+            echo "Khong co bang chung dong de xet -> cong xac nhan bo qua (khong chan)."
+            echo "Luu y: day la 'khong co ket qua DAST', khong phai 'da kiem chung va sach'."
+            exit 0
+          fi
+          # Khong truyen --summary (no nhan GIA TRI, mac dinh = $GITHUB_STEP_SUMMARY
+          # da co san trong CI nen van ghi vao trang Summary).
+          python "$TOOLKIT/tools/gate.py" --chan-xac-nhan \
+            --zap reports/zap-alerts.json \
+            --ngoai-le .devsecops/ngoai-le.json \
+            --baseline-xac-nhan .devsecops/baseline-confirmed.json \
+            --out reports/cong-xac-nhan.json

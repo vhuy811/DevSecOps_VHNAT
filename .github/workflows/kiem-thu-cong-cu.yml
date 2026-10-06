@@ -15,7 +15,7 @@ on:
       - tools/idor.py
       - tools/sarif_tools.py
       - tools/chinh-sach-zap.json
-      - semgrep-rules/kiem-thu-rule/thu-vien-js/**
+      - semgrep-rules/**
       - .github/workflows/kiem-thu-cong-cu.yml
       - .github/workflows/devsecops-reusable.yml
   workflow_dispatch:
@@ -110,3 +110,27 @@ jobs:
               print("KIEM THU THAT BAI:"); [print("  -", x) for x in loi]; sys.exit(1)
           print("KIEM THU DAT")
           PY
+
+  rule_semgrep:
+    # KIEM THU BO RULE - truoc day chi chay TAY (can Docker cuc bo), nen rule
+    # moi them vao khong ai kiem trong CI. Do dung la cach mot rule MU di vao
+    # pipeline: quet xong, khong bao gi, nguoi doc tuong ma nguon sach.
+    #
+    # Ba dieu kien (xem chay_kiem_thu.py):
+    #   1. moi rule phat hien phai bat duoc case co loi cua no
+    #   2. khong rule nao duoc bat nham fixture Da_Khu_Doc.* (duong tinh gia)
+    #   3. moi rule sanitizer phai tim duoc bang chung khu doc
+    # Phu C# + Python + Java, moi ngon ngu mot cap fixture Co_Loi / Da_Khu_Doc.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Cai semgrep
+        run: pip install semgrep
+
+      - name: Kiem thu bo rule (C# + Python + Java)
+        run: |
+          # pipefail: tee khong duoc che mat ma thoat cua kiem thu.
+          set -o pipefail
+          python semgrep-rules/kiem-thu-rule/chay_kiem_thu.py | tee -a "$GITHUB_STEP_SUMMARY"
