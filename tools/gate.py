@@ -81,6 +81,22 @@ def doc_json(p: str | None):
         return None
 
 
+def duong_dan_trong_thu_muc(duong: str, goc: Path | None = None) -> Path:
+    """Chuan hoa duong dan va BAT BUOC no nam trong thu muc lam viec.
+
+    Vi sao can: gate.py nhan duong dan tep tu doi so dong lenh cua workflow.
+    Mot gia tri kieu "../../.." hay mot duong dan tuyet doi se doc/ghi ra
+    ngoai vung lam viec cua CI. Chan bang cach chuan hoa roi doi chieu voi
+    goc - cung cach doc_cau_hinh() trong idor.py da lam.
+
+    Nem ValueError neu nam ngoai; noi goi quyet dinh xu ly.
+    """
+    g = (goc or Path.cwd()).resolve()
+    p = Path(duong).resolve()
+    p.relative_to(g)          # nam ngoai goc -> ValueError
+    return p
+
+
 def doc_sarif(p: str | None) -> list[dict] | None:
     """Tra ve danh sach ket qua kem MUC (error/warning/note). None neu khong co tep."""
     data = doc_json(p)
@@ -233,6 +249,16 @@ def phat_hien_da_xac_nhan(zap: dict | None) -> list[dict]:
 def _tai_baseline_xac_nhan(p: str | None) -> set[str]:
     """Van tay cac phat hien xac nhan da biet tren main. Chap nhan 2 dang tep:
     danh sach chuoi van tay, hoac {"van_tay": [...]}."""
+    if not p:
+        return set()
+    try:
+        # Ngoai thu muc lam viec -> coi nhu KHONG co baseline. Fail-closed:
+        # moi phat hien xac nhan deu thanh "moi", tuc chat hon chu khong long hon.
+        duong_dan_trong_thu_muc(p)
+    except ValueError:
+        print(f"::warning::--baseline-xac-nhan tro ra ngoai thu muc lam viec, "
+              f"bo qua baseline: {p}")
+        return set()
     d = doc_json(p)
     if isinstance(d, list):
         return {str(x) for x in d}
@@ -278,6 +304,11 @@ def _cong_xac_nhan(args, ngoai_le: list[dict]) -> int:
         print("CONG XAC NHAN: QUA - khong co lo hong DAST da xac nhan nao ngoai baseline/ngoai-le.")
     print("=" * 70)
 
+    # args.summary KHONG rang buoc vao thu muc lam viec duoc: mac dinh cua no la
+    # $GITHUB_STEP_SUMMARY, ma GitHub dat tep do NGOAI workspace (trong thu muc
+    # runner). Rang buoc vao cwd la mat han trang tom tat tren CI. Gia tri nay
+    # den tu moi truong cua runner chu khong tu noi dung repo, nen khong phai
+    # duong vao cua ke tan cong qua pull request.
     if args.summary:
         md = []
         if con_lai:
@@ -294,7 +325,13 @@ def _cong_xac_nhan(args, ngoai_le: list[dict]) -> int:
         with open(args.summary, "a", encoding="utf-8") as fh:
             fh.write("\n".join(md) + "\n")
 
-    out = Path(args.out)
+    try:
+        out = duong_dan_trong_thu_muc(args.out)
+    except ValueError:
+        # Loi CAU HINH, khong phai ket luan bao mat. Dung ma 2 de khong ai doc
+        # lan thanh "co lo hong" (0 = qua, 1 = chan).
+        print(f"::error::--out tro ra ngoai thu muc lam viec: {args.out}")
+        return 2
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps({"ket_luan": ket_luan, "xac_nhan": con_lai,
                                "ngoai_le_ap_dung": da_ngoai_le}, indent=2, ensure_ascii=False),

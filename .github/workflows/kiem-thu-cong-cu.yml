@@ -14,6 +14,8 @@ on:
       - tools/kiem_thu_idor.py
       - tools/idor.py
       - tools/sarif_tools.py
+      - tools/gate.py
+      - tools/kiem_thu_gate.py
       - tools/chinh-sach-zap.json
       - semgrep-rules/**
       - .github/workflows/kiem-thu-cong-cu.yml
@@ -118,6 +120,23 @@ jobs:
               print("KIEM THU THAT BAI:"); [print("  -", x) for x in loi]; sys.exit(1)
           print("KIEM THU DAT")
           PY
+
+  gate:
+    # G6: CONG XAC NHAN (backstop). Tai hien dung ca PR #18 cua VulnShop-App -
+    # lo hong da bi ZAP khai thac thanh cong nhung neo vao tep PR khong dong
+    # vao - va khang dinh cong chan duoc. Kiem ca hai chieu: ngoai le con hieu
+    # luc hoac baseline thi cho qua, ngoai le het han thi van chan, va che do
+    # thuong van luon thoat 0 (GitHub moi la cong). Kem guard duong dan --out.
+    # Chi stdlib.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false   # khong de GITHUB_TOKEN lai trong .git/config
+
+      - name: Kiem thu cong xac nhan
+        run: python tools/kiem_thu_gate.py >> "$GITHUB_STEP_SUMMARY"
 
   rule_semgrep:
     # KIEM THU BO RULE - truoc day chi chay TAY (can Docker cuc bo), nen rule
