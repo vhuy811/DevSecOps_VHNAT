@@ -37,6 +37,21 @@ name: DevSecOps - nam tang kiem thu (dung chung)
 # khong ket qua se lan ma nguon cua bo cong cu vao ma nguon cua repo dich.
 # ==========================================================================
 
+# AN NINH CHUOI CUNG UNG - vi sao moi buoc checkout deu co
+# persist-credentials: false
+#
+# Mac dinh actions/checkout GHI GITHUB_TOKEN vao .git/config va de no o do den
+# het job. Pipeline nay lai co y chay nhieu image :latest (de CSDL lo hong luon
+# moi) VA mount workspace vao chung - semgrep o /src va gitleaks o /repo la
+# mount READ-WRITE. Mot ban image bi chiem chi can doc .git/config la co token
+# ghi duoc vao repo: mot lo hong chuoi cung ung that, nam ngay trong cong cu
+# dang di tim lo hong.
+#
+# Khong buoc nao trong toan bo workflow cua bo cong cu nay chay git push hay
+# git commit (da kiem), nen tat han viec luu token khong lam vo gi. Cac tang
+# can quyen (day SARIF, doc artifact) lay token tu moi truong, khong qua
+# .git/config.
+
 on:
   workflow_call:
     inputs:
@@ -120,6 +135,7 @@ jobs:
       - name: Lay ma nguon cua repo goi
         uses: actions/checkout@v7
         with:
+          persist-credentials: false   # khong de GITHUB_TOKEN lai trong .git/config
           fetch-depth: 0
 
       # Mot commit chi sua tai lieu thi khong can build ung dung va ban payload.
@@ -211,6 +227,7 @@ jobs:
       - name: Keo bo cong cu DevSecOps ve
         uses: actions/checkout@v7
         with:
+          persist-credentials: false   # khong de GITHUB_TOKEN lai trong .git/config
           repository: vhuy811/DevSecOps_VHNAT
           ref: ${{ inputs.toolkit-ref }}
           path: .devsecops-toolkit
@@ -735,10 +752,13 @@ jobs:
       nhung: ${{ steps.nn.outputs.thu_muc_nhung }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false   # khong de GITHUB_TOKEN lai trong .git/config
 
       - name: Keo bo cong cu DevSecOps ve
         uses: actions/checkout@v7
         with:
+          persist-credentials: false   # khong de GITHUB_TOKEN lai trong .git/config
           repository: vhuy811/DevSecOps_VHNAT
           ref: ${{ inputs.toolkit-ref }}
           path: .devsecops-toolkit
@@ -762,6 +782,8 @@ jobs:
         include: ${{ fromJSON(needs.nhan-dien.outputs.codeql) }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false   # khong de GITHUB_TOKEN lai trong .git/config
 
       # Tep cau hinh phai nam TRONG workspace (codeql-action tu choi duong dan
       # ngoai workspace). Tep tam cua CI, repo khong bi dong toi.
@@ -851,6 +873,8 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false   # khong de GITHUB_TOKEN lai trong .git/config
       - uses: actions/dependency-review-action@v5
         with:
           fail-on-severity: high
@@ -888,10 +912,13 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false   # khong de GITHUB_TOKEN lai trong .git/config
 
       - name: Keo bo cong cu DevSecOps ve
         uses: actions/checkout@v7
         with:
+          persist-credentials: false   # khong de GITHUB_TOKEN lai trong .git/config
           repository: vhuy811/DevSecOps_VHNAT
           ref: ${{ inputs.toolkit-ref }}
           path: .devsecops-toolkit

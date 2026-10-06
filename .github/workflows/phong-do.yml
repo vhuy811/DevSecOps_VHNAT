@@ -50,6 +50,8 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false   # khong de GITHUB_TOKEN lai trong .git/config
 
       # Kiem thu nhanh tren fixture: moi rule phat hien phai bat case cua no
       # trong Co_Loi.*, khong rule nao duoc bat Da_Khu_Doc.cs. Hong o day thi
