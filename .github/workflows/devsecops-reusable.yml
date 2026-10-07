@@ -24,6 +24,8 @@ name: DevSecOps - nam tang kiem thu (dung chung)
 # results" tren main khoa merge theo nguong tung cong cu:
 #   Semgrep-du-an  : Alerts = Errors, Security >= High   (rule tu viet, tin cay cao)
 #   CodeQL         : Alerts = Errors, Security >= Medium (lan theo luong du lieu - job codeql)
+#                    TRU CWE-643: bo khoi tang nay vi bat 76% / bao nham 76%.
+#                    XPath injection do dso-taint-xpathi chan (49% / 0%).
 #   OWASP-ZAP      : Security >= High                   (DAST tren app dung tu PR)
 #   DAST-runtime   : Security >= Medium                 (rule runtime chon lam_khoa: CSP, X-Frame-Options)
 #   DAST-idor      : Security >= High                    (IDOR/BOLA CWE-639 - kiem co xac thuc, G3.4)
@@ -849,6 +851,21 @@ jobs:
               f.write("name: devsecops\nthreat-models: local\npaths-ignore:\n")
               for p in bo:
                   f.write(f"  - {json.dumps(p)}\n")
+              # CWE-643 (XPath injection): BO khoi tang CodeQL.
+              # Phong do #27 do moi 143 to hop nguong cua cong chan. CodeQL-local
+              # bat CWE-643 76% nhung bao nham cung 76% - TOAN BO 5.2% bao nham
+              # cua cong den tu dung mot loai nay. Bo no ra:
+              #     bat 63.6% -> 61.6% | bao nham 5.2% -> 1.0% | Youden +0.584 -> +0.606
+              # va day la to hop tot nhat trong 143 to hop do duoc.
+              # KHONG mat do phu: dso-taint-xpathi cua du an bat CWE-643 49% voi
+              # 0% bao nham va van co quyen chan. XPath injection van hien trong
+              # Code Scanning va van chan merge - chi doi sang cong cu chinh xac
+              # hon. Truy van bi loai: cs/xml/xpath-injection, va moi truy van
+              # cung tag external/cwe/cwe-643 cua ngon ngu khac.
+              f.write("query-filters:\n")
+              f.write("  - exclude:\n")
+              f.write("      tags contain:\n")
+              f.write("        - external/cwe/cwe-643\n")
           PY
           cat .devsecops-codeql.yml
 
@@ -905,6 +922,29 @@ jobs:
               for (k, s), n in sorted(dem.items(), key=lambda x: (-x[0][1], -x[1]))[:15]:
                   print(f"| `{k}` | {n} | {s:g} |")
               print()
+
+          # query-filters viet sai mot ky tu thi no LANG LE khong loai gi ca, va
+          # nguoi doc se tin cong chan co 1.0% bao nham trong khi that ra van
+          # 5.2%. Khong tin vao khoa cau hinh - doi chieu ket qua.
+          import sys
+          def tag_cua(r):
+              pr = (rules.get(rid(r), {}).get("properties") or {})
+              return (" ".join(pr.get("tags") or []) + " " + str(pr.get("cwe", ""))).lower()
+          con = [r for r in res if "cwe-643" in tag_cua(r)]
+          if con:
+              print(f"::error::query-filters KHONG loai duoc CWE-643: con {len(con)} canh bao. "
+                    "Nguong 1.0% bao nham do tren phong do khong con dung cho pipeline nay.",
+                    file=sys.stderr)
+              print(f"> **CWE-643 chưa bị loại** — còn {len(con)} cảnh báo. Chuỗi tag trong "
+                    "`query-filters` có thể đã sai; báo nhầm thật của cổng vẫn là 5.2%, "
+                    "không phải 1.0%.\n")
+          else:
+              print("> CWE-643 đã loại khỏi tầng CodeQL — đo được báo nhầm 5.2% → 1.0% "
+                    "(phòng đo #27). XPath injection vẫn do `dso-taint-xpathi` bắt "
+                    "(49% / 0% báo nhầm) và vẫn chặn merge.\n")
+              print("> Lưu ý giới hạn của phép kiểm này: *không có* cảnh báo CWE-643 cũng có "
+                    "thể chỉ vì repo không có mã XPath. Chỗ xác nhận thật là bảng theo CWE "
+                    "của phòng đo, nơi Juliet có 370 case CWE-643.\n")
           PY
 
   # =====================================================================

@@ -431,14 +431,31 @@ def quet_nguong(cases: dict, tep: dict, ket_qua: dict[str, list[dict]],
             return False
         return all(n[k] == hien_tai.get(k, "-") for k in ten_truc)
 
-    md = [f"#### Dò ngưỡng — {len(ds)} tổ hợp, xếp theo Youden", "",
+    # In 20 dong dau, cong them dong cua nguong dang chay neu no nam ngoai 20.
+    # Do het 143 to hop nhung in het thi khong ai doc, va 120 dong duoi cung
+    # chi de chung minh chung kem hon - khong can nhin tung dong.
+    GIOI_HAN = 20
+    hien = [i for i, x in enumerate(ds) if la_ht(x["nhan"])]
+    chon = list(range(min(GIOI_HAN, len(ds))))
+    them = [i for i in hien if i not in chon]
+
+    md = [f"#### Dò ngưỡng — đo {len(ds)} tổ hợp, xếp theo Youden"
+          + (f" (hiện {len(chon) + len(them)} dòng đầu)" if len(ds) > len(chon) + len(them) else ""), "",
           "| # | " + " | ".join(ten_truc) + " | Tỉ lệ bắt | Tỉ lệ báo nhầm | Youden |",
           "|---|" + "---|" * (len(ten_truc) + 3)]
-    for i, x in enumerate(ds, 1):
+
+    def dong(i: int) -> str:
+        x = ds[i]
         dau = " **← đang dùng**" if la_ht(x["nhan"]) else ""
         o = " | ".join(x["nhan"][k] for k in ten_truc)
-        md.append(f"| {i} | {o} | {x['bat']:.1%} | {x['nham']:.1%} "
-                  f"| {x['youden']:+.3f}{dau} |")
+        return (f"| {i + 1} | {o} | {x['bat']:.1%} | {x['nham']:.1%} "
+                f"| {x['youden']:+.3f}{dau} |")
+
+    for i in chon:
+        md.append(dong(i))
+    for i in them:
+        md.append("| … | " + " | ".join("" for _ in ten_truc) + " |  |  |  |")
+        md.append(dong(i))
     md += ["",
            "> Mỗi trục là một công cụ; `-` = công cụ đó không có quyền chặn. "
            "`E` / `E+W` = mức severity của Semgrep được tính; `high` = CodeQL "

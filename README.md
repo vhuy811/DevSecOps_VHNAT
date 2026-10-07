@@ -24,8 +24,8 @@ Pipeline **không tự chặn**. Nó đưa kết quả từng scanner lên GitHu
 
 | Nguồn | Chặn merge khi | Ngưỡng ruleset |
 |---|---|---|
-| **Semgrep-du-an** — 43 rule tự viết (10 rule lần theo luồng dữ liệu) | cảnh báo mức ERROR **mới** trong PR | Alerts = Errors, Security ≥ High |
-| **CodeQL** — lần theo luồng dữ liệu qua biến, hàm, tệp; mọi ngôn ngữ tự nhận; nguồn: request + CSDL, tệp, biến môi trường | cảnh báo Medium trở lên **mới** trong PR | Alerts = Errors, Security ≥ Medium |
+| **Semgrep-du-an** — 45 rule tự viết cho C# (10 rule lần theo luồng dữ liệu) + 8 rule Python + 9 rule Java | cảnh báo mức ERROR **mới** trong PR | Alerts = Errors, Security ≥ High |
+| **CodeQL** — lần theo luồng dữ liệu qua biến, hàm, tệp; mọi ngôn ngữ tự nhận; nguồn: request + CSDL, tệp, biến môi trường; **trừ CWE-643** | cảnh báo Medium trở lên **mới** trong PR | Alerts = Errors, Security ≥ Medium |
 | **OWASP-ZAP** — quét toàn bộ app dựng từ code PR | alert risk High **mới** | Security ≥ High |
 | **DAST-idor** — kiểm IDOR/BOLA có xác thực (đăng nhập nhiều người dùng, thử truy cập chéo) | phát hiện truy cập chéo **mới** (CWE-639) | Security ≥ High (thêm vào ruleset khi repo có bề mặt xác thực) |
 | **retire.js** — thư viện JS chép sẵn trong repo (`wwwroot/lib`, `vendor/`) | PR **thêm hoặc đổi** tệp thư viện dính CVE Medium trở lên | Alerts = Errors, Security ≥ Medium |

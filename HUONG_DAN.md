@@ -213,7 +213,7 @@ Trên trang PR, các check:
 |---|---|---|
 | `security / scan` | không | pipeline không chạy xong — lỗi hạ tầng, xem log |
 | `Code scanning results / Semgrep-du-an` | **có** | cảnh báo ERROR **mới** trong diff |
-| `Code scanning results / CodeQL` | **có** | cảnh báo Medium trở lên **mới** — dữ liệu từ request chảy tới chỗ nguy hiểm |
+| `Code scanning results / CodeQL` | **có** | cảnh báo Medium trở lên **mới** — dữ liệu từ request chảy tới chỗ nguy hiểm. CWE-643 đã bị loại khỏi tầng này (xem bên dưới) |
 | `security / codeql (<ngôn ngữ>)` | không | job CodeQL không chạy xong — xem log |
 | `Code scanning results / OWASP-ZAP` | **có** | ZAP khai thác được lỗi High trên app dựng từ PR |
 | `Code scanning results / retire.js` | **có** | PR thêm/đổi thư viện JS chép sẵn dính CVE Medium trở lên |
@@ -234,6 +234,19 @@ Settings của repo:
 - ☑ Require code scanning results → Add tool `Semgrep-du-an` (Alerts: **Errors**, Security: **High or higher**) · Add tool `CodeQL` (Alerts: **Errors**, Security: **Medium or higher**) · Add tool `OWASP-ZAP` (Security: **High or higher**) · Add tool `retire.js` (Alerts: **Errors**, Security: **Medium or higher**)
 
   CodeQL để **Medium**, không phải High: chuyển hướng mở (6.1), lộ thông tin qua lỗi (5.4), cookie thiếu `Secure` (5.0) được CodeQL bắt với 0–3% báo nhầm trên Juliet nhưng đều dưới 7 điểm — để High thì cả ba loại lọt cổng. Nếu repo đang bật CodeQL *Default setup* thì tắt đi (Settings → Code security → CodeQL analysis → Disable): GitHub từ chối kết quả CodeQL của workflow khi Default setup đang bật.
+
+  **CWE-643 (XPath injection) bị loại khỏi tầng CodeQL** — `query-filters` trong cấu hình
+  CodeQL mà workflow sinh ra. Lý do là số đo, không phải cảm tính: phòng đo #27 chấm cả
+  143 tổ hợp ngưỡng của cổng chặn, và CodeQL bắt CWE-643 76% nhưng báo nhầm cũng 76% —
+  toàn bộ 5.2% báo nhầm của cổng đến từ đúng một loại này. Bỏ nó ra: bắt 63.6% → 61.6%,
+  báo nhầm 5.2% → **1.0%**, Youden +0.584 → **+0.606**, là tổ hợp tốt nhất trong 143 tổ hợp.
+  Đổi 2.0 điểm bắt (~132 case) lấy 4.2 điểm bớt chặn oan (~278 case).
+
+  Không mất độ phủ: rule `dso-taint-xpathi` của đồ án bắt CWE-643 ở 49% với **0% báo nhầm**
+  và vẫn giữ quyền chặn, nên XPath injection vẫn hiện trong Code Scanning và vẫn chặn merge —
+  chỉ đổi sang công cụ chính xác hơn. Bước *Tóm tắt CodeQL* đối chiếu lại kết quả thật thay vì
+  tin vào khoá cấu hình: còn cảnh báo CWE-643 nào sót thì nó báo lỗi ra PR, vì một chuỗi tag
+  viết sai sẽ làm `query-filters` lặng lẽ không loại gì cả.
 - ☑ Require status checks to pass → `security / dependency-review` · ☑ Require branches to be up to date
 - ☑ Restrict deletions · ☑ Block force pushes
 

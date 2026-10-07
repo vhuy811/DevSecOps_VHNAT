@@ -143,6 +143,15 @@ jobs:
           # tu buoc phan tich truoc ("No need to rerun ...") va bo qua threat model
           # moi - lan do #4 ra cot codeql-local giong het codeql vi ly do do.
 
+      # Phong do CO Y chay CodeQL KHONG loc, roi mo hinh cong chan bang bo loc
+      # ben phia cham diem (&!cwe=643). Hai ly do:
+      #   1. Giu nguyen du lieu day du, nen buoc "Do nguong" van so sanh duoc
+      #      "co CWE-643" voi "bo CWE-643" - loc o tang CodeQL thi mat kha nang do.
+      #   2. Day la cho XAC NHAN chuoi tag external/cwe/cwe-643 that su mang so
+      #      643. Neu tag sai thi bo loc nay cung that bai va pipeline-hien-tai
+      #      se van hien 5.2% bao nham thay vi 1.0% - sai lech bay ra ngay.
+      # Juliet co 370 case CWE-643 nen phep xac nhan nay co co so, khac voi viec
+      # quet mot repo khong co ma XPath.
       - name: Cham diem
         run: |
           python tools/cham_diem.py juliet --goc bench/src/testcases \
@@ -152,7 +161,7 @@ jobs:
             --sarif codeql-local=ket-qua/codeql-local.sarif \
             --chan "chi-semgrep=semgrep-du-an:level=error" \
             --chan "pipeline-hien-tai=semgrep-du-an:level=error" \
-            --chan "pipeline-hien-tai=codeql-local:sev>=4" \
+            --chan "pipeline-hien-tai=codeql-local:sev>=4&!cwe=643" \
             --do-nguong \
             --out ket-qua/juliet.json --md ket-qua/juliet.md
           cat ket-qua/juliet.md >> "$GITHUB_STEP_SUMMARY"
