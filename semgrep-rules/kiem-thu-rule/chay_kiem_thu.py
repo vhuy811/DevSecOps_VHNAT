@@ -150,11 +150,22 @@ def main() -> int:
         chay_semgrep(out)
         data = json.loads(out.read_text(encoding="utf-8"))
 
-    # Gom ket qua theo (id rule -> tap tep da bat)
+    # Gom ket qua theo (id rule -> tap tep da bat), kem so dong.
+    # So dong la bat buoc: mot bao nham chi ghi "bat nham Da_Khu_Doc.cs" thi
+    # nguoi sua phai do tay ca tep de tim cho. Da mat mot vong CI vi thieu no.
     trung: dict[str, set[str]] = {}
+    dong_bat: dict[tuple[str, str], set[int]] = {}
     for r in data.get("results", []):
         rid = r.get("check_id", "").split(".")[-1]
-        trung.setdefault(rid, set()).add(Path(r.get("path", "")).name)
+        ten = Path(r.get("path", "")).name
+        trung.setdefault(rid, set()).add(ten)
+        ln = (r.get("start") or {}).get("line")
+        if isinstance(ln, int):
+            dong_bat.setdefault((rid, ten), set()).add(ln)
+
+    def vi_tri(rid: str, ten: str) -> str:
+        ds = sorted(dong_bat.get((rid, ten), ()))
+        return f"{ten}:{','.join(str(x) for x in ds)}" if ds else ten
 
     hong: list[str] = []
 
@@ -178,8 +189,9 @@ def main() -> int:
     bao_nham = [(rid, tep) for rid, tep in bao_nham if tep]
     if bao_nham:
         for rid, tep in bao_nham:
-            print(f"  HONG    {rid:<45} bat nham {', '.join(tep)}")
-            hong.append(f"duong tinh gia: {rid} tren {', '.join(tep)}")
+            cho = ", ".join(vi_tri(rid, t_) for t_ in tep)
+            print(f"  HONG    {rid:<45} bat nham {cho}")
+            hong.append(f"duong tinh gia: {rid} tren {cho}")
     else:
         print(f"  DAT     khong rule nao bat nham {TIEN_TO_AN_TOAN}.*")
 

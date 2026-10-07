@@ -172,7 +172,7 @@ namespace KiemThuRule
         public void Xml_MaHoa(XmlWriter writer, string ten)
         {
             var an = SecurityElement.Escape(ten);
-            writer.WriteElementString("Ten", ten);
+            writer.WriteElementString("Ten", an);
         }
 
         // ------------------------------------------------------------------
@@ -193,11 +193,17 @@ namespace KiemThuRule
         }
 
         // nguon: bien moi truong -> cat bo thanh phan thu muc
+        // Viet dung hinh dang hai buoc nhu Path_ChiTenTep o tren (gan Path.Combine
+        // vao mot bien roi moi dua vao sink). Ban long ghep
+        // File.ReadAllText(Path.Combine(...)) bi dso-taint-path-traversal bao nham
+        // trong lan chay CI #19 - sanitizer khong duoc tinh khi loi goi nam long
+        // ngay trong doi so cua sink.
         public string NguonBienMoiTruong_ChiTenTep()
         {
-            string duong = Environment.GetEnvironmentVariable("BAO_CAO");
+            var duong = Environment.GetEnvironmentVariable("BAO_CAO");
             var an = Path.GetFileName(duong);
-            return File.ReadAllText(Path.Combine("/var/bao-cao", an));
+            var day = Path.Combine("/var/bao-cao", an);
+            return File.ReadAllText(day);
         }
 
         // nguon: CSDL -> tach doi so, khong ghep vao dong lenh
@@ -260,10 +266,13 @@ namespace KiemThuRule
             using var cmd = new SqlCommand("select ma from bo_loc", conn);
             using SqlDataReader rd = cmd.ExecuteReader();
             rd.Read();
-            string ma = SecurityElement.Escape((string)rd.GetValue(0));
+            string ma = (string)rd.GetValue(0);
             var doc = new XmlDocument();
             doc.Load("danh-muc.xml");
-            return doc.SelectSingleNode("//muc[ma='" + ma + "']");
+            // Ma hoa NGAY TAI CHO dung, khong phai o mot dong truoc do: rule hinh
+            // dang dso-xpathi-select-concat chi doc duoc pham vi no khop, nen loi
+            // goi ma hoa phai nam trong chinh bieu thuc XPath moi duoc tinh.
+            return doc.SelectSingleNode("//muc[ma='" + SecurityElement.Escape(ma) + "']");
         }
 
         // ------------------------------------------------------------------

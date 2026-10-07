@@ -543,21 +543,31 @@ rules:
       confidence: HIGH
       references:
         - https://cwe.mitre.org/data/definitions/643.html
-    pattern-either:
-      - pattern: $DOC.SelectNodes(<... $A + $B ...>, ...)
-      - pattern: $DOC.SelectSingleNode(<... $A + $B ...>, ...)
-      - pattern: $DOC.SelectNodes($"...", ...)
-      - pattern: $DOC.SelectSingleNode($"...", ...)
-      - pattern: XPathExpression.Compile(<... $A + $B ...>, ...)
-      - pattern: XPathExpression.Compile($"...")
-      - pattern: $NAV.Evaluate(<... $A + $B ...>, ...)
-      - pattern: $NAV.Select(<... $A + $B ...>, ...)
-      - pattern: $EL.XPathSelectElements(<... $A + $B ...>, ...)
-      - pattern: $EL.XPathSelectElement(<... $A + $B ...>, ...)
+    patterns:
+      - pattern-either:
+        - pattern: $DOC.SelectNodes(<... $A + $B ...>, ...)
+        - pattern: $DOC.SelectSingleNode(<... $A + $B ...>, ...)
+        - pattern: $DOC.SelectNodes($"...", ...)
+        - pattern: $DOC.SelectSingleNode($"...", ...)
+        - pattern: XPathExpression.Compile(<... $A + $B ...>, ...)
+        - pattern: XPathExpression.Compile($"...")
+        - pattern: $NAV.Evaluate(<... $A + $B ...>, ...)
+        - pattern: $NAV.Select(<... $A + $B ...>, ...)
+        - pattern: $EL.XPathSelectElements(<... $A + $B ...>, ...)
+        - pattern: $EL.XPathSelectElement(<... $A + $B ...>, ...)
 
   # ===========================================================================
   # CWE-611 : XML External Entity (XXE)
   # ===========================================================================
+      # Phan bien doi da qua bo ma hoa chinh tac thi khong con la chen XPath.
+      # Dung pattern-not-regex thay vi 10 pattern-not (mot cho moi dang sink o
+      # tren): viet 10 lan de chi noi mot dieu thi dai va chac chan se quen mot
+      # dang khi them sink moi.
+      # Danh doi da biet: neu mot phep noi co hai phan, mot phan da ma hoa va
+      # mot phan chua, regex nay se bo qua ca canh bao. Chap nhan duoc vi rule
+      # nay chi la WARNING (tham khao); quyen chan nam o dso-taint-xpathi, rule
+      # do lan theo tung gia tri nen khong bi lua boi tinh huong hon hop.
+      - pattern-not-regex: SecurityElement\.Escape\(
 
   - id: dso-xxe-dtd-processing-parse
     languages: [csharp]
@@ -733,17 +743,21 @@ rules:
       confidence: HIGH
       references:
         - https://cwe.mitre.org/data/definitions/90.html
-    pattern-either:
-      - pattern: $S.Filter = <... $A + $B ...>;
-      - pattern: $S.Filter = $"...";
-      - pattern: new DirectorySearcher(<... $A + $B ...>, ...)
-      - pattern: new DirectorySearcher($"...", ...)
-      - pattern: new DirectoryEntry(<... $A + $B ...>, ...)
-      - pattern: new SearchRequest(<... $A + $B ...>, ...)
+    patterns:
+      - pattern-either:
+        - pattern: $S.Filter = <... $A + $B ...>;
+        - pattern: $S.Filter = $"...";
+        - pattern: new DirectorySearcher(<... $A + $B ...>, ...)
+        - pattern: new DirectorySearcher($"...", ...)
+        - pattern: new DirectoryEntry(<... $A + $B ...>, ...)
+        - pattern: new SearchRequest(<... $A + $B ...>, ...)
 
   # ===========================================================================
   # CWE-91 : XML / XSLT Injection
   # ===========================================================================
+      # Nhu tren: bo loc da qua Encoder.Ldap*Encode thi khong con la chen LDAP.
+      # Quyen chan nam o dso-taint-ldapi (lan theo tung gia tri).
+      - pattern-not-regex: Encoder\.Ldap\w*Encode\(
 
   - id: dso-xmli-innerxml-concat
     languages: [csharp]
