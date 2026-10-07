@@ -441,11 +441,22 @@ def lenh_chon(a: argparse.Namespace) -> int:
 
 
 def lenh_mau(a: argparse.Namespace) -> int:
-    """In ham Bad (bien the 01) cua mot test case moi CWE ra Markdown.
+    """In ham Bad VA ham Good (bien the 01) cua mot test case moi CWE ra Markdown.
 
     Dung de doc sink THAT cua nhung CWE chua cong cu nao bat truoc khi viet rule,
     thay vi doan. Cu phap --cwe: "23,36,89:CommandText" (sau dau ':' la chuoi
     phai co trong ten tep, de chon dung bien the).
+
+    VI SAO PHAI IN CA HAM GOOD
+    Doc mot minh ham Bad chi tra loi duoc nua cau hoi: "bat cai gi". Nua con lai -
+    "khong duoc bat cai gi" - nam trong ham Good, va do moi la nua de viet sai.
+    Juliet co hai kieu Good:
+      goodG2B = nguon an toan  + sink cu   -> cho biet nguon bien mat the nao
+      goodB2G = nguon cu       + sink an toan -> cho biet SANITIZER co hinh dang gi
+    Viet rule chi theo ham Bad thi rat de ra mot rule bat dung 100% va bao nham
+    100% - dung cai da xay ra voi nhom rule hinh dang o G2.3b. Uu tien in goodB2G
+    vi no giu nguyen nguon, nen khac biet duy nhat so voi Bad chinh la cho can
+    khai bao sanitizer.
     """
     goc = Path(a.goc)
     uu_tien = ("QueryString_Web", "Params_Get_Web", "Get_Cookies_Web")
@@ -463,12 +474,26 @@ def lenh_mau(a: argparse.Namespace) -> int:
         if not hams:
             out.append(f"- CWE-{tok}: không tìm thấy hàm bad trong `{chon.name}`\n")
             continue
-        ten, a0, b0 = max(hams, key=lambda h: h[2] - h[1])
-        than = "\n".join(dong[max(0, a0 - 2):b0])
-        if len(than) > 4000:
-            than = than[:4000] + "\n// ... (cat bot)"
-        out += [f"<details><summary>CWE-{tok} — <code>{chon.name}</code> ({ten})</summary>", "",
-                "```csharp", than, "```", "</details>", ""]
+        def than_ham(h: tuple[str, int, int]) -> str:
+            _, a0, b0 = h
+            s = "\n".join(dong[max(0, a0 - 2):b0])
+            return s if len(s) <= 4000 else s[:4000] + "\n// ... (cat bot)"
+
+        ten, _, _ = xau = max(hams, key=lambda h: h[2] - h[1])
+        khoi = [f"<details><summary>CWE-{tok} — <code>{chon.name}</code> ({ten})</summary>", "",
+                "```csharp", than_ham(xau), "```"]
+
+        # Ham Good: uu tien goodB2G (giu nguon, sua sink) vi no lo ra sanitizer.
+        goods = [h for h in cac_ham(src) if vai_tro(h[0]) == "good"]
+        tot = next((h for h in goods if "b2g" in h[0].lower()), None)
+        if tot is None and goods:
+            tot = max(goods, key=lambda h: h[2] - h[1])
+        if tot is not None:
+            khoi += ["", f"Doi trong an toan — `{tot[0]}`:", "", "```csharp", than_ham(tot), "```"]
+        else:
+            khoi += ["", "_Khong tim thay ham good trong tep nay._"]
+
+        out += khoi + ["</details>", ""]
     text = "\n".join(out)
     if a.md:
         Path(a.md).write_text(text, encoding="utf-8")
