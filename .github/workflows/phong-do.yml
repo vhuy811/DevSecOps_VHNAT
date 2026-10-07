@@ -153,6 +153,7 @@ jobs:
             --chan "chi-semgrep=semgrep-du-an:level=error" \
             --chan "pipeline-hien-tai=semgrep-du-an:level=error" \
             --chan "pipeline-hien-tai=codeql-local:sev>=4" \
+            --do-nguong \
             --out ket-qua/juliet.json --md ket-qua/juliet.md
           cat ket-qua/juliet.md >> "$GITHUB_STEP_SUMMARY"
 

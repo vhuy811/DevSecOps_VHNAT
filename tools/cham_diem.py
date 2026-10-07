@@ -37,6 +37,7 @@ Cach cham (theo quy uoc cua Juliet va OWASP Benchmark):
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 import re
 import shutil
@@ -281,14 +282,30 @@ def doc_sarif(path: Path) -> list[dict]:
 
 
 def dieu_kien_chan(spec: str):
-    """'level=error' | 'sev>=7' -> ham kiem tra ket qua."""
+    """'level=error' | 'sev>=7' | 'sev>=4&!cwe=643,91' -> ham kiem tra ket qua.
+
+    Phan '&!cwe=...' loai cac CWE do khoi tap canh bao CO QUYEN CHAN (van hien
+    trong bao cao, chi la khong chan merge). Dung cho truy van cua cong cu ngoai
+    ma do duoc la bao nham cao tren mot loai cu the - giong cach do an da ha muc
+    nhom rule hinh dang cua chinh no o G2.3b.
+    """
+    bo_cwe: set[int] = set()
+    if "&!cwe=" in spec:
+        spec, _, ds = spec.partition("&!cwe=")
+        bo_cwe = {int(x) for x in ds.split(",") if x.strip()}
+
+    def loc(f):
+        if not bo_cwe:
+            return f
+        return lambda r: f(r) and not (r["cwes"] & bo_cwe)
+
     if spec.startswith("level="):
         want = spec.split("=", 1)[1]
-        return lambda r: r["level"] == want
-    m = re.match(r"sev>=([\d.]+)", spec)
+        return loc(lambda r: r["level"] == want)
+    m = re.match(r"sev>=([\d.]+)$", spec)
     if m:
         nguong = float(m.group(1))
-        return lambda r: r["sev"] >= nguong
+        return loc(lambda r: r["sev"] >= nguong)
     raise SystemExit(f"--chan khong hieu: {spec}")
 
 
@@ -346,6 +363,89 @@ def md_bang(ten: str, bang: dict, cong_cu: list[str]) -> str:
             o.append(f"{tpr:.0%} / {fpr:.0%}")
         dong.append(f"| {k} | {n} | " + " | ".join(o) + " |")
     return "\n".join(dong) + "\n"
+
+
+# --------------------------------------------------------------- do nguong
+# Khong gian nguong cua cong chan. Moi truc = mot cong cu, moi muc = tap dieu
+# kien duoc hop lai. "-" nghia la khong cho cong cu do quyen chan.
+#
+# Vi sao lam bang liet ke het thay vi chon tay: nguong hien tai (Semgrep ERROR
+# + CodeQL-local medium) la mot lua chon co ly nhung chua bao gio duoc dat canh
+# 80 lua chon con lai. Youden cua mot to hop khong suy ra duoc tu Youden tung
+# cong cu, vi hai cong cu bat trung nhau o phan nao thi phan do khong cong don.
+# Phai do.
+TRUC_NGUONG = {
+    "semgrep-du-an":     [("-", []), ("E", ["level=error"]),
+                          ("E+W", ["level=error", "level=warning"])],
+    "semgrep-cong-dong": [("-", []), ("E", ["level=error"]),
+                          ("E+W", ["level=error", "level=warning"])],
+    # Muc "med-643": medium nhung bo CWE-643 khoi quyen chan. Phong do #26:
+    # codeql-local bat CWE-643 76% va bao nham cung 76% - toan bo 5.2% bao nham
+    # cua cong chan den tu day. Trong khi dso-taint-xpathi cua du an bat CWE-643
+    # 49% voi 0% bao nham, nen bo quyen chan cua CodeQL o rieng loai nay mat rat
+    # it do phu. Co mat trong bang de do, khong phai de mac dinh.
+    "codeql":            [("-", []), ("high", ["sev>=7"]), ("medium", ["sev>=4"]),
+                          ("med-643", ["sev>=4&!cwe=643"])],
+    "codeql-local":      [("-", []), ("high", ["sev>=7"]), ("medium", ["sev>=4"]),
+                          ("med-643", ["sev>=4&!cwe=643"])],
+}
+
+
+def quet_nguong(cases: dict, tep: dict, ket_qua: dict[str, list[dict]],
+                hien_tai: dict | None = None) -> str:
+    """Do MOI to hop nguong va xep hang theo Youden.
+
+    tp cua mot to hop = co canh bao nao cua to hop do roi vao ham bad; fp =
+    roi vao ham good. Vi to hop la HOP cua cac tap canh bao, khong the suy ra
+    bang cong tru tu so cua tung cong cu - nen moi to hop duoc cham lai that.
+    """
+    truc = {k: v for k, v in TRUC_NGUONG.items() if k in ket_qua}
+    if not truc:
+        return ""
+    ten_truc = list(truc)
+
+    ds = []
+    for chon in itertools.product(*(truc[k] for k in ten_truc)):
+        nhan = {k: c[0] for k, c in zip(ten_truc, chon)}
+        canh_bao = []
+        for k, (_, dks) in zip(ten_truc, chon):
+            for dk in dks:
+                f = dieu_kien_chan(dk)
+                canh_bao.extend(r for r in ket_qua[k] if f(r))
+        if not canh_bao:
+            continue
+        d = cham(cases, tep, {"x": canh_bao})["x"]
+        d.pop("__khong_gan__", None)
+        o = {"n": len(cases), "tp": sum(v["tp"] for v in d.values()),
+             "fp": sum(v["fp"] for v in d.values())}
+        tpr, fpr, j = ti_le(o)
+        ds.append({"nhan": nhan, "bat": tpr, "nham": fpr, "youden": j,
+                   "canh_bao": len(canh_bao)})
+
+    # Hoa Youden thi uu tien to hop bao nham THAP hon: mot cong chan hay chan
+    # oan se bi nguoi dung tat di hoac xin ngoai le hang loat, luc do no khong
+    # con chan gi nua. Bat it hon mot it de doi lay long tin thi con giu duoc cong.
+    ds.sort(key=lambda x: (-x["youden"], x["nham"]))
+    def la_ht(n: dict) -> bool:
+        if hien_tai is None:
+            return False
+        return all(n[k] == hien_tai.get(k, "-") for k in ten_truc)
+
+    md = [f"#### Dò ngưỡng — {len(ds)} tổ hợp, xếp theo Youden", "",
+          "| # | " + " | ".join(ten_truc) + " | Tỉ lệ bắt | Tỉ lệ báo nhầm | Youden |",
+          "|---|" + "---|" * (len(ten_truc) + 3)]
+    for i, x in enumerate(ds, 1):
+        dau = " **← đang dùng**" if la_ht(x["nhan"]) else ""
+        o = " | ".join(x["nhan"][k] for k in ten_truc)
+        md.append(f"| {i} | {o} | {x['bat']:.1%} | {x['nham']:.1%} "
+                  f"| {x['youden']:+.3f}{dau} |")
+    md += ["",
+           "> Mỗi trục là một công cụ; `-` = công cụ đó không có quyền chặn. "
+           "`E` / `E+W` = mức severity của Semgrep được tính; `high` = CodeQL "
+           "security-severity ≥ 7, `medium` = ≥ 4. "
+           "Youden = tỉ lệ bắt − tỉ lệ báo nhầm, nên nó cân đúng hai vế "
+           "*đừng để lỗi vẫn pass* và *không lỗi vẫn block*.", ""]
+    return "\n".join(md)
 
 
 def lenh_juliet(a: argparse.Namespace) -> int:
@@ -413,6 +513,13 @@ def lenh_juliet(a: argparse.Namespace) -> int:
     md.append(md_bang("Theo CWE", bang_cwe, cong_cu))
     md.append(md_bang("Theo đường đi của dữ liệu (flow variant)", bang_flow, cong_cu))
     md.append(md_bang("Theo loại nguồn dữ liệu", bang_nguon, cong_cu))
+    if getattr(a, "do_nguong", False):
+        # Nhan cua nguong dang chay, de bang xep hang chi ro no dung thu may.
+        ht = {"semgrep-du-an": "E", "semgrep-cong-dong": "-",
+              "codeql": "-", "codeql-local": "medium"}
+        bang = quet_nguong(cases, tep, {k: v for k, v in ket_qua.items() if k in TRUC_NGUONG}, ht)
+        if bang:
+            md.append(bang)
     text = "\n".join(md)
     if a.md:
         Path(a.md).write_text(text, encoding="utf-8")
@@ -514,6 +621,8 @@ def main() -> int:
     j.add_argument("--chan", action="append", default=[], help="ten:level=error | ten:sev>=7")
     j.add_argument("--out", default="")
     j.add_argument("--md", default="")
+    j.add_argument("--do-nguong", action="store_true",
+                   help="do moi to hop nguong cua cong chan va xep hang theo Youden")
     m = sub.add_parser("mau")
     m.add_argument("--goc", required=True)
     m.add_argument("--cwe", required=True)
