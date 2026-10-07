@@ -391,6 +391,26 @@ TRUC_NGUONG = {
 }
 
 
+def nhan_dang_chay(chan: list[str]) -> dict:
+    """Suy ra nhan cua nguong DANG CHAY tu chinh cac --chan duoc truyen vao.
+
+    Truoc day nhan nay viet cung trong ma. Doi nguong o workflow ma quen sua o
+    day thi bang xep hang danh dau sai dong - bao cao noi mot dieu khong dung,
+    va do la thu te nhat mot bo do co the lam. Suy ra thi khong the lech.
+
+    Muc nao khong khop danh sach trong TRUC_NGUONG thi ghi "?" - noi thang la
+    khong dinh vi duoc, hon la danh dau bua mot dong.
+    """
+    gom: dict[str, set[str]] = {}
+    for spec in chan:
+        m = re.match(r"^(?:(?P<nhom>[\w.-]+)=)?(?P<ten>[\w.-]+):(?P<dk>.+)$", spec)
+        if not m or (m.group("nhom") or "") != "pipeline-hien-tai":
+            continue
+        gom.setdefault(m.group("ten"), set()).add(m.group("dk"))
+    return {tool: next((ten for ten, dks in muc if set(dks) == gom.get(tool, set())), "?")
+            for tool, muc in TRUC_NGUONG.items()}
+
+
 def quet_nguong(cases: dict, tep: dict, ket_qua: dict[str, list[dict]],
                 hien_tai: dict | None = None) -> str:
     """Do MOI to hop nguong va xep hang theo Youden.
@@ -531,9 +551,7 @@ def lenh_juliet(a: argparse.Namespace) -> int:
     md.append(md_bang("Theo đường đi của dữ liệu (flow variant)", bang_flow, cong_cu))
     md.append(md_bang("Theo loại nguồn dữ liệu", bang_nguon, cong_cu))
     if getattr(a, "do_nguong", False):
-        # Nhan cua nguong dang chay, de bang xep hang chi ro no dung thu may.
-        ht = {"semgrep-du-an": "E", "semgrep-cong-dong": "-",
-              "codeql": "-", "codeql-local": "medium"}
+        ht = nhan_dang_chay(a.chan)
         bang = quet_nguong(cases, tep, {k: v for k, v in ket_qua.items() if k in TRUC_NGUONG}, ht)
         if bang:
             md.append(bang)
