@@ -72,6 +72,56 @@ def la_an_toan(ten_tep: str) -> bool:
     return Path(ten_tep).stem == TIEN_TO_AN_TOAN
 
 
+KHOI_RULE_RE = re.compile(r"^  - id: (\S+)$", re.M)
+PATTERN_RE = re.compile(r"^\s*- pattern:\s*(.+?)\s*$", re.M)
+
+
+def nguon_sink_trung(tep: Path) -> list[str]:
+    """Tim rule taint co mot pattern vua la NGUON vua la SINK.
+
+    Day la mot cai bay im lang. Vi du that (CI #20): rule
+    dso-taint-path-traversal khai File.ReadAllText(...) la nguon, trong khi
+    sink cua no la File.$F($X, ...) voi $F la metavariable - nen
+    File.ReadAllText khop ca hai dau va rule tu bao chinh no, ke ca khi doi so
+    la hang chuoi. Hau qua neu lot luoi: moi loi goi File.ReadAllText trong
+    ung dung thanh canh bao muc ERROR, tuc la chan merge moi lan doc tep.
+
+    Kiem o day vi no khong can chay Semgrep, va vi bao nham dang nay rat kho
+    doc khi nhin qua ket qua quet - no giong mot canh bao that.
+    """
+    van_de: list[str] = []
+    noi_dung = tep.read_text(encoding="utf-8")
+    moc = [(m.group(1), m.start()) for m in KHOI_RULE_RE.finditer(noi_dung)]
+    for k, (rid, bd) in enumerate(moc):
+        kt = moc[k + 1][1] if k + 1 < len(moc) else len(noi_dung)
+        khoi = noi_dung[bd:kt]
+        if "mode: taint" not in khoi:
+            continue
+
+        def lay(ten: str) -> set[str]:
+            if f"    {ten}:" not in khoi:
+                return set()
+            sau = khoi.split(f"    {ten}:", 1)[1]
+            # dung o muc thuoc dau tien cua rule (4 space + chu)
+            for d in ("\n    pattern-", "\n    metadata:", "\n    message:",
+                      "\n    severity:", "\n    languages:", "\n    mode:"):
+                i = sau.find(d)
+                if i > 0:
+                    sau = sau[:i]
+            return set(PATTERN_RE.findall(sau))
+
+        nguon, sink = lay("pattern-sources"), lay("pattern-sinks")
+        trung = nguon & sink
+        for s in sink:                      # sink dung metavariable cho ten ham
+            if ".$F(" in s:
+                tien = s.split(".$F(")[0] + "."
+                trung |= {n for n in nguon if n.startswith(tien)}
+        if trung:
+            van_de.append(f"{rid} ({tep.name}): pattern vua la nguon vua la sink "
+                          f"-> {', '.join(sorted(trung))}")
+    return van_de
+
+
 def chay_semgrep(out: Path) -> None:
     """Chay Semgrep tren thu muc fixture, xuat JSON ra `out`.
 
@@ -143,6 +193,16 @@ def main() -> int:
         # nham hai rule khac nhau thanh mot.
         print(f"  HONG    id rule bi trung giua cac tep: {', '.join(sorted(trung_lap))}")
         return 1
+    # Tien kiem khong can Semgrep: bay nguon/sink trung nhau.
+    bay = [x for pth in ds_phat_hien for x in nguon_sink_trung(pth)]
+    if bay:
+        print(f"  HONG    {len(bay)} rule taint co pattern vua la nguon vua la sink:")
+        for x in bay:
+            print(f"            {x}")
+        print("    Rule nhu vay tu bao chinh no o moi loi goi, khong lien quan")
+        print("    luong du lieu. Bo pattern do khoi nguon cua dung rule do.")
+        return 1
+
     print("[*] Dang chay Semgrep tren fixture ...\n")
 
     with tempfile.TemporaryDirectory() as tmp:

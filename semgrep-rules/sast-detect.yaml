@@ -894,9 +894,20 @@ rules:
       - pattern: Console.ReadLine(...)
       - pattern: Console.In.ReadLine(...)
       - pattern: Environment.GetEnvironmentVariable(...)
-      - pattern: File.ReadAllText(...)
-      - pattern: File.ReadAllLines(...)
-      - pattern: File.ReadAllBytes(...)
+      # KHONG dua File.ReadAll* vao nguon CUA RIENG RULE NAY. Sink o duoi la
+      # `File.$F($X, ...)` voi $F la metavariable, nen File.ReadAllText khop CA
+      # nguon LAN sink -> rule tu bao chinh no.
+      # Bang chung: CI #20 bao nham Da_Khu_Doc.cs:89,206,227 va ca ba dong deu
+      # la File.ReadAllText(...), ke ca dong 227 co doi so la hang chuoi - thu
+      # khong the bi nhiem qua luong du lieu.
+      # Neu de nguyen: moi loi goi File.ReadAllText trong ung dung thanh mot
+      # canh bao muc ERROR, tuc la chan merge moi lan doc tep. Dung cai
+      # "khong loi van block" ma do an lay lam tieu chi.
+      # Danh doi: mat dang "doc ten tep tu mot tep khac roi mo no". Dang
+      # `new StreamReader(...).ReadLine()` -> sink duong dan van bat duoc, va
+      # do cung la dang Juliet dung cho ho nguon File.
+      # Bay nguon/sink trung nhau nay CHI co o rule nay; 7 rule taint con lai
+      # da doi chieu, khong co pattern nao vua la nguon vua la sink.
       - pattern: $SR.ReadLine()
       - pattern: $SR.ReadToEnd()
       - pattern: $RD.GetString($I)
