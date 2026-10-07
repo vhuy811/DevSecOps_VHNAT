@@ -122,6 +122,10 @@ on:
 
 jobs:
   scan:
+    # needs nhan-dien: nhan dien ngon ngu chi chay MOT lan, o job do (xem buoc
+    # "Nhan dien du an" ben duoi). Dong thoi lay luon quyet dinh chan trung.
+    needs: nhan-dien
+    if: needs.nhan-dien.outputs.bo_qua != 'true'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -243,8 +247,18 @@ jobs:
           PF_IN: ${{ inputs.project-file }}
           DF_IN: ${{ inputs.dockerfile }}
           PACKS_IN: ${{ inputs.semgrep-packs }}
+          PACKS_NHAN: ${{ needs.nhan-dien.outputs.packs }}
+          NHUNG_NHAN: ${{ needs.nhan-dien.outputs.nhung }}
         run: |
-          python "$TOOLKIT/tools/nhan_ngon_ngu.py" --root . --out reports/ngon-ngu.json --summary
+          # Nhan dien ngon ngu KHONG chay lai o day. Job nhan-dien da chay
+          # nhan_ngon_ngu.py va truyen ket qua qua output.
+          #
+          # Truoc day ca HAI job deu chay script nay, song song va doc lap. Hai
+          # cai gia: mot luot duyet toan repo bi lam doi, va - nang hon - hai
+          # tang co the LECH NHAU, vi scan lay bo rule Semgrep tu lan chay cua
+          # no con codeql lay danh sach ngon ngu tu lan chay cua nhan-dien.
+          # Lech thi khong ai thay. Gio chi con MOT nguon su that cho moi tang.
+          mkdir -p reports
           BO="--exclude-dir=.git --exclude-dir=$TOOLKIT --exclude-dir=node_modules --exclude-dir=bin --exclude-dir=obj"
           PF="$PF_IN"
           if [ -z "$PF" ]; then
@@ -259,9 +273,9 @@ jobs:
           fi
           PACKS="$PACKS_IN"
           if [ -z "$PACKS" ]; then
-            PACKS=$(python -c "import json;print(' '.join(json.load(open('reports/ngon-ngu.json'))['semgrep_packs']))")
+            PACKS="$PACKS_NHAN"
           fi
-          NHUNG=$(python -c "import json;print(' '.join(json.load(open('reports/ngon-ngu.json'))['thu_muc_nhung']))")
+          NHUNG=$(python -c "import json,os;print(' '.join(json.loads(os.environ.get('NHUNG_NHAN') or '[]')))")
           # tep de gan alert ZAP khong anh xa duoc ve dong code nao
           FB=""
           for f in "$PF" "$DF" package.json README.md; do
@@ -744,12 +758,17 @@ jobs:
   # 0-3% bao nham nhung deu duoi 7 - dat nguong High thi ca ba loai lot cong.
   # =====================================================================
   nhan-dien:
+    # Job VAO: nhan dien ngon ngu mot lan cho moi tang, va quyet dinh lan chay
+    # nay co phai trung lap khong.
     runs-on: ubuntu-24.04
     permissions:
       contents: read
+      pull-requests: read      # de biet commit nay da co PR mo chua (chan trung)
     outputs:
       codeql: ${{ steps.nn.outputs.codeql_matrix }}
       nhung: ${{ steps.nn.outputs.thu_muc_nhung }}
+      packs: ${{ steps.nn.outputs.semgrep_packs }}
+      bo_qua: ${{ steps.trung.outputs.bo_qua }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -763,13 +782,42 @@ jobs:
           ref: ${{ inputs.toolkit-ref }}
           path: .devsecops-toolkit
 
-      - name: Nhan ngon ngu cho CodeQL
+      - name: Nhan ngon ngu cho moi tang
         id: nn
-        run: python .devsecops-toolkit/tools/nhan_ngon_ngu.py --root . --github-output
+        run: python .devsecops-toolkit/tools/nhan_ngon_ngu.py --root . --github-output --summary
+
+      # CHAN TRUNG. Nhanh moi duoc quet du 5 tang nho trigger push. Nhung khi
+      # commit do DA co PR mo thi lan chay theo pull_request da phu het, va chay
+      # them lan push la duyet hai lan cung mot thu.
+      #
+      # Chi xet voi event push. Lan chay theo pull_request KHONG BAO GIO bi bo
+      # qua, nen cong chan khong the bi lam rong vi buoc nay.
+      - name: Chan trung (push ma da co PR thi bo qua)
+        id: trung
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ github.event_name }}" != "push" ]; then
+            echo "bo_qua=false" >> "$GITHUB_OUTPUT"
+            echo "Event la ${{ github.event_name }} - khong xet chan trung."
+            exit 0
+          fi
+          SO=$(gh api "repos/${{ github.repository }}/commits/${{ github.sha }}/pulls" \
+                 --jq 'length' 2>/dev/null || echo 0)
+          if [ "${SO:-0}" -gt 0 ]; then
+            echo "bo_qua=true" >> "$GITHUB_OUTPUT"
+            echo "Commit nay da co $SO pull request mo - lan chay theo pull_request da phu."
+            echo "> Bo qua lan chay theo \`push\`: commit nay da co pull request, quet o do roi." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "bo_qua=false" >> "$GITHUB_OUTPUT"
+            echo "Chua co PR cho commit nay - quet day du 5 tang tren nhanh."
+          fi
 
   codeql:
     needs: nhan-dien
-    if: needs.nhan-dien.outputs.codeql != '' && needs.nhan-dien.outputs.codeql != '[]'
+    if: >-
+      needs.nhan-dien.outputs.bo_qua != 'true' &&
+      needs.nhan-dien.outputs.codeql != '' && needs.nhan-dien.outputs.codeql != '[]'
     name: codeql (${{ matrix.language }})
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -906,7 +954,16 @@ jobs:
   cong-xac-nhan:
     name: Cong xac nhan (DAST da chung minh)
     needs: scan
-    if: always() && inputs.run-dast && github.event_name != 'push'
+    # Chay CA voi event push: nhanh vua tao (chua co PR) cung phai qua cong
+    # nay, de lap trinh vien thay ket qua ngay thay vi doi den luc mo PR.
+    #
+    # KHONG dua inputs.run-dast vao day. Mot job BI SKIP van lam THOA MAN
+    # required status check cua GitHub - nghia la repo nao dat run-dast: false
+    # la cong tu "xanh" bang cach khong chay. Job phai CHAY va tu bao cao ket
+    # luan; viec run-dast=false duoc xu ly ben trong buoc, co in ro ly do.
+    # Chi bo qua khi job scan bi skip (lan chay push trung lap) - luc do khong
+    # co artifact nao de xet.
+    if: always() && needs.scan.result != 'skipped'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -933,11 +990,25 @@ jobs:
         env:
           TOOLKIT: .devsecops-toolkit
         run: |
-          if [ ! -f reports/zap-alerts.json ]; then
-            echo "Khong co reports/zap-alerts.json (DAST khong chay hoac app khong len)."
-            echo "Khong co bang chung dong de xet -> cong xac nhan bo qua (khong chan)."
-            echo "Luu y: day la 'khong co ket qua DAST', khong phai 'da kiem chung va sach'."
+          # Hai truong hop KHAC NHAU, truoc day bi gop lam mot va deu thoat 0:
+          #   a) repo CO Y khong chay tang dong (run-dast: false) -> khong co gi
+          #      de xet, cho qua nhung NOI RO day khong phai bang chung sach.
+          #   b) tang dong DUOC YEU CAU chay nhung khong ra ket qua (ZAP loi,
+          #      app khong len) -> KHONG ket luan duoc, phai CHAN. Cho qua o day
+          #      la coi im lang la an toan, trai voi nguyen tac cua ca do an.
+          if [ "${{ inputs.run-dast }}" != "true" ]; then
+            echo "run-dast=false: repo nay co y khong chay tang dong."
+            echo "Cong xac nhan khong co bang chung dong nao de xet."
+            echo "Day la 'khong quet', KHONG phai 'da kiem chung va sach'."
+            echo "> Cong xac nhan: repo dat \`run-dast: false\`, khong co bang chung dong de xet." >> "$GITHUB_STEP_SUMMARY"
             exit 0
+          fi
+          if [ ! -f reports/zap-alerts.json ]; then
+            echo "::error::run-dast=true nhung khong co reports/zap-alerts.json."
+            echo "Tang dong duoc YEU CAU chay ma khong ra ket qua - khong ket luan duoc."
+            echo "Xem log job scan (ZAP hoac buoc khoi dong app). Day la loi ha tang,"
+            echo "nhung chua kiem tra thi chua duoc qua."
+            exit 1
           fi
           # Khong truyen --summary (no nhan GIA TRI, mac dinh = $GITHUB_STEP_SUMMARY
           # da co san trong CI nen van ghi vao trang Summary).

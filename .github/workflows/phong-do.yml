@@ -150,9 +150,9 @@ jobs:
             --sarif semgrep-cong-dong=ket-qua/semgrep-cong-dong.sarif \
             --sarif codeql=ket-qua/codeql.sarif \
             --sarif codeql-local=ket-qua/codeql-local.sarif \
+            --chan "chi-semgrep=semgrep-du-an:level=error" \
             --chan "pipeline-hien-tai=semgrep-du-an:level=error" \
-            --chan "pipeline-muc-tieu=semgrep-du-an:level=error" \
-            --chan "pipeline-muc-tieu=codeql-local:sev>=4" \
+            --chan "pipeline-hien-tai=codeql-local:sev>=4" \
             --out ket-qua/juliet.json --md ket-qua/juliet.md
           cat ket-qua/juliet.md >> "$GITHUB_STEP_SUMMARY"
 

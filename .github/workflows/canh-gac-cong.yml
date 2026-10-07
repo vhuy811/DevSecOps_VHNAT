@@ -9,6 +9,9 @@ name: Canh gac cong (dinh ky)
 # Fixture co dinh (khong doi theo thoi gian):
 #   - kiem_thu_dast_sqlite.py : app gia co endpoint phan chieu loi Microsoft.Data.Sqlite
 #   - kiem_thu_runtime.py     : app gia thieu/du header bao mat + co cookie
+#   - kiem_thu_idor.py        : app gia co endpoint lo IDOR + form dang nhap co CSRF
+#   - kiem_thu_gate.py        : SARIF gia tai hien ca lo hong da chung minh o tep khong doi
+#   - chay_kiem_thu.py        : fixture Co_Loi / Da_Khu_Doc cho C#, Python, Java
 #   - semgrep-rules/kiem-thu-rule/thu-vien-js/jquery-1.8.1.min.js : thu vien JS co CVE
 
 on:
@@ -57,6 +60,12 @@ jobs:
       - name: Semgrep rule du an + sanitizer van dung (3 dieu kien)
         run: python semgrep-rules/kiem-thu-rule/chay_kiem_thu.py
 
+      - name: Kiem IDOR/BOLA van bat duoc (ke ca qua form co CSRF)
+        run: python tools/kiem_thu_idor.py >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Cong xac nhan van chan duoc lo hong da chung minh
+        run: python tools/kiem_thu_gate.py >> "$GITHUB_STEP_SUMMARY"
+
       - name: Mo Issue neu canh gac that bai
         if: failure()
         uses: actions/github-script@v9
@@ -67,7 +76,7 @@ jobs:
             const body = [
               "Workflow **canh-gac-cong** that bai.",
               "",
-              "Mot lop (SQLite / runtime / retire.js / Semgrep) khong con bat duoc fixture lo hong CO DINH.",
+              "Mot lop (SQLite / runtime / retire.js / Semgrep / IDOR / cong xac nhan) khong con bat duoc fixture lo hong CO DINH.",
               "Cong co the dang 'mu' - dieu tra ngay truoc khi tin vao ket qua xanh cua PR.",
               "",
               `Run: ${run}`,
