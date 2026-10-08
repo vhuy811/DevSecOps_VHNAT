@@ -68,7 +68,10 @@ HO_CWE = [
 ]
 CWE_RE = re.compile(r"cwe[-_/ ]?0*(\d+)", re.I)
 # X_01.cs | X_54a.cs | X_81_bad.cs / X_81_goodG2B.cs / X_81_base.cs
-TEN_TEP_RE = re.compile(r"^(CWE(\d+)_[A-Za-z0-9_]+?__(.+?)_(\d{2}))(?:[a-z]|_(bad|good\w*|base))?\.cs$")
+# Juliet Java dung y nguyen quy uoc dat ten nay, chi khac duoi tep, nen mot
+# bieu thuc phuc vu ca hai bo do.
+TEN_TEP_RE = re.compile(
+    r"^(CWE(\d+)_[A-Za-z0-9_]+?__(.+?)_(\d{2}))(?:[a-z]|_(bad|good\w*|base))?\.(?:cs|java)$")
 
 # nhom flow variant cua Juliet (so cuoi ten tep)
 NHOM_FLOW = [
@@ -95,6 +98,18 @@ NGUON = {
     "Environment": "4 · cục bộ (console, biến môi trường, tệp)",
     "File": "4 · cục bộ (console, biến môi trường, tệp)",
     "ReadLine": "4 · cục bộ (console, biến môi trường, tệp)",
+    # Juliet Java 1.3 - 12 ho nguon, doc tu ten test case that trong bo do
+    # (unittestbot/juliet-java-test-suite), khong doan. Chi 3/12 la HTTP.
+    "getParameter_Servlet": "1 · HTTP request (tham số, cookie)",
+    "getQueryString_Servlet": "1 · HTTP request (tham số, cookie)",
+    "getCookies_Servlet": "1 · HTTP request (tham số, cookie)",
+    "connect_tcp": "2 · mạng (TCP, WebClient)",
+    "listen_tcp": "2 · mạng (TCP, WebClient)",
+    "URLConnection": "2 · mạng (TCP, WebClient)",
+    "database": "3 · CSDL (dữ liệu đã lưu)",
+    "console_readLine": "4 · cục bộ (console, biến môi trường, tệp)",
+    "PropertiesFile": "4 · cục bộ (console, biến môi trường, tệp)",
+    "Property": "4 · cục bộ (console, biến môi trường, tệp)",
 }
 # CWE khong co khai niem "nguon du lieu" (mat ma, cau hinh, khoa viet cung...).
 # CWE-319 co ten "connect_tcp_..." nhung o day tcp la noi GUI di, khong phai nguon.
@@ -119,7 +134,11 @@ def nhom_flow(so: int) -> str:
 def loai_nguon(cwe: int, phan_sau: str) -> tuple[str, str]:
     if cwe in KHONG_NGUON:
         return phan_sau, KHONG_NGUON_NHAN
-    goc = re.sub(r"^(?:CWE\d+_)?Web_", "", phan_sau)
+    # Juliet goi test case chay trong ung dung web bang tien to "Web_" (C#) hoac
+    # "Servlet_" (Java), co the kem "CWE182_" o truoc. Day la NOI CHAY, khong
+    # phai nguon du lieu - nguon that nam ngay sau. Thieu nhanh Servlet_ thi
+    # 1332/5772 case Java roi vao "chua phan loai" va bang theo nguon mat nghia.
+    goc = re.sub(r"^(?:CWE\d+_)?(?:Web|Servlet)_", "", phan_sau)
     for n in sorted(NGUON, key=len, reverse=True):
         if goc.startswith(n):
             return n, NGUON[n]
@@ -136,7 +155,15 @@ def cac_ham(src: str) -> list[tuple[str, int, int]]:
     tu = ""
     trang_thai = None    # None | 'cmt1' | 'cmtn' | 'str' | 'vstr' | 'chr'
     dau_dong_ham = 0
-    sig_re = re.compile(r"(?:public|private|protected|internal|static|override|virtual|async|sealed|new)[\w<>\[\],\s.?]*?\b(\w+)\s*\([^;{}()]*(?:\([^()]*\)[^;{}()]*)*\)\s*(?::\s*base\([^)]*\)\s*)?$")
+    # Duoi chu ky: C# co ": base(...)", Java co "throws A, B". Thieu nhanh throws
+    # thi KHONG doc duoc ham nao trong tep Juliet Java (da do: 0/5 ham), va moi
+    # canh bao se khong gan duoc vai tro bad/good -> bang ket qua ra 0% tron,
+    # nhin y nhu "rule khong bat duoc gi". Day la mot cach sai im lang.
+    sig_re = re.compile(
+        r"(?:public|private|protected|internal|static|override|virtual|async|sealed|new"
+        r"|final|abstract|synchronized|native|default)"
+        r"[\w<>\[\],\s.?]*?\b(\w+)\s*\([^;{}()]*(?:\([^()]*\)[^;{}()]*)*\)\s*"
+        r"(?::\s*base\([^)]*\)\s*|throws\s+[\w.<>,\s]+)?$")
     dem = []             # ky tu tu dau cau lenh hien tai
     while i < n:
         c = src[i]
@@ -234,7 +261,8 @@ def vai_tro(ten: str | None) -> str | None:
 def lap_chi_muc(goc: Path) -> tuple[dict, dict]:
     """case_id -> thong tin; ten_tep -> (case_id, danh sach ham, vai tro theo ten tep)."""
     cases, tep = {}, {}
-    for p in sorted(goc.rglob("*.cs")):
+    ds = sorted(list(goc.rglob("*.cs")) + list(goc.rglob("*.java")))
+    for p in ds:
         m = TEN_TEP_RE.match(p.name)
         if not m:
             continue
@@ -567,18 +595,22 @@ def lenh_chon(a: argparse.Namespace) -> int:
     muon = {int(x) for x in a.cwe.split(",") if x.strip()}
     dich.mkdir(parents=True, exist_ok=True)
     so = 0
+    # Hai bo do, hai bo cuc thu muc: Juliet C# dat "CWE89_SQL_Injection/", ban
+    # mirror cua Juliet Java dat "juliet-cwe89/src/main/java/...".
+    RE_THU_MUC = re.compile(r"^(?:CWE(\d+)_|juliet-cwe(\d+)$)", re.I)
     for d in sorted(goc.iterdir()):
-        m = re.match(r"CWE(\d+)_", d.name)
-        if d.is_dir() and m and int(m.group(1)) in muon:
+        m = RE_THU_MUC.match(d.name)
+        if d.is_dir() and m and int(m.group(1) or m.group(2)) in muon:
             shutil.copytree(d, dich / d.name, dirs_exist_ok=True)
-            n = sum(1 for _ in (dich / d.name).rglob("*.cs"))
+            n = sum(1 for e in ("*.cs", "*.java") for _ in (dich / d.name).rglob(e))
             print(f"  {d.name}: {n} tep")
             so += n
-    co = {int(re.match(r'CWE(\d+)_', d.name).group(1)) for d in goc.iterdir() if re.match(r'CWE(\d+)_', d.name)}
+    co = {int(m.group(1) or m.group(2)) for d in goc.iterdir()
+          if (m := RE_THU_MUC.match(d.name))}
     thieu = sorted(muon - co)
     if thieu:
         print(f"Juliet C# khong co cac CWE: {', '.join(map(str, thieu))}")
-    print(f"Tong: {so} tep .cs")
+    print(f"Tong: {so} tep ma nguon")
     return 0
 
 
