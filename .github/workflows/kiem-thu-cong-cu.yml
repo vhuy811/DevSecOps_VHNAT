@@ -16,6 +16,9 @@ on:
       - tools/sarif_tools.py
       - tools/gate.py
       - tools/kiem_thu_gate.py
+      - tools/kiem_bypass.py
+      - tools/kiem_thu_bypass.py
+      - .github/workflows/devsecops.yml
       - tools/chinh-sach-zap.json
       - semgrep-rules/**
       - .github/workflows/kiem-thu-cong-cu.yml
@@ -163,3 +166,32 @@ jobs:
           # pipefail: tee khong duoc che mat ma thoat cua kiem thu.
           set -o pipefail
           python semgrep-rules/kiem-thu-rule/chay_kiem_thu.py | tee -a "$GITHUB_STEP_SUMMARY"
+
+  bypass:
+    # G5.1: KIEM CAC DUONG LACH CONG. Lo hong lach cong o PR #18 va lo hong
+    # `// nosemgrep` o PR #1 deu tim duoc bang tay SAU KHI da lot. Job nay bien
+    # tung chot da bit thanh mot phep kiem, de lan sau ai sua workflow ma bo mat
+    # chot thi biet ngay chu khong phai doi mot PR thu nghiem.
+    #
+    # Chay HAI buoc, va buoc thu hai moi la buoc quan trong:
+    #   1. kiem_bypass.py      - 16 chot con nguyen khong
+    #   2. kiem_thu_bypass.py  - PHA tung chot roi doi hoi bo kiem phai bao
+    # Thieu buoc 2 thi khong phan biet duoc "chot con nguyen" voi "phep kiem
+    # hong". Lan dau chay buoc 2 da bat duoc mot phep kiem trang tri that
+    # (persist-credentials dem so lan xuat hien thay vi doc cau truc YAML).
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false   # khong de GITHUB_TOKEN lai trong .git/config
+      - name: Cai PyYAML (kiem_bypass doc cau truc YAML, khong dem chu)
+        run: python -m pip install --quiet pyyaml
+      - name: Chot lach cong con nguyen khong
+        run: |
+          set -o pipefail
+          python tools/kiem_bypass.py | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Pha tung chot - bo kiem co bat duoc khong
+        run: |
+          set -o pipefail
+          python tools/kiem_thu_bypass.py | tee -a "$GITHUB_STEP_SUMMARY"
