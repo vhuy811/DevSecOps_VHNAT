@@ -81,9 +81,7 @@ jobs:
           mkdir juliet_java && cd juliet_java
           git init -q .
           git remote add origin "$JULIET_JAVA_REPO"
-          # KHONG dung -q: git cua runner (2.43) khong co co nay cho
-          # sparse-checkout init va bao 'unknown switch' -> job chet (CI #1).
-          git sparse-checkout init --cone
+          git sparse-checkout init --cone -q
           git sparse-checkout set $THU_MUC
           # blob:none + depth 1 + sparse: 96MB thay vi 335MB cho ca repo.
           git fetch -q --depth 1 --filter=blob:none origin "$JULIET_JAVA_SHA"
@@ -91,7 +89,14 @@ jobs:
           test "$(git rev-parse HEAD)" = "$JULIET_JAVA_SHA" \
             || { echo "SHA khong khop - bo do khong phai ban da ghim"; exit 1; }
           cd ..
-          echo "Tep .java lay duoc: $(find juliet_java -name '*.java' | wc -l)"
+          SO_JAVA=$(find juliet_java -name '*.java' | wc -l)
+          echo "Tep .java lay duoc: $SO_JAVA"
+          # Khang dinh KET QUA chu khong chi khang dinh ma thoat. Hai lan trong
+          # phien nay bai thu cuc bo "da chay dung lenh nay" van lech voi runner
+          # (co -q cua sparse-checkout, ma thoat cua unzip). Doi hoi dung so tep
+          # da dem o may: lay thieu thi mau so sai va ti le se dep gia tao.
+          test "$SO_JAVA" -eq 9458 \
+            || { echo "So tep .java la $SO_JAVA, mong doi 9458 - sparse checkout khong day du"; exit 1; }
 
       - name: Chon CWE va dong goi thu muc do
         run: |

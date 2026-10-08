@@ -89,12 +89,32 @@ jobs:
           cd "$GITHUB_WORKSPACE"
           # Giai nen ra thu muc RIENG, khong lan voi ma cua du an.
           mkdir -p bench ket-qua
+          # unzip tra ma 1 khi CO CANH BAO, va zip nay dung dau \ lam phan cach
+          # duong dan nen luon co canh bao do. Ban unzip o may phat trien tra 0,
+          # ban o runner tra 1 - cung mot lenh, khac moi truong, va job chet o
+          # lan chay #1. Nen KHONG tin ma thoat: cho qua ma 1, con >=2 moi la
+          # loi that, roi KIEM KET QUA chu khong kiem ma.
+          set +e
           unzip -q "bp/Benchmarks/quicktest/python/$BP_ZIP" -d bench
+          rc=$?
+          set -e
+          test "$rc" -le 1 || { echo "unzip loi that (ma $rc)"; exit 1; }
           rm -rf bp
-          CORPUS=$(dirname "$(find bench -name 'benchproctor-manifest.json' | head -1)")
+          MANIFEST=$(find bench -name 'benchproctor-manifest.json' | head -1)
+          test -n "$MANIFEST" || { echo "Khong thay benchproctor-manifest.json - giai nen khong ra corpus"; exit 1; }
+          CORPUS=$(dirname "$MANIFEST")
+          SO_PY=$(find "$CORPUS" -name '*.py' | wc -l)
           echo "CORPUS=$CORPUS" >> "$GITHUB_ENV"
           echo "Corpus o: $CORPUS"
-          echo "So tep .py: $(find "$CORPUS" -name '*.py' | wc -l)"
+          echo "So tep .py: $SO_PY"
+          # Doi hoi dung so tep da dem o may: giai nen thieu thi mau so sai va
+          # ti le se dep gia tao. 18.300 case + 3 app_runtime.py + 1 urls.py +
+          # 1 score_sarif.py = 18.305.
+          test "$SO_PY" -eq 18305 \
+            || { echo "So tep .py la $SO_PY, mong doi 18305 - giai nen khong day du"; exit 1; }
+          for k in flask fastapi django; do
+            test -d "$CORPUS/$k/testcode" || { echo "Thieu $k/testcode"; exit 1; }
+          done
           echo "$BP_SHA" > ket-qua/benchproctor.sha
           echo "$BP_SHA256" >> ket-qua/benchproctor.sha
 
