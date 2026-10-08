@@ -701,14 +701,17 @@ def lenh_juliet(a: argparse.Namespace) -> int:
     bang_flow = tong_hop(cases, diem, "nhom_flow")
     bang_nguon = tong_hop(cases, diem, "kieu_nguon")
 
-    out = {"bo_do": "Juliet C# 1.3 (NIST SARD #110)", "so_case": len(cases), "tong": tong,
+    out = {"bo_do": a.ten_bo_do, "so_case": len(cases), "tong": tong,
            "theo_cwe": bang_cwe, "theo_flow": bang_flow, "theo_nguon": bang_nguon,
            "case": {cid: {**info, "ket_qua": {cc: diem[cc][cid] for cc in cong_cu}} for cid, info in cases.items()}}
     if a.out:
         Path(a.out).parent.mkdir(parents=True, exist_ok=True)
         Path(a.out).write_text(json.dumps(out, ensure_ascii=False, indent=1, default=list), encoding="utf-8")
 
-    md = [f"### Phòng đo — Juliet C# 1.3 (NIST), {len(cases)} test case", "",
+    # Ten bo do lay tu --ten-bo-do. Truoc day ghi cung "Juliet C# 1.3" nen ban
+    # chay tren Juliet JAVA in ra dong "Juliet C# 1.3" - bao cao noi mot dieu
+    # khong dung ve chinh no.
+    md = [f"### Phòng đo — {a.ten_bo_do}, {len(cases)} test case", "",
           "| Công cụ | Tỉ lệ bắt | Tỉ lệ báo nhầm | Youden | Cảnh báo | Không gắn được case |",
           "|---|---|---|---|---|---|"]
     for cc in cong_cu:
@@ -921,6 +924,8 @@ def main() -> int:
     j.add_argument("--md", default="")
     j.add_argument("--do-nguong", action="store_true",
                    help="do moi to hop nguong cua cong chan va xep hang theo Youden")
+    j.add_argument("--ten-bo-do", default="Juliet C# 1.3 (NIST SARD #110)",
+                   help="ten bo do de ghi vao bao cao; sai ten thi bao cao noi sai")
     m = sub.add_parser("mau")
     m.add_argument("--goc", required=True)
     m.add_argument("--cwe", required=True)

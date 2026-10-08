@@ -904,10 +904,16 @@ jobs:
               # Code Scanning va van chan merge - chi doi sang cong cu chinh xac
               # hon. Truy van bi loai: cs/xml/xpath-injection, va moi truy van
               # cung tag external/cwe/cwe-643 cua ngon ngu khac.
+              # Loai theo ID TRUY VAN, khong theo tag CWE. Ban dau loai theo tag
+              # `external/cwe/cwe-643` - va tag do co o MOI ngon ngu, nen quyet
+              # dinh do duoc ap cho ca Java va Python.
+              # Phong do Java (G4.1) cho thay do la sai: CodeQL Java bat CWE-643
+              # 100% voi chi 3% bao nham, nen loai no mat 4 diem bat ma khong duoc
+              # gi. Con CodeQL C# thi bat 76% va bao nham 76% - o do loai la dung.
+              # Nen phai loai dung truy van C#, khong loai ca ho.
               f.write("query-filters:\n")
               f.write("  - exclude:\n")
-              f.write("      tags contain:\n")
-              f.write("        - external/cwe/cwe-643\n")
+              f.write("      id: cs/xml/xpath-injection\n")
           PY
           cat .devsecops-codeql.yml
 
@@ -972,7 +978,9 @@ jobs:
           def tag_cua(r):
               pr = (rules.get(rid(r), {}).get("properties") or {})
               return (" ".join(pr.get("tags") or []) + " " + str(pr.get("cwe", ""))).lower()
-          con = [r for r in res if "cwe-643" in tag_cua(r)]
+          # Chi doi chieu khi quet C#: bo loc gio la theo ID truy van C#, nen
+          # canh bao CWE-643 cua Java/Python la DUNG, khong phai chot hong.
+          con = [r for r in res if "cwe-643" in tag_cua(r)] if nn == "csharp" else []
           if con:
               print(f"::error::query-filters KHONG loai duoc CWE-643: con {len(con)} canh bao. "
                     "Nguong 1.0% bao nham do tren phong do khong con dung cho pipeline nay.",

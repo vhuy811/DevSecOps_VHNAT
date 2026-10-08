@@ -177,7 +177,7 @@ jobs:
             --sarif codeql-local=ket-qua/codeql-local.sarif \
             --chan "chi-semgrep=semgrep-du-an:level=error" \
             --chan "pipeline-hien-tai=semgrep-du-an:level=error" \
-            --chan "pipeline-hien-tai=codeql-local:sev>=4&!cwe=643" \
+            --chan "pipeline-hien-tai=codeql-local:sev>=4" \
             --do-nguong \
             --out ket-qua/bench-python.json --md ket-qua/bench-python.md
           cat ket-qua/bench-python.md >> "$GITHUB_STEP_SUMMARY"
