@@ -81,7 +81,9 @@ jobs:
           mkdir juliet_java && cd juliet_java
           git init -q .
           git remote add origin "$JULIET_JAVA_REPO"
-          git sparse-checkout init --cone -q
+          # KHONG dung -q: git cua runner (2.43) khong co co nay cho
+          # sparse-checkout init va bao 'unknown switch' -> job chet (CI #1).
+          git sparse-checkout init --cone
           git sparse-checkout set $THU_MUC
           # blob:none + depth 1 + sparse: 96MB thay vi 335MB cho ca repo.
           git fetch -q --depth 1 --filter=blob:none origin "$JULIET_JAVA_SHA"

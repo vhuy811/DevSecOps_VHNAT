@@ -65,6 +65,8 @@ HO_CWE = [
     {470},                          # reflection khong an toan
     {502},                          # deserialization
     {611, 776},                     # XXE
+    {94, 95, 96, 1336},             # chen ma / eval / template injection
+    {918, 441},                     # SSRF
 ]
 CWE_RE = re.compile(r"cwe[-_/ ]?0*(\d+)", re.I)
 # X_01.cs | X_54a.cs | X_81_bad.cs / X_81_goodG2B.cs / X_81_base.cs
@@ -305,7 +307,8 @@ def doc_sarif(path: Path) -> list[dict]:
             uri = loc.get("artifactLocation", {}).get("uri", "")
             line = int((loc.get("region") or {}).get("startLine", 0) or 0)
             out.append({"rule": rid.rsplit(".", 1)[-1], "cwes": cwes, "sev": sev, "level": level,
-                        "file": Path(uri).name, "line": line, "suppressed": bool(res.get("suppressions"))})
+                        "file": Path(uri).name, "uri": uri, "line": line,
+                        "suppressed": bool(res.get("suppressions"))})
     return out
 
 
@@ -393,6 +396,148 @@ def md_bang(ten: str, bang: dict, cong_cu: list[str]) -> str:
     return "\n".join(dong) + "\n"
 
 
+# ------------------------------------------------- bo do BenchProctor (CSV)
+# Khac Juliet o CHO GAN NHAN: Juliet gan nhan bang ten ham (bad/good) nam ngay
+# trong ma nguon; BenchProctor giu nhan BEN NGOAI, trong mot tep CSV, va ma
+# nguon khong he co dau vet nhan nao (khong comment, khong tag CWE, ten tep
+# khong noi gi). Nho vay khong the "bat duoc" bang cach doc nhan.
+#
+# Don vi tinh la TEP, khong phai dong: moi benchmark_test_NNNNN.py la mot case
+# doc lap chua dung mot cap nguon -> sink. CSV khong co cot so dong.
+BENCH_TEN_RE = re.compile(r"benchmark_test_(\d{5,})\.\w+")
+BENCH_KHONG_PHAI_CASE = {"app_runtime.py", "urls.py", "__init__.py"}
+
+
+def doc_dap_an(csv_path: Path) -> dict:
+    """Doc answer key CSV -> {ten_case: (category, co_loi, cwe)}.
+
+    Tep la CRLF; khong strip \r thi int(cwe) se no.
+    """
+    ra = {}
+    for dong in csv_path.read_text(encoding="utf-8").splitlines():
+        d = dong.strip().replace("\r", "")
+        if not d or d.startswith("#"):
+            continue
+        p = [x.strip() for x in d.split(",")]
+        if len(p) < 4 or not p[3].isdigit():
+            continue
+        ra[p[0]] = (p[1], p[2].lower() == "true", int(p[3]))
+    return ra
+
+
+def lap_chi_muc_bench(bo: list[tuple[str, Path]]) -> tuple[dict, dict]:
+    """bo: [(ten_khung, thu_muc_khung)] -> (cases, tep).
+
+    cases[case_id] = {cwe, category, co_loi, khung, tep:[...]}
+    tep[ten_tep] = (case_id, co_loi)   # khong co danh sach ham: don vi la tep
+    """
+    cases, tep = {}, {}
+    for khung, d in bo:
+        ds = sorted(d.glob("expectedresults-*.csv"))
+        if not ds:
+            raise SystemExit(f"Khong tim thay expectedresults-*.csv trong {d}")
+        dap_an = doc_dap_an(ds[0])
+        td = d / "testcode"
+        thieu = []
+        for ten, (cat, co_loi, cwe) in dap_an.items():
+            m = re.search(r"(\d+)$", ten)
+            if not m:
+                continue
+            ten_tep = f"benchmark_test_{int(m.group(1)):05d}.py"
+            if not (td / ten_tep).is_file():
+                thieu.append(ten_tep)
+                continue
+            cid = f"{khung}/{ten}"
+            cases[cid] = {"cwe": cwe, "category": cat, "co_loi": co_loi,
+                          "khung": khung, "tep": [ten_tep]}
+            tep[f"{khung}/{ten_tep}"] = (cid, co_loi)
+        mo_coi = [f.name for f in td.glob("*.py")
+                  if f.name not in BENCH_KHONG_PHAI_CASE
+                  and f"{khung}/{f.name}" not in tep]
+        print(f"  {khung}: {len(dap_an)} case trong CSV, {sum(1 for c in cases if c.startswith(khung + '/'))} "
+              f"gan duoc tep, {len(thieu)} thieu tep, {len(mo_coi)} tep mo coi")
+        if thieu or mo_coi:
+            # Khong im lang: lech giua CSV va thu muc lam sai mau so.
+            print(f"    CANH BAO thieu={thieu[:3]} mo_coi={mo_coi[:3]}")
+    return cases, tep
+
+
+def cham_bench(cases: dict, tep: dict, ket_qua: dict[str, list[dict]]) -> dict:
+    """Cham theo tep. Mot case duoc coi la BI BAO neu co it nhat mot canh bao
+    tren tep do VA CWE cua canh bao cung ho voi CWE mong doi cua case.
+
+    Doi chieu CWE la co y: khong doi chieu thi mot rule bao bua moi tep cung
+    duoc diem cao. Doi chieu theo HO (ho_cua) chu khong theo so chinh xac, vi
+    corpus gop path traversal vao CWE-22 trong khi rule cua du an co the phat
+    CWE-23 hay CWE-36 - cung mot lo hong, khac cach danh so.
+    """
+    diem = {}
+    for cc, ds in ket_qua.items():
+        d = {cid: {"tp": False, "fp": False} for cid in cases}
+        khong_gan = 0
+        for r in ds:
+            # uri trong SARIF chua ca ten khung: .../flask/testcode/benchmark_test_00116.py
+            m = BENCH_TEN_RE.search(r.get("uri") or r["file"])
+            if not m:
+                khong_gan += 1
+                continue
+            khung = None
+            for k in ("flask", "fastapi", "django"):
+                if f"/{k}/" in (r.get("uri") or "") or (r.get("uri") or "").startswith(k + "/"):
+                    khung = k
+                    break
+            khoa = f"{khung}/benchmark_test_{int(m.group(1)):05d}.py"
+            t = tep.get(khoa)
+            if not t:
+                khong_gan += 1
+                continue
+            cid, co_loi = t
+            cwe_case = cases[cid]["cwe"]
+            if not (r["cwes"] and ho_cua(cwe_case) & set().union(*(ho_cua(c) for c in r["cwes"]))):
+                continue
+            d[cid]["tp" if co_loi else "fp"] = True
+        diem[cc] = d
+        diem[cc]["__khong_gan__"] = khong_gan
+    return diem
+
+
+def tong_hop_bench(cases: dict, diem: dict, theo: str) -> dict:
+    bang = defaultdict(lambda: defaultdict(lambda: {"n": 0, "tp": 0, "fp": 0, "co_loi": 0, "sach": 0}))
+    for cc, d in diem.items():
+        for cid, info in cases.items():
+            k = f"CWE-{info['cwe']}" if theo == "cwe" else str(info[theo])
+            o = bang[k][cc]
+            o["n"] += 1
+            o["co_loi"] += info["co_loi"]
+            o["sach"] += (not info["co_loi"])
+            o["tp"] += d[cid]["tp"]
+            o["fp"] += d[cid]["fp"]
+    return bang
+
+
+def ti_le_bench(o: dict) -> tuple[float, float, float]:
+    """TPR tren so case CO LOI, FPR tren so case SACH - khac Juliet, noi moi
+    case co ca ham bad lan ham good nen mau so la toan bo case."""
+    tpr = o["tp"] / o["co_loi"] if o["co_loi"] else 0.0
+    fpr = o["fp"] / o["sach"] if o["sach"] else 0.0
+    return tpr, fpr, tpr - fpr
+
+
+def md_bang_bench(ten: str, bang: dict, cong_cu: list[str]) -> str:
+    dong = [f"#### {ten}", "",
+            "| Nhóm | Case | Có lỗi | Sạch | " + " | ".join(f"{c} (bắt / nhầm)" for c in cong_cu) + " |",
+            "|---|---|---|---|" + "---|" * len(cong_cu)]
+    for k in sorted(bang):
+        b = bang[k]
+        m = next(iter(b.values()))
+        o = []
+        for c in cong_cu:
+            tpr, fpr, _ = ti_le_bench(b[c])
+            o.append(f"{tpr:.0%} / {fpr:.0%}")
+        dong.append(f"| {k} | {m['n']} | {m['co_loi']} | {m['sach']} | " + " | ".join(o) + " |")
+    return "\n".join(dong) + "\n"
+
+
 # --------------------------------------------------------------- do nguong
 # Khong gian nguong cua cong chan. Moi truc = mot cong cu, moi muc = tap dieu
 # kien duoc hop lai. "-" nghia la khong cho cong cu do quyen chan.
@@ -440,7 +585,7 @@ def nhan_dang_chay(chan: list[str]) -> dict:
 
 
 def quet_nguong(cases: dict, tep: dict, ket_qua: dict[str, list[dict]],
-                hien_tai: dict | None = None) -> str:
+                hien_tai: dict | None = None, cham_fn=None) -> str:
     """Do MOI to hop nguong va xep hang theo Youden.
 
     tp cua mot to hop = co canh bao nao cua to hop do roi vao ham bad; fp =
@@ -462,7 +607,7 @@ def quet_nguong(cases: dict, tep: dict, ket_qua: dict[str, list[dict]],
                 canh_bao.extend(r for r in ket_qua[k] if f(r))
         if not canh_bao:
             continue
-        d = cham(cases, tep, {"x": canh_bao})["x"]
+        d = (cham_fn or cham)(cases, tep, {"x": canh_bao})["x"]
         d.pop("__khong_gan__", None)
         o = {"n": len(cases), "tp": sum(v["tp"] for v in d.values()),
              "fp": sum(v["fp"] for v in d.values())}
@@ -590,6 +735,92 @@ def lenh_juliet(a: argparse.Namespace) -> int:
     return 0
 
 
+def lenh_bench(a: argparse.Namespace) -> int:
+    """Cham tren bo do dang BenchProctor: answer key CSV + mot tep mot case."""
+    bo = []
+    for s in a.bo:
+        ten, _, duong = s.partition("=")
+        bo.append((ten, Path(duong)))
+    print(f"[*] {len(bo)} khung: {', '.join(t for t, _ in bo)}")
+    cases, tep = lap_chi_muc_bench(bo)
+    if not cases:
+        print("Khong gan duoc case nao")
+        return 2
+    co_loi = sum(1 for c in cases.values() if c["co_loi"])
+    print(f"[*] {len(cases)} case: {co_loi} co loi, {len(cases) - co_loi} sach")
+
+    ket_qua = {}
+    for s in a.sarif:
+        ten, duong = s.split("=", 1)
+        if not Path(duong).is_file():
+            print(f"::warning::Thieu SARIF cua {ten}: {duong} - bo qua cong cu nay")
+            continue
+        ket_qua[ten] = doc_sarif(Path(duong))
+
+    nhom = {}
+    for spec in a.chan:
+        m = re.match(r"^(?:(?P<nhom>[\w.-]+)=)?(?P<ten>[\w.-]+):(?P<dk>.+)$", spec)
+        if not m:
+            raise SystemExit(f"--chan khong hieu: {spec}")
+        tn, ten, dk = m.group("nhom") or "pipeline-chan", m.group("ten"), m.group("dk")
+        nhom.setdefault(tn, [])
+        if ten in ket_qua:
+            f = dieu_kien_chan(dk)
+            nhom[tn].extend(r for r in ket_qua[ten] if f(r))
+    ket_qua.update(nhom)
+
+    diem = cham_bench(cases, tep, ket_qua)
+    cong_cu = list(ket_qua)
+    tong = {}
+    for cc in cong_cu:
+        d = diem[cc]
+        kg = d.pop("__khong_gan__", 0)
+        o = {"n": len(cases), "co_loi": co_loi, "sach": len(cases) - co_loi,
+             "tp": sum(v["tp"] for v in d.values()), "fp": sum(v["fp"] for v in d.values())}
+        tpr, fpr, j = ti_le_bench(o)
+        tong[cc] = {**o, "ti_le_bat": round(tpr, 4), "ti_le_bao_nham": round(fpr, 4),
+                    "youden": round(j, 4), "canh_bao": len(ket_qua[cc]),
+                    "canh_bao_ngoai_bo_do": kg}
+
+    md = [f"### Phòng đo Python — BenchProctor quicktest, {len(cases)} test case "
+          f"({co_loi} có lỗi / {len(cases) - co_loi} sạch)", "",
+          "| Công cụ | Tỉ lệ bắt | Tỉ lệ báo nhầm | Youden | Cảnh báo | Không gắn được case |",
+          "|---|---|---|---|---|---|"]
+    for cc in cong_cu:
+        x = tong[cc]
+        md.append(f"| {cc} | {x['ti_le_bat']:.1%} | {x['ti_le_bao_nham']:.1%} | {x['youden']:+.2f} "
+                  f"| {x['canh_bao']} | {x['canh_bao_ngoai_bo_do']} |")
+    md += ["",
+           "> Khác phòng đo Juliet ở mẫu số: Juliet mỗi case có cả hàm `bad` lẫn hàm `good` "
+           "nên mẫu số của cả hai tỉ lệ là toàn bộ case. BenchProctor mỗi case là **một tệp "
+           "riêng**, hoặc có lỗi hoặc sạch — nên tỉ lệ bắt tính trên số case có lỗi và tỉ lệ "
+           "báo nhầm tính trên số case sạch. Nhãn nằm ngoài mã nguồn (trong CSV), mã nguồn "
+           "không có dấu vết nhãn nào.", ""]
+    md.append(md_bang_bench("Theo CWE", tong_hop_bench(cases, diem, "cwe"), cong_cu))
+    md.append(md_bang_bench("Theo khung web", tong_hop_bench(cases, diem, "khung"), cong_cu))
+
+    if getattr(a, "do_nguong", False):
+        ht = nhan_dang_chay(a.chan)
+        bang = quet_nguong(cases, tep, {k: v for k, v in ket_qua.items() if k in TRUC_NGUONG},
+                           ht, cham_fn=cham_bench)
+        if bang:
+            md.append(bang)
+
+    text = "\n".join(md)
+    if a.md:
+        Path(a.md).write_text(text, encoding="utf-8")
+    if a.out:
+        Path(a.out).parent.mkdir(parents=True, exist_ok=True)
+        Path(a.out).write_text(json.dumps(
+            {"bo_do": "BenchProctor Python quicktest", "so_case": len(cases), "tong": tong,
+             "theo_cwe": tong_hop_bench(cases, diem, "cwe"),
+             "case": {cid: {**i, "ket_qua": {cc: diem[cc][cid] for cc in cong_cu}}
+                      for cid, i in cases.items()}},
+            ensure_ascii=False, indent=1, default=list), encoding="utf-8")
+    print(text)
+    return 0
+
+
 def lenh_chon(a: argparse.Namespace) -> int:
     goc, dich = Path(a.goc), Path(a.dich)
     muon = {int(x) for x in a.cwe.split(",") if x.strip()}
@@ -694,8 +925,18 @@ def main() -> int:
     m.add_argument("--goc", required=True)
     m.add_argument("--cwe", required=True)
     m.add_argument("--md", default="")
+
+    b = sub.add_parser("bench-csv", help="cham tren bo do co answer key CSV (BenchProctor)")
+    b.add_argument("--bo", action="append", required=True,
+                   help="ten_khung=duong/dan/thu-muc-khung (chua expectedresults-*.csv va testcode/)")
+    b.add_argument("--sarif", action="append", default=[], help="ten=duong/dan.sarif")
+    b.add_argument("--chan", action="append", default=[], help="ten:level=error | ten:sev>=7")
+    b.add_argument("--do-nguong", action="store_true")
+    b.add_argument("--out", default="")
+    b.add_argument("--md", default="")
     a = ap.parse_args()
-    return {"chon": lenh_chon, "juliet": lenh_juliet, "mau": lenh_mau}[a.cmd](a)
+    return {"chon": lenh_chon, "juliet": lenh_juliet, "mau": lenh_mau,
+            "bench-csv": lenh_bench}[a.cmd](a)
 
 
 if __name__ == "__main__":
