@@ -24,6 +24,8 @@ name: DevSecOps - nam tang kiem thu (dung chung)
 # results" tren main khoa merge theo nguong tung cong cu:
 #   Semgrep-du-an  : Alerts = Errors, Security >= High   (rule tu viet, tin cay cao)
 #   CodeQL         : Alerts = Errors, Security >= Medium (lan theo luong du lieu - job codeql)
+#                    TRU CWE-643: bo khoi tang nay vi bat 76% / bao nham 76%.
+#                    XPath injection do dso-taint-xpathi chan (49% / 0%).
 #   OWASP-ZAP      : Security >= High                   (DAST tren app dung tu PR)
 #   DAST-runtime   : Security >= Medium                 (rule runtime chon lam_khoa: CSP, X-Frame-Options)
 #   DAST-idor      : Security >= High                    (IDOR/BOLA CWE-639 - kiem co xac thuc, G3.4)
@@ -36,6 +38,21 @@ name: DevSecOps - nam tang kiem thu (dung chung)
 # .devsecops-toolkit/ - va moi buoc quet deu phai loai thu muc do ra, neu
 # khong ket qua se lan ma nguon cua bo cong cu vao ma nguon cua repo dich.
 # ==========================================================================
+
+# AN NINH CHUOI CUNG UNG - vi sao moi buoc checkout deu co
+# persist-credentials: false
+#
+# Mac dinh actions/checkout GHI GITHUB_TOKEN vao .git/config va de no o do den
+# het job. Pipeline nay lai co y chay nhieu image :latest (de CSDL lo hong luon
+# moi) VA mount workspace vao chung - semgrep o /src va gitleaks o /repo la
+# mount READ-WRITE. Mot ban image bi chiem chi can doc .git/config la co token
+# ghi duoc vao repo: mot lo hong chuoi cung ung that, nam ngay trong cong cu
+# dang di tim lo hong.
+#
+# Khong buoc nao trong toan bo workflow cua bo cong cu nay chay git push hay
+# git commit (da kiem), nen tat han viec luu token khong lam vo gi. Cac tang
+# can quyen (day SARIF, doc artifact) lay token tu moi truong, khong qua
+# .git/config.
 
 on:
   workflow_call:
@@ -107,6 +124,10 @@ on:
 
 jobs:
   scan:
+    # needs nhan-dien: nhan dien ngon ngu chi chay MOT lan, o job do (xem buoc
+    # "Nhan dien du an" ben duoi). Dong thoi lay luon quyet dinh chan trung.
+    needs: nhan-dien
+    if: needs.nhan-dien.outputs.bo_qua != 'true'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -120,6 +141,7 @@ jobs:
       - name: Lay ma nguon cua repo goi
         uses: actions/checkout@v7
         with:
+          persist-credentials: false   # khong de GITHUB_TOKEN lai trong .git/config
           fetch-depth: 0
 
       # Mot commit chi sua tai lieu thi khong can build ung dung va ban payload.
@@ -211,6 +233,7 @@ jobs:
       - name: Keo bo cong cu DevSecOps ve
         uses: actions/checkout@v7
         with:
+          persist-credentials: false   # khong de GITHUB_TOKEN lai trong .git/config
           repository: vhuy811/DevSecOps_VHNAT
           ref: ${{ inputs.toolkit-ref }}
           path: .devsecops-toolkit
@@ -226,8 +249,18 @@ jobs:
           PF_IN: ${{ inputs.project-file }}
           DF_IN: ${{ inputs.dockerfile }}
           PACKS_IN: ${{ inputs.semgrep-packs }}
+          PACKS_NHAN: ${{ needs.nhan-dien.outputs.packs }}
+          NHUNG_NHAN: ${{ needs.nhan-dien.outputs.nhung }}
         run: |
-          python "$TOOLKIT/tools/nhan_ngon_ngu.py" --root . --out reports/ngon-ngu.json --summary
+          # Nhan dien ngon ngu KHONG chay lai o day. Job nhan-dien da chay
+          # nhan_ngon_ngu.py va truyen ket qua qua output.
+          #
+          # Truoc day ca HAI job deu chay script nay, song song va doc lap. Hai
+          # cai gia: mot luot duyet toan repo bi lam doi, va - nang hon - hai
+          # tang co the LECH NHAU, vi scan lay bo rule Semgrep tu lan chay cua
+          # no con codeql lay danh sach ngon ngu tu lan chay cua nhan-dien.
+          # Lech thi khong ai thay. Gio chi con MOT nguon su that cho moi tang.
+          mkdir -p reports
           BO="--exclude-dir=.git --exclude-dir=$TOOLKIT --exclude-dir=node_modules --exclude-dir=bin --exclude-dir=obj"
           PF="$PF_IN"
           if [ -z "$PF" ]; then
@@ -242,9 +275,9 @@ jobs:
           fi
           PACKS="$PACKS_IN"
           if [ -z "$PACKS" ]; then
-            PACKS=$(python -c "import json;print(' '.join(json.load(open('reports/ngon-ngu.json'))['semgrep_packs']))")
+            PACKS="$PACKS_NHAN"
           fi
-          NHUNG=$(python -c "import json;print(' '.join(json.load(open('reports/ngon-ngu.json'))['thu_muc_nhung']))")
+          NHUNG=$(python -c "import json,os;print(' '.join(json.loads(os.environ.get('NHUNG_NHAN') or '[]')))")
           # tep de gan alert ZAP khong anh xa duoc ve dong code nao
           FB=""
           for f in "$PF" "$DF" package.json README.md; do
@@ -353,7 +386,15 @@ jobs:
           for d in $NHUNG; do LOAI="$LOAI --exclude $d"; done
 
           # Luot 1: rule cua bo cong cu + rule rieng cua repo
+          # Rule PHAT HIEN theo ngon ngu: C# (sast-detect) + Python + Java.
+          # Kiem ton tai tung tep de ban toolkit cu (toolkit-ref ghim tag chua
+          # co tep nay) van chay duoc, khong hong vi mot --config tro vao hu vo.
           CFG="--config $TOOLKIT/semgrep-rules/sast-detect.yaml"
+          for them in sast-detect-python.yaml sast-detect-java.yaml; do
+            if [ -f "$TOOLKIT/semgrep-rules/$them" ]; then
+              CFG="$CFG --config $TOOLKIT/semgrep-rules/$them"
+            fi
+          done
           if [ -d .devsecops/rules ] && ls .devsecops/rules/*.y*ml >/dev/null 2>&1; then
             CFG="$CFG --config .devsecops/rules"
             echo "Them rule rieng cua repo: .devsecops/rules/"
@@ -402,6 +443,41 @@ jobs:
             aquasec/trivy:latest fs /target \
             --skip-dirs "/target/$TOOLKIT" \
             --format cyclonedx --output /out/sbom.cdx.json --quiet
+
+      # ===============================================================
+      # TANG 1c - THU VIEN DA CO TRONG REPO (moi he sinh thai)
+      #
+      # VI SAO BUOC NAY TON TAI. Truoc buoc nay, tang thu vien gom:
+      #   sca.py            -> CHI NuGet (dotnet list package --vulnerable)
+      #   retire.js         -> CHI thu vien JS nhung san, KHONG doc package.json
+      #   dependency-review -> CHI thu vien MOI trong PR
+      # Nghia la voi mot repo Python hay Java, cac thu vien DA CO trong
+      # requirements.txt hay pom.xml khong tang nao quet. Chi thu vien moi them
+      # trong PR moi bi xet - mot repo keo ve voi log4j 2.14.1 co san thi khong
+      # canh bao nao. Do la lo hong cua chinh cau "dung duoc cho nhieu loai repo".
+      #
+      # Trivy DA chay o buoc tren roi, va da doc het cac manifest de sinh SBOM -
+      # chi la khong duoc hoi lo hong. Nen bit lo nay chi can them mot lan goi,
+      # khong them cong cu moi: trivy fs doc native package-lock.json,
+      # requirements.txt, pom.xml, go.sum, Gemfile.lock, packages.lock.json,
+      # Cargo.lock, composer.lock.
+      #
+      # Do duoc bang tools/kiem_thu_sca.py (job `sca` trong kiem-thu-cong-cu.yml):
+      # fixture sinh luc chay voi phien ban dinh lo hong biet truoc.
+      # ===============================================================
+      - name: Trivy - lo hong thu vien da co (moi he sinh thai)
+        if: steps.pham_vi.outputs.chi_tai_lieu != 'true'
+        run: |
+          docker run --rm -v "$PWD:/target:ro" -v "$PWD/reports:/out" \
+            aquasec/trivy:latest fs /target \
+            --scanners vuln --skip-dirs "/target/$TOOLKIT" \
+            --format sarif --output /out/thu-vien-da-co.sarif \
+            --exit-code 0 --quiet
+          N=$(python -c "import json;print(sum(len(r.get('results',[])) for r in json.load(open('reports/thu-vien-da-co.sarif')).get('runs',[])))" 2>/dev/null || echo '?')
+          echo "Lo hong thu vien da co: $N"
+          # Khong co SARIF nghia la KHONG QUET DUOC, khong phai 'sach'.
+          test -f reports/thu-vien-da-co.sarif \
+            || { echo "::error::Trivy khong ra SARIF - tang nay KHONG quet duoc"; exit 1; }
           echo "SBOM: $(python -c "import json;print(len(json.load(open('reports/sbom.cdx.json')).get('components',[])))" 2>/dev/null || echo '?') thanh phan"
 
       # Quet image ton them vai phut nen chi chay o nhanh chinh, khi bam tay, va
@@ -556,6 +632,7 @@ jobs:
           CHI_TAI_LIEU: ${{ steps.pham_vi.outputs.chi_tai_lieu }}
           CO_DAST: ${{ steps.app.outputs.chay == 'true' }}
           LY_DO_DAST: ${{ !inputs.run-dast && 'run-dast=false' || steps.app.outputs.ly_do }}
+          EV: ${{ github.event_name }}
         run: |
           # Bang tong quan tung tang
           python - <<'PY' >> $GITHUB_STEP_SUMMARY
@@ -606,6 +683,14 @@ jobs:
           # tep khai bao thu vien cua moi he sinh thai pho bien
           if [ -n "$MOC" ] && git diff --name-only "$MOC" HEAD | grep -qE '\.csproj$|packages\.lock\.json$|Directory\.Packages\.props$|(^|/)(package(-lock)?\.json|yarn\.lock|pnpm-lock\.yaml|requirements[^/]*\.txt|poetry\.lock|Pipfile\.lock|pom\.xml|build\.gradle(\.kts)?|go\.(mod|sum)|Gemfile\.lock|composer\.(json|lock)|Cargo\.lock)$'; then
             ARGS="$ARGS --deps-changed"
+          fi
+          # Quet dinh ky / chay tay: bat --cve-strict. Luc nay khong co moc baseline
+          # (quet day du), nen can chan-bao-cao ca CVE Critical tren thu vien KHONG
+          # doi - bat dung truong hop "code chua lo truoc day, nay thu vien bi cong
+          # bo CVE moi". PR thuong khong bat (de khong chan merge vi no cu cua nguoi khac).
+          if [ "$EV" = "schedule" ] || [ "$EV" = "workflow_dispatch" ]; then
+            ARGS="$ARGS --cve-strict"
+            echo "==> Quet dinh ky/tay: bat --cve-strict (xet ca CVE Critical tren thu vien khong doi)."
           fi
           python "$TOOLKIT/tools/gate.py" $ARGS "${DS[@]}" --routes routes_map.json \
             --title "$TITLE" --out reports/tom-tat.json || true
@@ -668,6 +753,13 @@ jobs:
           category: secret
 
       - name: Code Scanning - cau hinh ha tang
+        if: always() && hashFiles('reports/thu-vien-da-co.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: reports/thu-vien-da-co.sarif
+          category: thu-vien-da-co
+
+      - name: Day ket qua ha tang len Code Scanning
         if: always() && hashFiles('reports/trivy-config.sarif') != ''
         uses: github/codeql-action/upload-sarif@v4
         with:
@@ -710,29 +802,66 @@ jobs:
   # 0-3% bao nham nhung deu duoi 7 - dat nguong High thi ca ba loai lot cong.
   # =====================================================================
   nhan-dien:
+    # Job VAO: nhan dien ngon ngu mot lan cho moi tang, va quyet dinh lan chay
+    # nay co phai trung lap khong.
     runs-on: ubuntu-24.04
     permissions:
       contents: read
+      pull-requests: read      # de biet commit nay da co PR mo chua (chan trung)
     outputs:
       codeql: ${{ steps.nn.outputs.codeql_matrix }}
       nhung: ${{ steps.nn.outputs.thu_muc_nhung }}
+      packs: ${{ steps.nn.outputs.semgrep_packs }}
+      bo_qua: ${{ steps.trung.outputs.bo_qua }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false   # khong de GITHUB_TOKEN lai trong .git/config
 
       - name: Keo bo cong cu DevSecOps ve
         uses: actions/checkout@v7
         with:
+          persist-credentials: false   # khong de GITHUB_TOKEN lai trong .git/config
           repository: vhuy811/DevSecOps_VHNAT
           ref: ${{ inputs.toolkit-ref }}
           path: .devsecops-toolkit
 
-      - name: Nhan ngon ngu cho CodeQL
+      - name: Nhan ngon ngu cho moi tang
         id: nn
-        run: python .devsecops-toolkit/tools/nhan_ngon_ngu.py --root . --github-output
+        run: python .devsecops-toolkit/tools/nhan_ngon_ngu.py --root . --github-output --summary
+
+      # CHAN TRUNG. Nhanh moi duoc quet du 5 tang nho trigger push. Nhung khi
+      # commit do DA co PR mo thi lan chay theo pull_request da phu het, va chay
+      # them lan push la duyet hai lan cung mot thu.
+      #
+      # Chi xet voi event push. Lan chay theo pull_request KHONG BAO GIO bi bo
+      # qua, nen cong chan khong the bi lam rong vi buoc nay.
+      - name: Chan trung (push ma da co PR thi bo qua)
+        id: trung
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ github.event_name }}" != "push" ]; then
+            echo "bo_qua=false" >> "$GITHUB_OUTPUT"
+            echo "Event la ${{ github.event_name }} - khong xet chan trung."
+            exit 0
+          fi
+          SO=$(gh api "repos/${{ github.repository }}/commits/${{ github.sha }}/pulls" \
+                 --jq 'length' 2>/dev/null || echo 0)
+          if [ "${SO:-0}" -gt 0 ]; then
+            echo "bo_qua=true" >> "$GITHUB_OUTPUT"
+            echo "Commit nay da co $SO pull request mo - lan chay theo pull_request da phu."
+            echo "> Bo qua lan chay theo \`push\`: commit nay da co pull request, quet o do roi." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "bo_qua=false" >> "$GITHUB_OUTPUT"
+            echo "Chua co PR cho commit nay - quet day du 5 tang tren nhanh."
+          fi
 
   codeql:
     needs: nhan-dien
-    if: needs.nhan-dien.outputs.codeql != '' && needs.nhan-dien.outputs.codeql != '[]'
+    if: >-
+      needs.nhan-dien.outputs.bo_qua != 'true' &&
+      needs.nhan-dien.outputs.codeql != '' && needs.nhan-dien.outputs.codeql != '[]'
     name: codeql (${{ matrix.language }})
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -745,6 +874,8 @@ jobs:
         include: ${{ fromJSON(needs.nhan-dien.outputs.codeql) }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false   # khong de GITHUB_TOKEN lai trong .git/config
 
       # Tep cau hinh phai nam TRONG workspace (codeql-action tu choi duong dan
       # ngoai workspace). Tep tam cua CI, repo khong bi dong toi.
@@ -762,6 +893,26 @@ jobs:
               f.write("name: devsecops\nthreat-models: local\npaths-ignore:\n")
               for p in bo:
                   f.write(f"  - {json.dumps(p)}\n")
+              # CWE-643 (XPath injection): BO khoi tang CodeQL.
+              # Phong do #27 do moi 143 to hop nguong cua cong chan. CodeQL-local
+              # bat CWE-643 76% nhung bao nham cung 76% - TOAN BO 5.2% bao nham
+              # cua cong den tu dung mot loai nay. Bo no ra:
+              #     bat 63.6% -> 61.6% | bao nham 5.2% -> 1.0% | Youden +0.584 -> +0.606
+              # va day la to hop tot nhat trong 143 to hop do duoc.
+              # KHONG mat do phu: dso-taint-xpathi cua du an bat CWE-643 49% voi
+              # 0% bao nham va van co quyen chan. XPath injection van hien trong
+              # Code Scanning va van chan merge - chi doi sang cong cu chinh xac
+              # hon. Truy van bi loai: DUNG MOT truy van, cs/xml/xpath-injection.
+              # Loai theo ID TRUY VAN, khong theo tag CWE. Ban dau loai theo tag
+              # `external/cwe/cwe-643` - va tag do co o MOI ngon ngu, nen quyet
+              # dinh do duoc ap cho ca Java va Python.
+              # Phong do Java (G4.1) cho thay do la sai: CodeQL Java bat CWE-643
+              # 100% voi chi 3% bao nham, nen loai no mat 4 diem bat ma khong duoc
+              # gi. Con CodeQL C# thi bat 76% va bao nham 76% - o do loai la dung.
+              # Nen phai loai dung truy van C#, khong loai ca ho.
+              f.write("query-filters:\n")
+              f.write("  - exclude:\n")
+              f.write("      id: cs/xml/xpath-injection\n")
           PY
           cat .devsecops-codeql.yml
 
@@ -818,6 +969,31 @@ jobs:
               for (k, s), n in sorted(dem.items(), key=lambda x: (-x[0][1], -x[1]))[:15]:
                   print(f"| `{k}` | {n} | {s:g} |")
               print()
+
+          # query-filters viet sai mot ky tu thi no LANG LE khong loai gi ca, va
+          # nguoi doc se tin cong chan co 1.0% bao nham trong khi that ra van
+          # 5.2%. Khong tin vao khoa cau hinh - doi chieu ket qua.
+          import sys
+          def tag_cua(r):
+              pr = (rules.get(rid(r), {}).get("properties") or {})
+              return (" ".join(pr.get("tags") or []) + " " + str(pr.get("cwe", ""))).lower()
+          # Chi doi chieu khi quet C#: bo loc gio la theo ID truy van C#, nen
+          # canh bao CWE-643 cua Java/Python la DUNG, khong phai chot hong.
+          con = [r for r in res if "cwe-643" in tag_cua(r)] if nn == "csharp" else []
+          if con:
+              print(f"::error::query-filters KHONG loai duoc CWE-643: con {len(con)} canh bao. "
+                    "Nguong 1.0% bao nham do tren phong do khong con dung cho pipeline nay.",
+                    file=sys.stderr)
+              print(f"> **CWE-643 chưa bị loại** — còn {len(con)} cảnh báo. Chuỗi tag trong "
+                    "`query-filters` có thể đã sai; báo nhầm thật của cổng vẫn là 5.2%, "
+                    "không phải 1.0%.\n")
+          else:
+              print("> CWE-643 đã loại khỏi tầng CodeQL — đo được báo nhầm 5.2% → 1.0% "
+                    "(phòng đo #27). XPath injection vẫn do `dso-taint-xpathi` bắt "
+                    "(49% / 0% báo nhầm) và vẫn chặn merge.\n")
+              print("> Lưu ý giới hạn của phép kiểm này: *không có* cảnh báo CWE-643 cũng có "
+                    "thể chỉ vì repo không có mã XPath. Chỗ xác nhận thật là bảng theo CWE "
+                    "của phòng đo, nơi Juliet có 370 case CWE-643.\n")
           PY
 
   # =====================================================================
@@ -834,7 +1010,99 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false   # khong de GITHUB_TOKEN lai trong .git/config
       - uses: actions/dependency-review-action@v5
         with:
           fail-on-severity: high
           comment-summary-in-pr: never
+
+  # =====================================================================
+  # CONG XAC NHAN (backstop) - bit lo "lo hong that o tep khong doi"
+  #
+  # Ruleset "Require code scanning results" cua GitHub chi chan canh bao MOI
+  # trong code PR DA DOI. Mot lo hong da bi ZAP khai thac thanh cong, hoac IDOR
+  # truy cap cheo tai khoan, nhung duoc neo vao tep PR khong dong vao (vi du SQLi
+  # o Data/Db.cs trong khi PR chi them Controller) thi GitHub khong tinh la moi
+  # va cho merge - do la PR #18 cua VulnShop-App.
+  #
+  # Job nay la MOT check RIENG, co quyen that bai (khac voi job scan luon xanh).
+  # No doc thang zap-alerts.json (khong qua buoc neo route), nen thay lo hong du
+  # no nam o dau, va CHAN bat ke dong do co thay doi hay khong - chi tinh phat
+  # hien DA KIEM CHUNG DONG (ZAP High tin cay khong-thap, IDOR/BOLA). Lo logic
+  # doanh nghiep khong co probe xac nhan nen tu nhien khong roi vao day.
+  #
+  # Cho qua co kiem soat: baseline (.devsecops/baseline-confirmed.json - no ky
+  # thuat da biet tren main) hoac ngoai le co ly_do/nguoi_duyet/het_han
+  # (.devsecops/ngoai-le.json, loai 'dast-xac-nhan'). Khong co file nao -> coi
+  # main sach -> moi phat hien xac nhan deu chan (fail-closed).
+  #
+  # DE CHECK NAY CHAN MERGE THAT: them "security / Cong xac nhan (DAST da chung
+  # minh)" vao danh sach Required status checks cua ruleset nhanh main.
+  # =====================================================================
+  cong-xac-nhan:
+    name: Cong xac nhan (DAST da chung minh)
+    needs: scan
+    # Chay CA voi event push: nhanh vua tao (chua co PR) cung phai qua cong
+    # nay, de lap trinh vien thay ket qua ngay thay vi doi den luc mo PR.
+    #
+    # KHONG dua inputs.run-dast vao day. Mot job BI SKIP van lam THOA MAN
+    # required status check cua GitHub - nghia la repo nao dat run-dast: false
+    # la cong tu "xanh" bang cach khong chay. Job phai CHAY va tu bao cao ket
+    # luan; viec run-dast=false duoc xu ly ben trong buoc, co in ro ly do.
+    # Chi bo qua khi job scan bi skip (lan chay push trung lap) - luc do khong
+    # co artifact nao de xet.
+    if: always() && needs.scan.result != 'skipped'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false   # khong de GITHUB_TOKEN lai trong .git/config
+
+      - name: Keo bo cong cu DevSecOps ve
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false   # khong de GITHUB_TOKEN lai trong .git/config
+          repository: vhuy811/DevSecOps_VHNAT
+          ref: ${{ inputs.toolkit-ref }}
+          path: .devsecops-toolkit
+
+      - name: Tai bao cao tu job scan
+        uses: actions/download-artifact@v7
+        with:
+          name: bao-cao-bao-mat
+          path: reports
+
+      - name: Chan lo hong DAST da chung minh (bat ke dong doi)
+        env:
+          TOOLKIT: .devsecops-toolkit
+        run: |
+          # Hai truong hop KHAC NHAU, truoc day bi gop lam mot va deu thoat 0:
+          #   a) repo CO Y khong chay tang dong (run-dast: false) -> khong co gi
+          #      de xet, cho qua nhung NOI RO day khong phai bang chung sach.
+          #   b) tang dong DUOC YEU CAU chay nhung khong ra ket qua (ZAP loi,
+          #      app khong len) -> KHONG ket luan duoc, phai CHAN. Cho qua o day
+          #      la coi im lang la an toan, trai voi nguyen tac cua ca do an.
+          if [ "${{ inputs.run-dast }}" != "true" ]; then
+            echo "run-dast=false: repo nay co y khong chay tang dong."
+            echo "Cong xac nhan khong co bang chung dong nao de xet."
+            echo "Day la 'khong quet', KHONG phai 'da kiem chung va sach'."
+            echo "> Cong xac nhan: repo dat \`run-dast: false\`, khong co bang chung dong de xet." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if [ ! -f reports/zap-alerts.json ]; then
+            echo "::error::run-dast=true nhung khong co reports/zap-alerts.json."
+            echo "Tang dong duoc YEU CAU chay ma khong ra ket qua - khong ket luan duoc."
+            echo "Xem log job scan (ZAP hoac buoc khoi dong app). Day la loi ha tang,"
+            echo "nhung chua kiem tra thi chua duoc qua."
+            exit 1
+          fi
+          # Khong truyen --summary (no nhan GIA TRI, mac dinh = $GITHUB_STEP_SUMMARY
+          # da co san trong CI nen van ghi vao trang Summary).
+          python "$TOOLKIT/tools/gate.py" --chan-xac-nhan \
+            --zap reports/zap-alerts.json \
+            --ngoai-le .devsecops/ngoai-le.json \
+            --baseline-xac-nhan .devsecops/baseline-confirmed.json \
+            --out reports/cong-xac-nhan.json

@@ -349,5 +349,121 @@ namespace KiemThuRule
         {
             CSharpScript.EvaluateAsync(bieuThuc);
         }
+
+        // ------------------------------------------------------------------
+        // G3.5 - NGUON NGOAI HTTP (threat model "local")
+        // ------------------------------------------------------------------
+        // Phong do #23: nhom rule taint bat 35% case co nguon HTTP va 0% tren
+        // 4218 case co nguon mang / CSDL / cuc bo. Cac case duoi day chung minh
+        // tung nguon moi that su hoat dong - khong phai viet vao YAML roi tin.
+        //
+        // MOI HAM DUOI DAY CO Y KHONG NHAN THAM SO CHUOI. Neu nhan, nguon
+        // "tham so cua action" se khop va case khong con chung minh duoc gi:
+        // bat duoc o day nghia la bat NHO NGUON MOI.
+
+        // nguon: StreamReader.ReadLine() - mot hinh dang nay phu 5 ho nguon cua
+        // Juliet (ReadLine, File, Connect_tcp, Listen_tcp, NetClient)
+        // rule: dso-taint-sqli
+        public void NguonDocDong_VaoSql()
+        {
+            using var sr = new StreamReader("ten-nguoi-dung.txt");
+            string ten = sr.ReadLine();
+            using var cmd = new SqlCommand("select * from users where name='" + ten + "'");
+            cmd.ExecuteNonQuery();
+        }
+
+        // nguon: Environment.GetEnvironmentVariable (ho Environment)
+        // rule: dso-taint-path-traversal
+        public string NguonBienMoiTruong_VaoDuongDan()
+        {
+            string duong = Environment.GetEnvironmentVariable("BAO_CAO");
+            return File.ReadAllText("/var/bao-cao/" + duong);
+        }
+
+        // nguon: SqlDataReader.GetString(i) (ho Database) - injection BAC HAI:
+        // du lieu da luu trong CSDL di vao lenh he dieu hanh
+        // rule: dso-taint-cmdi
+        public void NguonCsdl_VaoLenhHeDieuHanh()
+        {
+            using var conn = new SqlConnection("Server=.;Database=kho;Encrypt=True");
+            using var cmd = new SqlCommand("select ten_tep from tai_lieu", conn);
+            using SqlDataReader rd = cmd.ExecuteReader();
+            while (rd.Read())
+            {
+                string tenTep = rd.GetString(0);
+                Process.Start("/usr/bin/convert " + tenTep);
+            }
+        }
+
+        // nguon: File.ReadAllText (ho File)
+        // rule: dso-taint-header-injection
+        public void NguonTep_VaoCookie()
+        {
+            string ngonNgu = File.ReadAllText("ngon-ngu-mac-dinh.txt");
+            var cookie = new HttpCookie("lang", ngonNgu);
+            Response.AppendCookie(cookie);
+        }
+
+        // nguon: WebClient.DownloadString (ho NetClient)
+        // rule: dso-taint-xss-status-description
+        public void NguonMang_VaoStatusDescription()
+        {
+            string thongBao = _wc.DownloadString("https://noi-bo/thong-bao");
+            Response.StatusCode = 404;
+            Response.StatusDescription = "Khong tim thay: " + thongBao;
+        }
+
+        // nguon: StreamReader.ReadToEnd()
+        // rule: dso-taint-unsafe-reflection
+        public object NguonDocHet_VaoPhanChieu()
+        {
+            using var sr = new StreamReader("bo-xu-ly.cfg");
+            string tenLop = sr.ReadToEnd();
+            return Activator.CreateInstance(Type.GetType(tenLop));
+        }
+
+        // nguon: Console.ReadLine() - cong cu dong lenh doc dau vao nguoi dung
+        // rule: dso-taint-ldapi
+        public void NguonConsole_VaoLdap()
+        {
+            string ten = Console.ReadLine();
+            var search = new DirectorySearcher();
+            search.Filter = "(&(objectClass=user)(cn=" + ten + "))";
+            search.FindOne();
+        }
+
+        // nguon: SqlDataReader.GetValue(i) (ho Database)
+        // rule: dso-taint-xpathi
+        public XmlNode NguonCsdlGiaTri_VaoXPath()
+        {
+            using var conn = new SqlConnection("Server=.;Database=kho;Encrypt=True");
+            using var cmd = new SqlCommand("select ma from bo_loc", conn);
+            using SqlDataReader rd = cmd.ExecuteReader();
+            rd.Read();
+            string ma = (string)rd.GetValue(0);
+            var doc = new XmlDocument();
+            doc.Load("danh-muc.xml");
+            return doc.SelectSingleNode("//muc[ma='" + ma + "']");
+        }
+
+        // ------------------------------------------------------------------
+        // CWE-319 : truyen tin khong ma hoa (kiem tra cau hinh)
+        // ------------------------------------------------------------------
+        // Hai case nay la cua rule muc WARNING - xem ghi chu CWE-319 trong
+        // sast-detect.yaml ve viec chung KHONG bat duoc dang that cua Juliet.
+
+        // rule: dso-cleartext-sql-connection
+        public void KetNoiCsdl_TatMaHoa()
+        {
+            using var conn = new SqlConnection(
+                "Server=db.noi-bo;Database=donhang;User ID=sa;Password=x;Encrypt=false");
+            conn.Open();
+        }
+
+        // rule: dso-cleartext-transport-disabled
+        public void TruyenTai_HaGiaoThuc()
+        {
+            ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls11;
+        }
     }
 }

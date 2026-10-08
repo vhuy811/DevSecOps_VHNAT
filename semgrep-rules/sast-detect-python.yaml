@@ -1,0 +1,400 @@
+# =============================================================================
+# BO RULE PHAT HIEN - PYTHON (tang 2, phan tich tinh)
+# =============================================================================
+#
+# Cung triet ly voi sast-detect.yaml (ban C#):
+#   - Chi phu nhung CWE ma OWASP ZAP CO active scan rule, de canh bao tinh con
+#     duong di tiep den nhan CONFIRMED o tang doi sanh. Phan be rong (mat khau
+#     cung, ma hoa yeu, deserialization...) de cho bo rule cong dong p/python.
+#   - severity ERROR = co quyen CHAN merge. Chi dat cho rule tin cay cao.
+#   - Moi rule ghi "CWE-nnn:" o DAU thong diep VA trong metadata.cwe (tang doi
+#     sanh doc ca hai cho).
+#
+# VI SAO TOAN BO DUNG TAINT MODE (mode: taint)
+# Rule khop theo HINH DANG dong code khong phan biet duoc "noi hang so" voi
+# "noi input nguoi dung" - do tren Juliet C# cho thay chung bat 100% case loi
+# NHUNG bao nham 100% case da sua. Nen o day chi bao khi du lieu that su di tu
+# NGUON (doi tuong request) toi DICH ma khong qua ham lam sach.
+#
+# DIEM THEN CHOT - focus-metavariable O DOI SO THU NHAT:
+# Dang AN TOAN cua Python DBAPI la tham so hoa:
+#       cursor.execute("SELECT ... WHERE x = ?", (gia_tri,))
+# Gia tri nhiem doc nam o doi so THU HAI. Dang LO HONG la noi vao doi so THU
+# NHAT. Nho focus-metavariable: $X (chi doi so dau), rule KHONG bao nham dang
+# tham so hoa. Bo focus di la rule lap tuc bao nham moi truy van tham so hoa.
+#
+# GIOI HAN THAT: Semgrep ban cong dong lan theo luong trong MOT ham. Du lieu di
+# qua ham khac / tep khac la phan cua CodeQL (threat-models: local).
+# =============================================================================
+
+rules:
+
+  # ===========================================================================
+  # CWE-89 : SQL Injection          ZAP ascan 40018
+  # ===========================================================================
+  - id: dso-py-taint-sqli
+    mode: taint
+    languages: [python]
+    severity: ERROR
+    message: >-
+      CWE-89: Du lieu tu request duoc noi vao cau lenh SQL (doi so thu nhat cua
+      execute / text() / .raw()) ma khong qua tham so hoa. Dung tham so cua
+      DBAPI: cursor.execute("... WHERE x = ?", (gia_tri,)) - dau ? / %s / :ten
+      va truyen gia tri o doi so thu hai.
+    metadata:
+      cwe: "CWE-89"
+      category: security
+      subcategory: [vuln]
+      confidence: HIGH
+      references:
+        - https://cwe.mitre.org/data/definitions/89.html
+    pattern-sources:
+      - pattern: $R.args[...]
+      - pattern: $R.args.get(...)
+      - pattern: $R.args.getlist(...)
+      - pattern: $R.form[...]
+      - pattern: $R.form.get(...)
+      - pattern: $R.values[...]
+      - pattern: $R.values.get(...)
+      - pattern: $R.get_json(...)
+      - pattern: $R.cookies[...]
+      - pattern: $R.cookies.get(...)
+      - pattern: $R.headers[...]
+      - pattern: $R.headers.get(...)
+      - pattern: $R.GET[...]
+      - pattern: $R.GET.get(...)
+      - pattern: $R.POST[...]
+      - pattern: $R.POST.get(...)
+      - pattern: $R.query_params[...]
+      - pattern: $R.query_params.get(...)
+      - pattern: request.json
+      - pattern: request.data
+    pattern-sanitizers:
+      - pattern: int(...)
+      - pattern: float(...)
+      - pattern: uuid.UUID(...)
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: $CUR.execute($X, ...)
+              - pattern: $CUR.executemany($X, ...)
+              - pattern: $CUR.executescript($X)
+              - pattern: sqlalchemy.text($X)
+              - pattern: text($X)
+              - pattern: $M.raw($X, ...)
+              - pattern: $M.extra(select=$X, ...)
+              - pattern: $M.extra(where=$X, ...)
+          - focus-metavariable: $X
+
+  # ===========================================================================
+  # CWE-78 : OS Command Injection   ZAP ascan 90020 / 90037
+  # ===========================================================================
+  - id: dso-py-taint-cmdi
+    mode: taint
+    languages: [python]
+    severity: ERROR
+    message: >-
+      CWE-78: Du lieu tu request di vao lenh he dieu hanh chay QUA SHELL
+      (os.system / os.popen / subprocess voi shell=True). Shell dien giai dau
+      cham phay, dau va, dau ong dan nen input nao cung thanh lenh moi. Dung
+      subprocess.run(["lenh", doi_so]) - danh sach, khong shell.
+    metadata:
+      cwe: "CWE-78"
+      category: security
+      subcategory: [vuln]
+      confidence: HIGH
+      references:
+        - https://cwe.mitre.org/data/definitions/78.html
+    pattern-sources:
+      - pattern: $R.args[...]
+      - pattern: $R.args.get(...)
+      - pattern: $R.form[...]
+      - pattern: $R.form.get(...)
+      - pattern: $R.values.get(...)
+      - pattern: $R.get_json(...)
+      - pattern: $R.cookies.get(...)
+      - pattern: $R.headers.get(...)
+      - pattern: $R.GET[...]
+      - pattern: $R.GET.get(...)
+      - pattern: $R.POST[...]
+      - pattern: $R.POST.get(...)
+      - pattern: $R.query_params.get(...)
+    pattern-sanitizers:
+      - pattern: shlex.quote(...)
+      - pattern: int(...)
+    # CHI dang chay qua shell. subprocess.run(["ls", x]) KHONG o day - no an
+    # toan va liet vao day la bao nham dang da sua.
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: os.system($X)
+              - pattern: os.popen($X, ...)
+              - pattern: subprocess.run($X, ..., shell=True, ...)
+              - pattern: subprocess.call($X, ..., shell=True, ...)
+              - pattern: subprocess.check_call($X, ..., shell=True, ...)
+              - pattern: subprocess.check_output($X, ..., shell=True, ...)
+              - pattern: subprocess.Popen($X, ..., shell=True, ...)
+              - pattern: subprocess.getoutput($X)
+          - focus-metavariable: $X
+
+  # ===========================================================================
+  # CWE-22 : Path Traversal         ZAP ascan 6
+  # ===========================================================================
+  - id: dso-py-taint-path-traversal
+    mode: taint
+    languages: [python]
+    severity: ERROR
+    message: >-
+      CWE-22: Du lieu tu request duoc dung lam duong dan tep ma khong cat bo
+      thu muc. Chuoi "../" hoac duong dan tuyet doi cho phep doc/ghi ngoai thu
+      muc du dinh. Dung os.path.basename() hoac werkzeug secure_filename(), roi
+      kiem tra ket qua van nam trong thu muc goc.
+    metadata:
+      cwe: "CWE-22"
+      category: security
+      subcategory: [vuln]
+      confidence: HIGH
+      references:
+        - https://cwe.mitre.org/data/definitions/22.html
+    pattern-sources:
+      - pattern: $R.args[...]
+      - pattern: $R.args.get(...)
+      - pattern: $R.form[...]
+      - pattern: $R.form.get(...)
+      - pattern: $R.values.get(...)
+      - pattern: $R.get_json(...)
+      - pattern: $R.cookies.get(...)
+      - pattern: $R.headers.get(...)
+      - pattern: $R.GET[...]
+      - pattern: $R.GET.get(...)
+      - pattern: $R.POST[...]
+      - pattern: $R.POST.get(...)
+      - pattern: $R.query_params.get(...)
+    pattern-sanitizers:
+      - pattern: os.path.basename(...)
+      - pattern: secure_filename(...)
+      - pattern: werkzeug.utils.secure_filename(...)
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: open($X, ...)
+              - pattern: io.open($X, ...)
+              - pattern: os.remove($X)
+              - pattern: os.unlink($X)
+              - pattern: shutil.copy($X, ...)
+              - pattern: shutil.copyfile($X, ...)
+              - pattern: shutil.rmtree($X, ...)
+              - pattern: send_file($X, ...)
+              - pattern: flask.send_file($X, ...)
+              - pattern: send_from_directory($D, $X, ...)
+              - pattern: pathlib.Path($X).read_text(...)
+              - pattern: pathlib.Path($X).read_bytes()
+          - focus-metavariable: $X
+
+  # ===========================================================================
+  # CWE-79 : Cross-Site Scripting   ZAP ascan 40012 / 40014 / 40026
+  # ===========================================================================
+  - id: dso-py-taint-xss
+    mode: taint
+    languages: [python]
+    severity: ERROR
+    message: >-
+      CWE-79: Du lieu tu request duoc dua ra HTML ma khong ma hoa -
+      render_template_string / Markup / mark_safe / HttpResponse deu KHONG
+      escape. Dung template co auto-escape (render_template) hoac
+      html.escape(x) truoc khi ghep.
+    metadata:
+      cwe: "CWE-79"
+      category: security
+      subcategory: [vuln]
+      confidence: HIGH
+      references:
+        - https://cwe.mitre.org/data/definitions/79.html
+    pattern-sources:
+      - pattern: $R.args[...]
+      - pattern: $R.args.get(...)
+      - pattern: $R.form[...]
+      - pattern: $R.form.get(...)
+      - pattern: $R.values.get(...)
+      - pattern: $R.get_json(...)
+      - pattern: $R.cookies.get(...)
+      - pattern: $R.headers.get(...)
+      - pattern: $R.GET[...]
+      - pattern: $R.GET.get(...)
+      - pattern: $R.POST[...]
+      - pattern: $R.POST.get(...)
+      - pattern: $R.query_params.get(...)
+    pattern-sanitizers:
+      - pattern: html.escape(...)
+      - pattern: markupsafe.escape(...)
+      - pattern: escape(...)
+      - pattern: django.utils.html.escape(...)
+      - pattern: int(...)
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: render_template_string($X, ...)
+              - pattern: flask.render_template_string($X, ...)
+              - pattern: Markup($X)
+              - pattern: markupsafe.Markup($X)
+              - pattern: mark_safe($X)
+              - pattern: django.utils.safestring.mark_safe($X)
+              - pattern: HttpResponse($X, ...)
+              - pattern: django.http.HttpResponse($X, ...)
+          - focus-metavariable: $X
+
+  # ===========================================================================
+  # CWE-94 : Server-Side Code Injection   ZAP ascan 90019
+  # ===========================================================================
+  - id: dso-py-taint-code-injection
+    mode: taint
+    languages: [python]
+    severity: ERROR
+    message: >-
+      CWE-94: Du lieu tu request duoc dua vao eval / exec / compile - tuc la
+      chay ma tuy y tren may chu. Khong bao gio chay chuoi lay tu input; can
+      doc du lieu co cau truc thi dung ast.literal_eval hoac json.loads.
+    metadata:
+      cwe: "CWE-94"
+      category: security
+      subcategory: [vuln]
+      confidence: HIGH
+      references:
+        - https://cwe.mitre.org/data/definitions/94.html
+    pattern-sources:
+      - pattern: $R.args[...]
+      - pattern: $R.args.get(...)
+      - pattern: $R.form[...]
+      - pattern: $R.form.get(...)
+      - pattern: $R.values.get(...)
+      - pattern: $R.get_json(...)
+      - pattern: $R.cookies.get(...)
+      - pattern: $R.headers.get(...)
+      - pattern: $R.GET[...]
+      - pattern: $R.GET.get(...)
+      - pattern: $R.POST[...]
+      - pattern: $R.POST.get(...)
+      - pattern: $R.query_params.get(...)
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: eval($X, ...)
+              - pattern: exec($X, ...)
+              - pattern: compile($X, ...)
+          - focus-metavariable: $X
+
+  # ===========================================================================
+  # CWE-918 : Server-Side Request Forgery   ZAP ascan 40046
+  # ===========================================================================
+  - id: dso-py-taint-ssrf
+    mode: taint
+    languages: [python]
+    severity: ERROR
+    message: >-
+      CWE-918: May chu goi HTTP toi dia chi lay tu request. Ke tan cong tro dia
+      chi ve mang noi bo hoac endpoint metadata cua nha cung cap dam may
+      (169.254.169.254). Chi cho phep mot danh sach may chu biet truoc.
+    metadata:
+      cwe: "CWE-918"
+      category: security
+      subcategory: [vuln]
+      confidence: MEDIUM
+      references:
+        - https://cwe.mitre.org/data/definitions/918.html
+    pattern-sources:
+      - pattern: $R.args[...]
+      - pattern: $R.args.get(...)
+      - pattern: $R.form[...]
+      - pattern: $R.form.get(...)
+      - pattern: $R.values.get(...)
+      - pattern: $R.get_json(...)
+      - pattern: $R.cookies.get(...)
+      - pattern: $R.headers.get(...)
+      - pattern: $R.GET[...]
+      - pattern: $R.GET.get(...)
+      - pattern: $R.POST[...]
+      - pattern: $R.POST.get(...)
+      - pattern: $R.query_params.get(...)
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: requests.get($X, ...)
+              - pattern: requests.post($X, ...)
+              - pattern: requests.put($X, ...)
+              - pattern: requests.delete($X, ...)
+              - pattern: requests.head($X, ...)
+              - pattern: requests.request($M, $X, ...)
+              - pattern: httpx.get($X, ...)
+              - pattern: httpx.post($X, ...)
+              - pattern: urllib.request.urlopen($X, ...)
+              - pattern: urlopen($X, ...)
+          - focus-metavariable: $X
+
+  # ===========================================================================
+  # CWE-601 : Open Redirect         ZAP ascan 20019
+  # ===========================================================================
+  - id: dso-py-taint-open-redirect
+    mode: taint
+    languages: [python]
+    severity: ERROR
+    message: >-
+      CWE-601: Chuyen huong toi dia chi lay truc tiep tu request. Ke tan cong
+      gui link tro ve chinh trang cua ban roi day nan nhan sang trang gia mao.
+      Chi chuyen huong toi duong dan noi bo (url_for) hoac kiem tra host nam
+      trong danh sach cho phep.
+    metadata:
+      cwe: "CWE-601"
+      category: security
+      subcategory: [vuln]
+      confidence: MEDIUM
+      references:
+        - https://cwe.mitre.org/data/definitions/601.html
+    pattern-sources:
+      - pattern: $R.args[...]
+      - pattern: $R.args.get(...)
+      - pattern: $R.form[...]
+      - pattern: $R.form.get(...)
+      - pattern: $R.values.get(...)
+      - pattern: $R.cookies.get(...)
+      - pattern: $R.headers.get(...)
+      - pattern: $R.GET[...]
+      - pattern: $R.GET.get(...)
+      - pattern: $R.POST[...]
+      - pattern: $R.POST.get(...)
+      - pattern: $R.query_params.get(...)
+    pattern-sanitizers:
+      - pattern: url_for(...)
+      - pattern: flask.url_for(...)
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: redirect($X, ...)
+              - pattern: flask.redirect($X, ...)
+              - pattern: HttpResponseRedirect($X, ...)
+              - pattern: django.http.HttpResponseRedirect($X, ...)
+          - focus-metavariable: $X
+
+  # ===========================================================================
+  # CWE-611 : XML External Entity (XXE)   ZAP ascan 90023
+  # Khong dung taint: day la CAU HINH sai, biet chac khi doc dong code.
+  # ===========================================================================
+  - id: dso-py-xxe-resolve-entities
+    languages: [python]
+    severity: ERROR
+    message: >-
+      CWE-611: Bo phan tich XML duoc bat xu ly thuc the ngoai. Tai lieu XML gui
+      len co the khai bao thuc the tro toi tep cuc bo hoac URL noi bo - doc tep
+      may chu hoac gay SSRF. Dat resolve_entities=False (lxml) hoac dung
+      defusedxml thay cho bo phan tich mac dinh.
+    metadata:
+      cwe: "CWE-611"
+      category: security
+      subcategory: [vuln]
+      confidence: HIGH
+      references:
+        - https://cheatsheetseries.owasp.org/cheatsheets/XML_External_Entity_Prevention_Cheat_Sheet.html
+    pattern-either:
+      - pattern: etree.XMLParser(..., resolve_entities=True, ...)
+      - pattern: lxml.etree.XMLParser(..., resolve_entities=True, ...)
+      - pattern: XMLParser(..., resolve_entities=True, ...)
+      - pattern: etree.XMLParser(..., no_network=False, ...)

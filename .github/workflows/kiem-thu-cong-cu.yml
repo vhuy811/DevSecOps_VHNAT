@@ -14,8 +14,14 @@ on:
       - tools/kiem_thu_idor.py
       - tools/idor.py
       - tools/sarif_tools.py
+      - tools/gate.py
+      - tools/kiem_thu_gate.py
+      - tools/kiem_bypass.py
+      - tools/kiem_thu_bypass.py
+      - tools/kiem_thu_sca.py
+      - .github/workflows/devsecops.yml
       - tools/chinh-sach-zap.json
-      - semgrep-rules/kiem-thu-rule/thu-vien-js/**
+      - semgrep-rules/**
       - .github/workflows/kiem-thu-cong-cu.yml
       - .github/workflows/devsecops-reusable.yml
   workflow_dispatch:
@@ -31,6 +37,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false   # khong de GITHUB_TOKEN lai trong .git/config
       - name: Kiem thu lop error-based Microsoft.Data.Sqlite
         run: python tools/kiem_thu_dast_sqlite.py
 
@@ -41,6 +49,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false   # khong de GITHUB_TOKEN lai trong .git/config
       - name: Kiem thu rule runtime (header/cookie)
         run: python tools/kiem_thu_runtime.py >> "$GITHUB_STEP_SUMMARY"
 
@@ -51,6 +61,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false   # khong de GITHUB_TOKEN lai trong .git/config
       - name: Kiem thu kiem IDOR/BOLA
         run: python tools/kiem_thu_idor.py >> "$GITHUB_STEP_SUMMARY"
 
@@ -59,6 +71,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false   # khong de GITHUB_TOKEN lai trong .git/config
 
       - name: retire.js tren fixture
         run: |
@@ -110,3 +124,108 @@ jobs:
               print("KIEM THU THAT BAI:"); [print("  -", x) for x in loi]; sys.exit(1)
           print("KIEM THU DAT")
           PY
+
+  gate:
+    # G6: CONG XAC NHAN (backstop). Tai hien dung ca PR #18 cua VulnShop-App -
+    # lo hong da bi ZAP khai thac thanh cong nhung neo vao tep PR khong dong
+    # vao - va khang dinh cong chan duoc. Kiem ca hai chieu: ngoai le con hieu
+    # luc hoac baseline thi cho qua, ngoai le het han thi van chan, va che do
+    # thuong van luon thoat 0 (GitHub moi la cong). Kem guard duong dan --out.
+    # Chi stdlib.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false   # khong de GITHUB_TOKEN lai trong .git/config
+
+      - name: Kiem thu cong xac nhan
+        run: python tools/kiem_thu_gate.py >> "$GITHUB_STEP_SUMMARY"
+
+  rule_semgrep:
+    # KIEM THU BO RULE - truoc day chi chay TAY (can Docker cuc bo), nen rule
+    # moi them vao khong ai kiem trong CI. Do dung la cach mot rule MU di vao
+    # pipeline: quet xong, khong bao gi, nguoi doc tuong ma nguon sach.
+    #
+    # Ba dieu kien (xem chay_kiem_thu.py):
+    #   1. moi rule phat hien phai bat duoc case co loi cua no
+    #   2. khong rule nao duoc bat nham fixture Da_Khu_Doc.* (duong tinh gia)
+    #   3. moi rule sanitizer phai tim duoc bang chung khu doc
+    # Phu C# + Python + Java, moi ngon ngu mot cap fixture Co_Loi / Da_Khu_Doc.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false   # khong de GITHUB_TOKEN lai trong .git/config
+
+      - name: Cai semgrep
+        run: pip install semgrep
+
+      - name: Kiem thu bo rule (C# + Python + Java)
+        run: |
+          # pipefail: tee khong duoc che mat ma thoat cua kiem thu.
+          set -o pipefail
+          python semgrep-rules/kiem-thu-rule/chay_kiem_thu.py | tee -a "$GITHUB_STEP_SUMMARY"
+
+  bypass:
+    # G5.1: KIEM CAC DUONG LACH CONG. Lo hong lach cong o PR #18 va lo hong
+    # `// nosemgrep` o PR #1 deu tim duoc bang tay SAU KHI da lot. Job nay bien
+    # tung chot da bit thanh mot phep kiem, de lan sau ai sua workflow ma bo mat
+    # chot thi biet ngay chu khong phai doi mot PR thu nghiem.
+    #
+    # Chay HAI buoc, va buoc thu hai moi la buoc quan trong:
+    #   1. kiem_bypass.py      - 16 chot con nguyen khong
+    #   2. kiem_thu_bypass.py  - PHA tung chot roi doi hoi bo kiem phai bao
+    # Thieu buoc 2 thi khong phan biet duoc "chot con nguyen" voi "phep kiem
+    # hong". Lan dau chay buoc 2 da bat duoc mot phep kiem trang tri that
+    # (persist-credentials dem so lan xuat hien thay vi doc cau truc YAML).
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false   # khong de GITHUB_TOKEN lai trong .git/config
+      - name: Cai PyYAML (kiem_bypass doc cau truc YAML, khong dem chu)
+        run: python -m pip install --quiet pyyaml
+      - name: Chot lach cong con nguyen khong
+        run: |
+          set -o pipefail
+          python tools/kiem_bypass.py | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Pha tung chot - bo kiem co bat duoc khong
+        run: |
+          set -o pipefail
+          python tools/kiem_thu_bypass.py | tee -a "$GITHUB_STEP_SUMMARY"
+
+  sca:
+    # G5.2: DO TANG THU VIEN. Tang nay la tang duy nhat tung khong co bo do nao,
+    # nen cau "bo sot bao nhieu" khong tra loi duoc. Fixture duoc SINH RA LUC
+    # CHAY trong thu muc tam voi phien ban dinh lo hong biet truoc, va khong bao
+    # gio duoc commit: manifest ghim phien ban dinh lo hong ma commit vao repo
+    # thi Dependabot cua chinh repo nay bao dong va tang SCA chan moi PR.
+    #
+    # Do tren bon he sinh thai (npm, pip, maven, nuget) vi lo da phat hien la:
+    # sca.py chi doc NuGet, retire.js chi doc JS nhung san, dependency-review
+    # chi xet thu vien MOI trong PR - nen thu vien DA CO cua repo Python hay
+    # Java khong tang nao quet. Buoc "Trivy - lo hong thu vien da co" trong
+    # devsecops-reusable.yml la ban bit, va job nay la phep do cua ban bit do.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false   # khong de GITHUB_TOKEN lai trong .git/config
+      - name: Sinh fixture (khong commit tep nao trong nay)
+        run: python tools/kiem_thu_sca.py --sinh fixture-sca
+      - name: Trivy fs tren fixture
+        run: |
+          mkdir -p ket-qua
+          docker run --rm -v "$PWD/fixture-sca:/target:ro" -v "$PWD/ket-qua:/out" \
+            aquasec/trivy:latest fs /target --scanners vuln \
+            --format sarif --output /out/trivy-fs.sarif --exit-code 0 --quiet
+      - name: Cham diem
+        run: |
+          set -o pipefail
+          python tools/kiem_thu_sca.py --sinh fixture-sca \
+            --trivy-sarif ket-qua/trivy-fs.sarif \
+            --md ket-qua/sca.md | tee -a "$GITHUB_STEP_SUMMARY"

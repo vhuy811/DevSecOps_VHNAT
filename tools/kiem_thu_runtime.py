@@ -44,15 +44,23 @@ class _App(http.server.BaseHTTPRequestHandler):
 
 
 def main() -> int:
-    srv = socketserver.TCPServer(("127.0.0.1", 5096), _App)
-    srv.allow_reuse_address = True
+    # Cong 0 = he dieu hanh tu cap mot cong con ranh.
+    # Truoc day ba bo kiem nay ghim cong co dinh va HAI trong so do (idor,
+    # dast_sqlite) dung CUNG cong 5097, nen chay noi tiep tren cung mot may la
+    # "Address already in use". Trong CI chung nam o hai job khac may nen khong
+    # ai thay - do la mot bo kiem HONG theo cach im lang. Ngoai ra dong
+    # allow_reuse_address gan SAU khi TCPServer() da bind xong thi khong co tac
+    # dung gi ca, nen da bo.
+    srv = socketserver.TCPServer(("127.0.0.1", 0), _App)
+    cong = srv.server_address[1]
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     time.sleep(0.4)
-    base = "http://127.0.0.1:5096"
+    base = f"http://127.0.0.1:{cong}"
 
     rt = d.doc_chinh_sach().get("runtime", {})
     got = d.quet_runtime(base, [base + "/", base + "/safe"], rt)
     srv.shutdown()
+    srv.server_close()
 
     header_bat = {f["alert"].split(": ", 1)[1] for f in got if f["alert"].startswith("Thieu header")}
     cookie_bat = {f["alert"].split(" co ", 1)[1].split(":")[0] for f in got if f["alert"].startswith("Cookie thieu")}

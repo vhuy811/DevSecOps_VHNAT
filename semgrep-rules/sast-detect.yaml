@@ -70,6 +70,58 @@
 # khong bat dev hay reviewer xu ly tung dong o tung PR.
 # =============================================================================
 
+# -----------------------------------------------------------------------------
+# NGUON DU LIEU - vi sao khong chi co HTTP request
+#
+# Phong do #23 (Juliet C# 1.3, 6611 case) do RIENG nhom canh bao co quyen chan
+# cua Semgrep (chi-semgrep = severity ERROR) theo loai nguon du lieu:
+#
+#   loai nguon                                   so case   bat     bao nham
+#   1. HTTP request (tham so, cookie)              1998     35%      0.0%
+#   2. mang (TCP, WebClient)                       1998      0%      0.0%
+#   3. CSDL (du lieu da luu)                        666      0%      0.0%
+#   4. cuc bo (console, bien moi truong, tep)      1554      0%      0.0%
+#
+# 4218/6611 case khong he duoc cham. Khong phai vi thieu sink - da doc ma nguon
+# ham Bad cua CWE-36, 81, 113, 470 (buoc "Ma mau" cua phong do) va doi chieu:
+# sink CUA CA BON DEU DA CO trong bo rule. Thieu duy nhat NGUON.
+#
+# Tam quan trong: toan bo 35% o dong 1 dat voi ti le bao nham 0.0%. Nghia la
+# thiet ke sink (focus-metavariable vao dung doi so bi nhiem) da loc sach, va
+# no khong phu thuoc nguon den tu dau. Nen mo rong nguon la mo rong vung bat
+# ma KHONG mo rong vung bao nham - dieu kien "dung de khong loi van block".
+#
+# NGUON THAT CUA JULIET C# 1.3 (doc tu SARIF phong do, khong phai suy doan).
+# 10 ho nguon, moi ho ~222 case:
+#   ho nguon        API that trong ma nguon Juliet
+#   QueryString_Web  req.QueryString["id"]                       <- da co
+#   Params_Get_Web   req.Params.Get("id")                        <- da co
+#   Get_Cookies_Web  req.Cookies                                 <- da co
+#   ReadLine         new StreamReader(Console.OpenStandardInput()).ReadLine()
+#   File             new StreamReader("file.txt").ReadLine() / File.ReadAllText
+#   Connect_tcp      new TcpClient(h,p).GetStream() -> StreamReader.ReadLine()
+#   Listen_tcp       TcpListener.AcceptTcpClient() -> StreamReader.ReadLine()
+#   NetClient        new WebClient().OpenRead(url) -> StreamReader.ReadLine()
+#   Database         SqlCommand.ExecuteReader() -> SqlDataReader.GetString(i)
+#   Environment      Environment.GetEnvironmentVariable("ADD")
+#
+# 5 ho (ReadLine, File, Connect_tcp, Listen_tcp, NetClient) di qua DUNG MOT
+# hinh dang: `$SR.ReadLine()`. Mot pattern phu 5 ho - do la ly do danh sach
+# duoi day ngan ma trum rong.
+#
+# Day cung dung bang voi threat model CodeQL dang chay trong pipeline
+# (--threat-model=local). Truoc day hai tang lech chuan nhau: CodeQL coi
+# CSDL/tep/env la nguon, Semgrep thi khong.
+#
+# Day khong phai noi long. Du lieu tu CSDL di vao cau SQL la SQL injection bac
+# hai (second-order) - that su khai thac duoc, chi la nguon den tu ban ghi da
+# luu thay vi tu request. Du lieu tu tep/bien moi truong di vao duong dan tep
+# hay lenh he dieu hanh cung vay.
+#
+# CO Y KHONG dua vao: toan tu lay chi so tran ($X[$I]) va .Read(...) chung
+# chung - hai cai do khop gan nhu moi bieu thuc va se lam no ty le bao nham.
+# -----------------------------------------------------------------------------
+
 rules:
 
   # ===========================================================================
@@ -491,21 +543,31 @@ rules:
       confidence: HIGH
       references:
         - https://cwe.mitre.org/data/definitions/643.html
-    pattern-either:
-      - pattern: $DOC.SelectNodes(<... $A + $B ...>, ...)
-      - pattern: $DOC.SelectSingleNode(<... $A + $B ...>, ...)
-      - pattern: $DOC.SelectNodes($"...", ...)
-      - pattern: $DOC.SelectSingleNode($"...", ...)
-      - pattern: XPathExpression.Compile(<... $A + $B ...>, ...)
-      - pattern: XPathExpression.Compile($"...")
-      - pattern: $NAV.Evaluate(<... $A + $B ...>, ...)
-      - pattern: $NAV.Select(<... $A + $B ...>, ...)
-      - pattern: $EL.XPathSelectElements(<... $A + $B ...>, ...)
-      - pattern: $EL.XPathSelectElement(<... $A + $B ...>, ...)
+    patterns:
+      - pattern-either:
+        - pattern: $DOC.SelectNodes(<... $A + $B ...>, ...)
+        - pattern: $DOC.SelectSingleNode(<... $A + $B ...>, ...)
+        - pattern: $DOC.SelectNodes($"...", ...)
+        - pattern: $DOC.SelectSingleNode($"...", ...)
+        - pattern: XPathExpression.Compile(<... $A + $B ...>, ...)
+        - pattern: XPathExpression.Compile($"...")
+        - pattern: $NAV.Evaluate(<... $A + $B ...>, ...)
+        - pattern: $NAV.Select(<... $A + $B ...>, ...)
+        - pattern: $EL.XPathSelectElements(<... $A + $B ...>, ...)
+        - pattern: $EL.XPathSelectElement(<... $A + $B ...>, ...)
 
   # ===========================================================================
   # CWE-611 : XML External Entity (XXE)
   # ===========================================================================
+      # Phan bien doi da qua bo ma hoa chinh tac thi khong con la chen XPath.
+      # Dung pattern-not-regex thay vi 10 pattern-not (mot cho moi dang sink o
+      # tren): viet 10 lan de chi noi mot dieu thi dai va chac chan se quen mot
+      # dang khi them sink moi.
+      # Danh doi da biet: neu mot phep noi co hai phan, mot phan da ma hoa va
+      # mot phan chua, regex nay se bo qua ca canh bao. Chap nhan duoc vi rule
+      # nay chi la WARNING (tham khao); quyen chan nam o dso-taint-xpathi, rule
+      # do lan theo tung gia tri nen khong bi lua boi tinh huong hon hop.
+      - pattern-not-regex: SecurityElement\.Escape\(
 
   - id: dso-xxe-dtd-processing-parse
     languages: [csharp]
@@ -681,17 +743,21 @@ rules:
       confidence: HIGH
       references:
         - https://cwe.mitre.org/data/definitions/90.html
-    pattern-either:
-      - pattern: $S.Filter = <... $A + $B ...>;
-      - pattern: $S.Filter = $"...";
-      - pattern: new DirectorySearcher(<... $A + $B ...>, ...)
-      - pattern: new DirectorySearcher($"...", ...)
-      - pattern: new DirectoryEntry(<... $A + $B ...>, ...)
-      - pattern: new SearchRequest(<... $A + $B ...>, ...)
+    patterns:
+      - pattern-either:
+        - pattern: $S.Filter = <... $A + $B ...>;
+        - pattern: $S.Filter = $"...";
+        - pattern: new DirectorySearcher(<... $A + $B ...>, ...)
+        - pattern: new DirectorySearcher($"...", ...)
+        - pattern: new DirectoryEntry(<... $A + $B ...>, ...)
+        - pattern: new SearchRequest(<... $A + $B ...>, ...)
 
   # ===========================================================================
   # CWE-91 : XML / XSLT Injection
   # ===========================================================================
+      # Nhu tren: bo loc da qua Encoder.Ldap*Encode thi khong con la chen LDAP.
+      # Quyen chan nam o dso-taint-ldapi (lan theo tung gia tri).
+      - pattern-not-regex: Encoder\.Ldap\w*Encode\(
 
   - id: dso-xmli-innerxml-concat
     languages: [csharp]
@@ -824,6 +890,30 @@ rules:
       - pattern: $R.Headers[$K]
       - pattern: $R.Query[$K]
       - pattern: $R.RouteValues[$K]
+      # Nguon NGOAI HTTP - threat model "local". Xem khoi NGUON DU LIEU o dau tep.
+      - pattern: Console.ReadLine(...)
+      - pattern: Console.In.ReadLine(...)
+      - pattern: Environment.GetEnvironmentVariable(...)
+      # KHONG dua File.ReadAll* vao nguon CUA RIENG RULE NAY. Sink o duoi la
+      # `File.$F($X, ...)` voi $F la metavariable, nen File.ReadAllText khop CA
+      # nguon LAN sink -> rule tu bao chinh no.
+      # Bang chung: CI #20 bao nham Da_Khu_Doc.cs:89,206,227 va ca ba dong deu
+      # la File.ReadAllText(...), ke ca dong 227 co doi so la hang chuoi - thu
+      # khong the bi nhiem qua luong du lieu.
+      # Neu de nguyen: moi loi goi File.ReadAllText trong ung dung thanh mot
+      # canh bao muc ERROR, tuc la chan merge moi lan doc tep. Dung cai
+      # "khong loi van block" ma do an lay lam tieu chi.
+      # Danh doi: mat dang "doc ten tep tu mot tep khac roi mo no". Dang
+      # `new StreamReader(...).ReadLine()` -> sink duong dan van bat duoc, va
+      # do cung la dang Juliet dung cho ho nguon File.
+      # Bay nguon/sink trung nhau nay CHI co o rule nay; 7 rule taint con lai
+      # da doi chieu, khong co pattern nao vua la nguon vua la sink.
+      - pattern: $SR.ReadLine()
+      - pattern: $SR.ReadToEnd()
+      - pattern: $RD.GetString($I)
+      - pattern: $RD.GetValue($I)
+      - pattern: $WC.DownloadString(...)
+      - pattern: $WC.DownloadData(...)
       - patterns:
           # Tham so cua action trong lop ke thua Controller / ControllerBase /
           # PageModel. Phai viet "class $C : $B" - Semgrep C# KHONG khop
@@ -882,6 +972,19 @@ rules:
       - pattern: $R.Headers[$K]
       - pattern: $R.Query[$K]
       - pattern: $R.RouteValues[$K]
+      # Nguon NGOAI HTTP - threat model "local". Xem khoi NGUON DU LIEU o dau tep.
+      - pattern: Console.ReadLine(...)
+      - pattern: Console.In.ReadLine(...)
+      - pattern: Environment.GetEnvironmentVariable(...)
+      - pattern: File.ReadAllText(...)
+      - pattern: File.ReadAllLines(...)
+      - pattern: File.ReadAllBytes(...)
+      - pattern: $SR.ReadLine()
+      - pattern: $SR.ReadToEnd()
+      - pattern: $RD.GetString($I)
+      - pattern: $RD.GetValue($I)
+      - pattern: $WC.DownloadString(...)
+      - pattern: $WC.DownloadData(...)
       - patterns:
           # Tham so cua action trong lop ke thua Controller / ControllerBase /
           # PageModel. Phai viet "class $C : $B" - Semgrep C# KHONG khop
@@ -938,6 +1041,19 @@ rules:
       - pattern: $R.Headers[$K]
       - pattern: $R.Query[$K]
       - pattern: $R.RouteValues[$K]
+      # Nguon NGOAI HTTP - threat model "local". Xem khoi NGUON DU LIEU o dau tep.
+      - pattern: Console.ReadLine(...)
+      - pattern: Console.In.ReadLine(...)
+      - pattern: Environment.GetEnvironmentVariable(...)
+      - pattern: File.ReadAllText(...)
+      - pattern: File.ReadAllLines(...)
+      - pattern: File.ReadAllBytes(...)
+      - pattern: $SR.ReadLine()
+      - pattern: $SR.ReadToEnd()
+      - pattern: $RD.GetString($I)
+      - pattern: $RD.GetValue($I)
+      - pattern: $WC.DownloadString(...)
+      - pattern: $WC.DownloadData(...)
       - patterns:
           # Tham so cua action trong lop ke thua Controller / ControllerBase /
           # PageModel. Phai viet "class $C : $B" - Semgrep C# KHONG khop
@@ -990,6 +1106,19 @@ rules:
       - pattern: $R.Headers[$K]
       - pattern: $R.Query[$K]
       - pattern: $R.RouteValues[$K]
+      # Nguon NGOAI HTTP - threat model "local". Xem khoi NGUON DU LIEU o dau tep.
+      - pattern: Console.ReadLine(...)
+      - pattern: Console.In.ReadLine(...)
+      - pattern: Environment.GetEnvironmentVariable(...)
+      - pattern: File.ReadAllText(...)
+      - pattern: File.ReadAllLines(...)
+      - pattern: File.ReadAllBytes(...)
+      - pattern: $SR.ReadLine()
+      - pattern: $SR.ReadToEnd()
+      - pattern: $RD.GetString($I)
+      - pattern: $RD.GetValue($I)
+      - pattern: $WC.DownloadString(...)
+      - pattern: $WC.DownloadData(...)
       - patterns:
           # Tham so cua action trong lop ke thua Controller / ControllerBase /
           # PageModel. Phai viet "class $C : $B" - Semgrep C# KHONG khop
@@ -1057,6 +1186,19 @@ rules:
       - pattern: $R.Headers[$K]
       - pattern: $R.Query[$K]
       - pattern: $R.RouteValues[$K]
+      # Nguon NGOAI HTTP - threat model "local". Xem khoi NGUON DU LIEU o dau tep.
+      - pattern: Console.ReadLine(...)
+      - pattern: Console.In.ReadLine(...)
+      - pattern: Environment.GetEnvironmentVariable(...)
+      - pattern: File.ReadAllText(...)
+      - pattern: File.ReadAllLines(...)
+      - pattern: File.ReadAllBytes(...)
+      - pattern: $SR.ReadLine()
+      - pattern: $SR.ReadToEnd()
+      - pattern: $RD.GetString($I)
+      - pattern: $RD.GetValue($I)
+      - pattern: $WC.DownloadString(...)
+      - pattern: $WC.DownloadData(...)
       - patterns:
           # Tham so cua action trong lop ke thua Controller / ControllerBase /
           # PageModel. Phai viet "class $C : $B" - Semgrep C# KHONG khop
@@ -1126,6 +1268,19 @@ rules:
       - pattern: $R.Headers[$K]
       - pattern: $R.Query[$K]
       - pattern: $R.RouteValues[$K]
+      # Nguon NGOAI HTTP - threat model "local". Xem khoi NGUON DU LIEU o dau tep.
+      - pattern: Console.ReadLine(...)
+      - pattern: Console.In.ReadLine(...)
+      - pattern: Environment.GetEnvironmentVariable(...)
+      - pattern: File.ReadAllText(...)
+      - pattern: File.ReadAllLines(...)
+      - pattern: File.ReadAllBytes(...)
+      - pattern: $SR.ReadLine()
+      - pattern: $SR.ReadToEnd()
+      - pattern: $RD.GetString($I)
+      - pattern: $RD.GetValue($I)
+      - pattern: $WC.DownloadString(...)
+      - pattern: $WC.DownloadData(...)
       - patterns:
           # Tham so cua action trong lop ke thua Controller / ControllerBase /
           # PageModel. Phai viet "class $C : $B" - Semgrep C# KHONG khop
@@ -1178,6 +1333,19 @@ rules:
       - pattern: $R.Headers[$K]
       - pattern: $R.Query[$K]
       - pattern: $R.RouteValues[$K]
+      # Nguon NGOAI HTTP - threat model "local". Xem khoi NGUON DU LIEU o dau tep.
+      - pattern: Console.ReadLine(...)
+      - pattern: Console.In.ReadLine(...)
+      - pattern: Environment.GetEnvironmentVariable(...)
+      - pattern: File.ReadAllText(...)
+      - pattern: File.ReadAllLines(...)
+      - pattern: File.ReadAllBytes(...)
+      - pattern: $SR.ReadLine()
+      - pattern: $SR.ReadToEnd()
+      - pattern: $RD.GetString($I)
+      - pattern: $RD.GetValue($I)
+      - pattern: $WC.DownloadString(...)
+      - pattern: $WC.DownloadData(...)
       - patterns:
           # Tham so cua action trong lop ke thua Controller / ControllerBase /
           # PageModel. Phai viet "class $C : $B" - Semgrep C# KHONG khop
@@ -1230,6 +1398,19 @@ rules:
       - pattern: $R.Headers[$K]
       - pattern: $R.Query[$K]
       - pattern: $R.RouteValues[$K]
+      # Nguon NGOAI HTTP - threat model "local". Xem khoi NGUON DU LIEU o dau tep.
+      - pattern: Console.ReadLine(...)
+      - pattern: Console.In.ReadLine(...)
+      - pattern: Environment.GetEnvironmentVariable(...)
+      - pattern: File.ReadAllText(...)
+      - pattern: File.ReadAllLines(...)
+      - pattern: File.ReadAllBytes(...)
+      - pattern: $SR.ReadLine()
+      - pattern: $SR.ReadToEnd()
+      - pattern: $RD.GetString($I)
+      - pattern: $RD.GetValue($I)
+      - pattern: $WC.DownloadString(...)
+      - pattern: $WC.DownloadData(...)
       - patterns:
           # Tham so cua action trong lop ke thua Controller / ControllerBase /
           # PageModel. Phai viet "class $C : $B" - Semgrep C# KHONG khop
@@ -1378,3 +1559,83 @@ rules:
       subcategory: [audit]
       confidence: MEDIUM
     pattern: new Random(...)
+
+  # ===========================================================================
+  # CWE-319 : Truyen thong tin nhay cam khong ma hoa
+  #
+  # Phong do Juliet: 148 case, CA semgrep-du-an VA codeql deu 0% - khong cong cu
+  # nao trong do an bat loai nay. Bien the 01 cua Juliet la
+  # CWE319_Cleartext_Tx_Sensitive_Info__NetClient_SqlConnection_01.cs: chuoi ket
+  # noi CSDL khong bat ma hoa.
+  #
+  # Khong dung taint: day la CAU HINH sai, doc dong code la biet, khong can lan
+  # theo luong du lieu. Nho vay no khong bi gioi han "trong mot ham" cua Semgrep.
+  # ===========================================================================
+  # -------------------------------------------------------------------------
+  # CWE-319 - hai rule duoi day la KIEM TRA CAU HINH THUC TE, KHONG phai de
+  # nang diem phong do. Phai noi ro vi de bi nham:
+  #
+  # Da doc ma nguon ham Bad cua CWE319 trong Juliet (buoc "Ma mau" cua phong
+  # do #23). Lo hong o day KHONG phai chuoi ket noi tat ma hoa, ma la:
+  #     password = new StreamReader(client.OpenRead("http://...")).ReadLine();
+  #     new SqlConnection("...;Password=" + password)
+  # tuc la doc bi mat qua HTTP khong ma hoa roi dung lam thong tin dang nhap.
+  # Hai rule duoi day bat 0/148 case do - va se tiep tuc bat 0.
+  #
+  # Chua viet rule cho dang that vi ham goodB2G cua Juliet VAN giu nguyen
+  # lenh OpenRead("http://...") (no sua o phia sink, khong sua o phia doc).
+  # Mot rule chi nhin URL se bao nham dung bang bat dung - lap lai y nguyen
+  # sai lam cua nhom rule hinh dang da bi ha muc o G2.3b. Can doc duoc ca ham
+  # good truoc khi viet; da mo rong `cham_diem.py mau` de in ham good.
+  #
+  # Nen hai rule nay o muc WARNING: chung co gia tri tren ma nguon that
+  # (Encrypt=false la sai that), nhung chua co so do nao chung minh ti le bao
+  # nham cua chung, va quyen chan chi danh cho rule da do.
+  # -------------------------------------------------------------------------
+  - id: dso-cleartext-sql-connection
+    languages: [csharp]
+    severity: WARNING
+    message: >-
+      CWE-319: Chuoi ket noi CSDL tat ma hoa duong truyen (Encrypt=false hoac
+      TrustServerCertificate=true). Thong tin dang nhap va du lieu di qua mang
+      duoi dang doc duoc - ai nghe duoc duong truyen la doc duoc. Dat
+      Encrypt=True va de TrustServerCertificate=False.
+    metadata:
+      cwe: "CWE-319"
+      category: security
+      subcategory: [vuln]
+      confidence: MEDIUM
+      references:
+        - https://cwe.mitre.org/data/definitions/319.html
+    pattern-either:
+      - patterns:
+          - pattern-either:
+              - pattern: new SqlConnection($S, ...)
+              - pattern: new SqlConnectionStringBuilder($S, ...)
+              - pattern: $C.ConnectionString = $S;
+          - metavariable-regex:
+              metavariable: $S
+              regex: (?i)"[^"]*(encrypt\s*=\s*(false|no)|trustservercertificate\s*=\s*(true|yes))[^"]*"
+      - pattern: $B.Encrypt = false;
+      - pattern: $B.TrustServerCertificate = true;
+
+  - id: dso-cleartext-transport-disabled
+    languages: [csharp]
+    severity: WARNING
+    message: >-
+      CWE-319: Lop ma hoa duong truyen bi tat (EnableSsl = false) hoac ha xuong
+      giao thuc da bi pha (SSL3, TLS 1.0, TLS 1.1). Du lieu xac thuc di qua mang
+      duoi dang doc duoc hoac giai ma duoc. Dung TLS 1.2 tro len.
+    metadata:
+      cwe: "CWE-319"
+      category: security
+      subcategory: [vuln]
+      confidence: MEDIUM
+    pattern-either:
+      - pattern: $X.EnableSsl = false;
+      - pattern: $X.UseSsl = false;
+      - pattern: ServicePointManager.SecurityProtocol = SecurityProtocolType.Ssl3;
+      - pattern: ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls;
+      - pattern: ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls11;
+      - pattern: $H.SslProtocols = SslProtocols.Ssl3;
+      - pattern: $H.SslProtocols = SslProtocols.Tls;
