@@ -443,6 +443,41 @@ jobs:
             aquasec/trivy:latest fs /target \
             --skip-dirs "/target/$TOOLKIT" \
             --format cyclonedx --output /out/sbom.cdx.json --quiet
+
+      # ===============================================================
+      # TANG 1c - THU VIEN DA CO TRONG REPO (moi he sinh thai)
+      #
+      # VI SAO BUOC NAY TON TAI. Truoc buoc nay, tang thu vien gom:
+      #   sca.py            -> CHI NuGet (dotnet list package --vulnerable)
+      #   retire.js         -> CHI thu vien JS nhung san, KHONG doc package.json
+      #   dependency-review -> CHI thu vien MOI trong PR
+      # Nghia la voi mot repo Python hay Java, cac thu vien DA CO trong
+      # requirements.txt hay pom.xml khong tang nao quet. Chi thu vien moi them
+      # trong PR moi bi xet - mot repo keo ve voi log4j 2.14.1 co san thi khong
+      # canh bao nao. Do la lo hong cua chinh cau "dung duoc cho nhieu loai repo".
+      #
+      # Trivy DA chay o buoc tren roi, va da doc het cac manifest de sinh SBOM -
+      # chi la khong duoc hoi lo hong. Nen bit lo nay chi can them mot lan goi,
+      # khong them cong cu moi: trivy fs doc native package-lock.json,
+      # requirements.txt, pom.xml, go.sum, Gemfile.lock, packages.lock.json,
+      # Cargo.lock, composer.lock.
+      #
+      # Do duoc bang tools/kiem_thu_sca.py (job `sca` trong kiem-thu-cong-cu.yml):
+      # fixture sinh luc chay voi phien ban dinh lo hong biet truoc.
+      # ===============================================================
+      - name: Trivy - lo hong thu vien da co (moi he sinh thai)
+        if: steps.pham_vi.outputs.chi_tai_lieu != 'true'
+        run: |
+          docker run --rm -v "$PWD:/target:ro" -v "$PWD/reports:/out" \
+            aquasec/trivy:latest fs /target \
+            --scanners vuln --skip-dirs "/target/$TOOLKIT" \
+            --format sarif --output /out/thu-vien-da-co.sarif \
+            --exit-code 0 --quiet
+          N=$(python -c "import json;print(sum(len(r.get('results',[])) for r in json.load(open('reports/thu-vien-da-co.sarif')).get('runs',[])))" 2>/dev/null || echo '?')
+          echo "Lo hong thu vien da co: $N"
+          # Khong co SARIF nghia la KHONG QUET DUOC, khong phai 'sach'.
+          test -f reports/thu-vien-da-co.sarif \
+            || { echo "::error::Trivy khong ra SARIF - tang nay KHONG quet duoc"; exit 1; }
           echo "SBOM: $(python -c "import json;print(len(json.load(open('reports/sbom.cdx.json')).get('components',[])))" 2>/dev/null || echo '?') thanh phan"
 
       # Quet image ton them vai phut nen chi chay o nhanh chinh, khi bam tay, va
@@ -718,6 +753,13 @@ jobs:
           category: secret
 
       - name: Code Scanning - cau hinh ha tang
+        if: always() && hashFiles('reports/thu-vien-da-co.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: reports/thu-vien-da-co.sarif
+          category: thu-vien-da-co
+
+      - name: Day ket qua ha tang len Code Scanning
         if: always() && hashFiles('reports/trivy-config.sarif') != ''
         uses: github/codeql-action/upload-sarif@v4
         with:

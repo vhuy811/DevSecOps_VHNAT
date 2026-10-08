@@ -30,7 +30,7 @@ Cột *đã đo* chỉ điền khi có số từ một phòng đo chạy đượ
 | **A03** Chèn mã | 26 rule chặn + 11 rule chỉ báo của đồ án (SQLi, cmdi, XSS, XPath, LDAP, XXE, chèn mã, CRLF); CodeQL; **OWASP-ZAP** xác nhận động | CHẶN | CWE-89 72%/1%, CWE-78 85%/2%, CWE-90 85%/2%, CWE-643 49%/0%, CWE-80 74%/2%, CWE-113 49%/0%, CWE-470 49%/0% (Juliet #28). ZAP: 6/6 lỗ hổng gài trước, 0 báo nhầm (phòng đo DAST) |
 | **A04** Thiết kế không an toàn | — | **chưa phủ** | — |
 | **A05** Cấu hình sai | 5 rule XXE/DTD của đồ án; **Trivy** quét cấu hình hạ tầng; **DAST-runtime** kiểm header và cờ cookie | CHẶN | CWE-614 100%/0% (Juliet #28). DAST-runtime: 5/5 rule trên bộ kiểm chức năng. Trivy: **chưa có bộ đo** |
-| **A06** Thành phần lỗi thời | **SCA** — `sca.py` (dotnet), `retire.js` (JS nhúng), `dependency-review` (GitHub) | CHẶN | **chưa có bộ đo.** Tầng này không suy đoán — so phiên bản với advisory database nên không có báo nhầm theo nghĩa của SAST; nhưng *bỏ sót* thì chưa đo được |
+| **A06** Thành phần lỗi thời | **SCA** — `sca.py` (chỉ NuGet), `retire.js` (chỉ JS nhúng sẵn), `dependency-review` (chỉ thư viện **mới** trong PR), **Trivy fs** (mọi hệ sinh thái, thư viện **đã có**) | CHẶN | có bộ đo từ G5.2: fixture sinh lúc chạy, 9 gói dính lỗ hổng + 6 gói sạch trên npm/pip/maven/nuget |
 | **A07** Xác thực hỏng | `dso-hardcoded-password`; **Gitleaks** quét secret; CodeQL | CHẶN | CWE-259 24%/0% (Juliet #28). Gitleaks: **chưa có bộ đo** |
 | **A08** Toàn vẹn phần mềm/dữ liệu | Rule cộng đồng bắt deserialization (CWE-502) nhưng **không chặn**; `ky-image-reusable.yml` ký image | **chỉ báo** | **chưa đo.** Đồ án cố ý không viết rule CWE-502: ZAP không có active scan tương ứng nên không thể xác nhận động |
 | **A09** Ghi log và giám sát | CodeQL log injection (CWE-117) | CHẶN | CWE-117 **76%/2%** (Juliet #28) — và toàn bộ đến từ CodeQL, đồ án không có rule nào |
@@ -57,7 +57,15 @@ và không có quyền chặn. Đây là lựa chọn có chủ đích đã ghi 
 quyền chặn dành cho CWE mà ZAP có active scan tương ứng, để cảnh báo còn đi tiếp
 được tới nhãn CONFIRMED. CWE-502 không có. Cái giá là A08 không được chặn.
 
-**Ba tầng chưa có bộ đo: SCA, secret, hạ tầng.** Nên con số "bắt 61.6%" của đồ án
+**Một lỗ đã tìm ra và đã bịt ở A06.** Trước G5.2, tầng thư viện chỉ gồm `sca.py`
+(đọc NuGet), `retire.js` (đọc JS nhúng sẵn, không đọc `package.json`) và
+`dependency-review` (chỉ xét thư viện **mới thêm trong PR**). Nghĩa là với một repo
+Python hay Java, các thư viện **đã có** trong `requirements.txt` hay `pom.xml` không
+tầng nào quét — một repo kéo về với `log4j-core 2.14.1` có sẵn thì không cảnh báo
+nào. Đây là lỗ của chính câu "dùng được cho nhiều loại repo". Bản bịt không cần công
+cụ mới: Trivy đã quét filesystem để sinh SBOM, chỉ là chưa được hỏi lỗ hổng.
+
+**Hai tầng vẫn chưa có bộ đo: secret và hạ tầng.** Nên con số "bắt 61.6%" của đồ án
 là con số của **hai tầng phân tích tĩnh trên Juliet C#**, không phải của cả pipeline.
 Không thể cộng tỉ lệ của năm tầng lại vì chúng không cùng mẫu số: Juliet đếm lỗi
 tiêm ở mức mã nguồn, SCA đếm phiên bản thư viện dính CVE, Gitleaks đếm credential bị
@@ -66,10 +74,9 @@ commit, Trivy đếm cấu hình sai. Muốn một con số cho cả năm tầng
 
 ## Việc cần làm để bịt, theo thứ tự giá trị
 
-1. **Dựng đáp án cho SCA và Gitleaks** — repo mẫu gài sẵn CVE biết trước (npm, pip,
-   nuget, maven) và credential biết trước (AWS key, token GitHub, chuỗi kết nối,
-   khoá riêng), kèm cả dạng đã khử (placeholder, biến môi trường) để đo báo nhầm.
-   Đây là việc bịt được ba ô "chưa có bộ đo" trong bảng.
+1. ~~Dựng đáp án cho SCA~~ — **xong (G5.2)**: `tools/kiem_thu_sca.py`, fixture sinh
+   lúc chạy, 15 gói trên bốn hệ sinh thái. Việc này đồng thời tìm ra và bịt lỗ
+   "thư viện đã có không tầng nào quét". Còn **Gitleaks** thì chưa có đáp án.
 2. **CWE-319** — đọc hàm goodB2G rồi viết rule. 148 case đang 0%.
 3. **CWE-328/338** — đo báo nhầm trên mã nguồn thật (không phải Juliet) rồi quyết
    có nâng lên mức chặn hay không.

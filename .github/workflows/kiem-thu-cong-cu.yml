@@ -18,6 +18,7 @@ on:
       - tools/kiem_thu_gate.py
       - tools/kiem_bypass.py
       - tools/kiem_thu_bypass.py
+      - tools/kiem_thu_sca.py
       - .github/workflows/devsecops.yml
       - tools/chinh-sach-zap.json
       - semgrep-rules/**
@@ -195,3 +196,36 @@ jobs:
         run: |
           set -o pipefail
           python tools/kiem_thu_bypass.py | tee -a "$GITHUB_STEP_SUMMARY"
+
+  sca:
+    # G5.2: DO TANG THU VIEN. Tang nay la tang duy nhat tung khong co bo do nao,
+    # nen cau "bo sot bao nhieu" khong tra loi duoc. Fixture duoc SINH RA LUC
+    # CHAY trong thu muc tam voi phien ban dinh lo hong biet truoc, va khong bao
+    # gio duoc commit: manifest ghim phien ban dinh lo hong ma commit vao repo
+    # thi Dependabot cua chinh repo nay bao dong va tang SCA chan moi PR.
+    #
+    # Do tren bon he sinh thai (npm, pip, maven, nuget) vi lo da phat hien la:
+    # sca.py chi doc NuGet, retire.js chi doc JS nhung san, dependency-review
+    # chi xet thu vien MOI trong PR - nen thu vien DA CO cua repo Python hay
+    # Java khong tang nao quet. Buoc "Trivy - lo hong thu vien da co" trong
+    # devsecops-reusable.yml la ban bit, va job nay la phep do cua ban bit do.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false   # khong de GITHUB_TOKEN lai trong .git/config
+      - name: Sinh fixture (khong commit tep nao trong nay)
+        run: python tools/kiem_thu_sca.py --sinh fixture-sca
+      - name: Trivy fs tren fixture
+        run: |
+          mkdir -p ket-qua
+          docker run --rm -v "$PWD/fixture-sca:/target:ro" -v "$PWD/ket-qua:/out" \
+            aquasec/trivy:latest fs /target --scanners vuln \
+            --format sarif --output /out/trivy-fs.sarif --exit-code 0 --quiet
+      - name: Cham diem
+        run: |
+          set -o pipefail
+          python tools/kiem_thu_sca.py --sinh fixture-sca \
+            --trivy-sarif ket-qua/trivy-fs.sarif \
+            --md ket-qua/sca.md | tee -a "$GITHUB_STEP_SUMMARY"
