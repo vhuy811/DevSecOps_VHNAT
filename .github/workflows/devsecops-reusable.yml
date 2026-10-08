@@ -902,8 +902,7 @@ jobs:
               # KHONG mat do phu: dso-taint-xpathi cua du an bat CWE-643 49% voi
               # 0% bao nham va van co quyen chan. XPath injection van hien trong
               # Code Scanning va van chan merge - chi doi sang cong cu chinh xac
-              # hon. Truy van bi loai: cs/xml/xpath-injection, va moi truy van
-              # cung tag external/cwe/cwe-643 cua ngon ngu khac.
+              # hon. Truy van bi loai: DUNG MOT truy van, cs/xml/xpath-injection.
               # Loai theo ID TRUY VAN, khong theo tag CWE. Ban dau loai theo tag
               # `external/cwe/cwe-643` - va tag do co o MOI ngon ngu, nen quyet
               # dinh do duoc ap cho ca Java va Python.
