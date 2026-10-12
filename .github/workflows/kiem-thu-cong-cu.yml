@@ -392,3 +392,56 @@ jobs:
           python tools/kiem_thu_sca.py --sinh fixture-sca \
             --trivy-sarif ket-qua/trivy-fs.sarif \
             --md ket-qua/sca.md | tee -a "$GITHUB_STEP_SUMMARY"
+
+  pham-vi:
+    # G5.5: DO BUOC QUYET DINH "BO QUA TANG NAO".
+    # Ruleset danh dau 8 cong cu la bat buoc bao ket qua. Buoc `pham_vi` trong
+    # devsecops-reusable.yml la cho DUY NHAT quyet dinh co bo qua cac tang hay
+    # khong, va no duoc giu dung bang mot menh de shell:
+    #     && [ "$EV" = "pull_request" ]
+    # Mat menh de do thi PR chi sua README se bo 7/8 cong cu -> GitHub treo PR
+    # vinh vien o "Code scanning is waiting for results", khong merge duoc va
+    # khong co thong bao nao noi vi sao.
+    #
+    # Du an nay da hoc mot lan rang mot dong CHU THICH khong ngan duoc tai pham
+    # (e9c58a7 sua, 5a7881a dua loi tro lai, CI #3 hong y het CI #1). Nen menh
+    # de do duoc phong do bang mot phep kiem CHAY THAT: phep do lay dung doan
+    # shell trong workflow ra chay tren repo git that, roi tu dot bien chinh no
+    # de chung minh no co do that.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false   # khong de GITHUB_TOKEN lai trong .git/config
+      - run: pip install --quiet pyyaml
+      - name: Do buoc pham_vi + dot bien
+        run: |
+          set -o pipefail
+          python tools/kiem_thu_phamvi.py | tee -a "$GITHUB_STEP_SUMMARY"
+
+  dac-ta-ruleset:
+    # G5.6: DO LOGIC CANH GIU RULESET.
+    # Ruleset la thu DUY NHAT chan merge, va no khong nam trong ma nguon - no
+    # nam trong cau hinh tay tren giao dien GitHub. tools/kiem_ruleset.py doc
+    # ruleset that qua REST API va doi chieu voi ruleset_mong_doi.json.
+    #
+    # Job nay KHONG goi API (can token, khong chay duoc o may lap trinh vien).
+    # No do HAM doi_chieu() bang cac phan hoi API ghi san, moi ca do la mot cach
+    # ruleset co the bi lam yeu that: go mot cong cu, ha nguong, tat mot luat,
+    # go mot required check.
+    #
+    # Phep do nay da bat mot loi that ngay khi viet: danh sach thu tu nguong bi
+    # viet NGUOC (`critical` dat o cuoi nhu thu manh nhat, trong khi critical =
+    # CHI chan Critical = de lot moi lo hong High). Neu khong co job nay, ruleset
+    # bi ha xuong critical-only van duoc bao DAT.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false   # khong de GITHUB_TOKEN lai trong .git/config
+      - name: Do logic doi chieu ruleset
+        run: |
+          set -o pipefail
+          python tools/kiem_thu_ruleset.py | tee -a "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,26 @@
+{
+  "_doc": "Ban dac ta ruleset nhanh chinh. tools/kiem_ruleset.py doc ruleset THAT qua REST API va bao neu lech. Sua tep nay khi va chi khi co quyet dinh doi cach bao ve nhanh.",
+  "nhanh": "main",
+  "nguong_bao_mat": "high_or_higher",
+  "cong_cu_bat_buoc": [
+    "CodeQL",
+    "Semgrep-du-an",
+    "OWASP-ZAP",
+    "DAST-runtime",
+    "DAST-idor",
+    "Trivy",
+    "gitleaks",
+    "retire.js"
+  ],
+  "luat_bat_buoc": {
+    "code_scanning": "chan merge khi co canh bao bao mat tu nguong tro len",
+    "pull_request": "buoc di qua PR, khong day thang vao main",
+    "deletion": "khong xoa duoc nhanh main",
+    "non_fast_forward": "khong day ep (force-push) viet lai lich su main",
+    "required_status_checks": "cac check phia duoi phai xanh moi merge duoc"
+  },
+  "kiem_tra_bat_buoc": [
+    "security / dependency-review",
+    "security / Cong xac nhan (DAST da chung minh)"
+  ]
+}

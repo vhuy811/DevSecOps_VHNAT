@@ -1088,6 +1088,81 @@ jobs:
   # DE CHECK NAY CHAN MERGE THAT: them "security / Cong xac nhan (DAST da chung
   # minh)" vao danh sach Required status checks cua ruleset nhanh main.
   # =====================================================================
+  # =====================================================================
+  # CANH GIU RULESET - diem mu duy nhat khong nam trong ma nguon
+  #
+  # Toan bo kha nang chan merge cua pipeline nay nam trong mot ruleset cau hinh
+  # BANG TAY tren giao dien GitHub. Mot nguoi co quyen admin go mot cong cu khoi
+  # danh sach bat buoc, ha nguong canh bao, hoac tu them minh vao bypass list
+  # thi: pipeline VAN xanh, canh bao VAN hien trong tab Code scanning, va merge
+  # VAN duoc du dang co lo hong High. Khong co dau hieu nao khac trong CI.
+  #
+  # Job nay doc ruleset THAT qua REST API va doi chieu voi ruleset_mong_doi.json
+  # cua repo goi.
+  #
+  # VI SAO LA JOB RIENG, KHONG PHAI MOT BUOC TRONG cong-xac-nhan:
+  #   - Ruleset lech la viec cua nguoi quan tri repo, khong phai loi cua commit
+  #     dang xet. Gop vao cong DAST thi mot commit vo toi bi chan vi cau hinh
+  #     repo - chan no cung khong sua duoc ruleset.
+  #   - Nhung mot buoc XANH thi khong ai doc. Job rieng co ten check rieng, do
+  #     len trong danh sach check cua PR ma khong chan merge (tru khi nguoi quan
+  #     tri CHU DONG them check nay vao Required).
+  #   - Va quan trong nhat: lam job rieng thi KHONG CAN continue-on-error. Chot
+  #     "khong buoc nao cua pipeline dung continue-on-error" van tuyet doi.
+  #     (Chinh chot do da bat ban dau tien cua buoc nay.)
+  #
+  # Repo khong co ruleset_mong_doi.json -> kiem_ruleset.py thoat 2 -> job XANH
+  # nhung tom tat noi ro "chua kiem duoc, KHONG phai dat". Khong bat moi repo
+  # goi phai khai bao ruleset.
+  # =====================================================================
+  canh-giu-ruleset:
+    name: Canh giu ruleset
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false   # khong de GITHUB_TOKEN lai trong .git/config
+
+      - name: Keo bo cong cu DevSecOps ve
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false   # khong de GITHUB_TOKEN lai trong .git/config
+          repository: vhuy811/DevSecOps_VHNAT
+          ref: ${{ inputs.toolkit-ref }}
+          path: .devsecops-toolkit
+
+      - name: Doi chieu ruleset that voi ban dac ta
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          NHANH_CAN_KIEM: ${{ github.event.repository.default_branch }}
+        run: |
+          set +e
+          python .devsecops-toolkit/tools/kiem_ruleset.py > rs.txt 2>&1
+          MA=$?
+          set -e
+          cat rs.txt
+          {
+            echo "### Canh giu ruleset"
+            echo
+            case "$MA" in
+              0) echo "Ruleset that KHOP ban dac ta \`ruleset_mong_doi.json\`." ;;
+              2) echo "**Chua kiem duoc** ruleset (repo khong khai bao dac ta," \
+                      "hoac token khong co quyen doc). Day KHONG phai ket luan 'dat'." ;;
+              *) echo "**RULESET DA LECH** so voi ban dac ta: cong chan merge dang" \
+                      "yeu hon muc repo nay da khai bao. Xem chi tiet ben duoi." ;;
+            esac
+            echo
+            echo '```'
+            cat rs.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          # Thoat 2 = chua kiem duoc -> job xanh (da noi ro o tom tat).
+          # Thoat 1 = lech thuc su -> job do.
+          [ "$MA" = "2" ] && exit 0
+          exit "$MA"
+
   cong-xac-nhan:
     name: Cong xac nhan (DAST da chung minh)
     needs: scan

@@ -53,6 +53,32 @@ def doc(ten: str) -> str:
     return p.read_text(encoding="utf-8") if p.is_file() else ""
 
 
+def noi_dung_coe(noi_dung: str) -> list[str]:
+    """Ke moi cho DAT THAT continue-on-error trong mot workflow (doc cay YAML).
+
+    Tra ve danh sach dang "job" hoac "job/buoc". Chu thich khong tinh, vi chu
+    thich khong lam thay doi hanh vi cua GitHub Actions.
+    """
+    try:
+        cay = yaml.safe_load(noi_dung) or {}
+    except yaml.YAMLError:
+        # Khong doc duoc YAML la mot van de rieng (va kiem_workflow.py se bao).
+        # O day tra ve rong con hon bao hong sai cho.
+        return []
+    cho: list[str] = []
+    for ten_job, job in ((cay.get("jobs") or {}) if isinstance(cay, dict) else {}).items():
+        if not isinstance(job, dict):
+            continue
+        if job.get("continue-on-error") not in (None, False):
+            cho.append(str(ten_job))
+        for i, buoc in enumerate(job.get("steps") or []):
+            if not isinstance(buoc, dict):
+                continue
+            if buoc.get("continue-on-error") not in (None, False):
+                cho.append(f"{ten_job}/{buoc.get('name') or buoc.get('uses') or f'buoc {i}'}")
+    return cho
+
+
 def main() -> int:
     reuse = doc("devsecops-reusable.yml")
     goi = doc("devsecops.yml")
@@ -83,11 +109,19 @@ def main() -> int:
     # ---- 3. continue-on-error tren cong -------------------------------------
     # Mot buoc bao mat co continue-on-error thi that bai cua no khong lam job
     # that bai, va cong van xanh.
-    co_coe = [f for f in WF_CONG if "continue-on-error" in doc(f)]
+    #
+    # DOC CAU TRUC YAML, KHONG TIM CHUOI. Ban dau chot nay viet
+    #     "continue-on-error" in doc(f)
+    # va no da bao hong vi mot dong CHU THICH giai thich "job nay khong can
+    # continue-on-error". Mot chot bao hong vi chu thich la mot chot se bi
+    # nguoi ta tat di - va day la lan thu hai du an nay gap dung loi do (lan
+    # dau o chot persist-credentials). Nen phep kiem doc cay YAML: chi ke
+    # continue-on-error DUOC DAT THAT tren job hoac buoc.
+    co_coe = [f"{f}:{v}" for f in WF_CONG for v in noi_dung_coe(doc(f))]
     kiem("Khong buoc nao cua pipeline cong dung continue-on-error",
          not co_coe,
          f"continue-on-error lam that bai cua buoc bao mat khong keo job that bai. "
-         f"Tep co: {co_coe}")
+         f"Noi dat: {co_coe}")
 
     # ---- 4. paths filter tren workflow cong ---------------------------------
     # Co paths filter thi doi ten tep hoac dat ma vao duong dan khong khop la
@@ -220,12 +254,15 @@ def main() -> int:
     print(f"Đủ **{len(ket_qua)}** chốt.\n")
     print("> Phạm vi: đây là kiểm **tĩnh** trên cấu hình pipeline — nó bắt được việc "
           "chốt bị xoá hoặc bị làm yếu. Nó **không** thay được một PR đối kháng thật. "
-          "Ba điều dưới đây chỉ biết được khi mở PR lên và chưa được kiểm ở đây:\n")
+          "Hai điều dưới đây chỉ biết được khi mở PR lên và chưa được kiểm ở đây:\n")
     print("> 1. GitHub có thực sự coi một required check *chưa bao giờ báo cáo* là "
           "chặn hay không (giả định của chốt số 6).")
-    print("> 2. Ruleset trên repo có đúng các tool và ngưỡng như tài liệu nói hay "
-          "không — cấu hình đó nằm ngoài repo, mã không đọc được.")
-    print("> 3. Hành vi khi force-push sau khi đã có approval.")
+    print("> 2. Hành vi khi force-push sau khi đã có approval.")
+    print()
+    print("> Ruleset **đã không còn** nằm trong danh sách này: job `Canh giu ruleset` "
+          "đọc ruleset thật qua REST API và đối chiếu với `ruleset_mong_doi.json` "
+          "mỗi lần chạy. Logic đối chiếu được đo bằng `tools/kiem_thu_ruleset.py` "
+          "(19 ca, mỗi ca là một cách ruleset có thể bị làm yếu thật).")
     return 0
 
 
