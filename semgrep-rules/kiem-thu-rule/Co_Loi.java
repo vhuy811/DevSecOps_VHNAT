@@ -108,4 +108,36 @@ public class Co_Loi {
         dbf.setFeature("http://apache.org/xml/features/disallow-doctype-decl", false);
         return dbf;
     }
+
+    // =======================================================================
+    // CAC CASE DUOI DAY KIEM PHAN MO RONG NGUON (G6.3), khong phai rule moi.
+    // Juliet Java co 12 ho nguon, chi 3 la HTTP - 74.1% case dung nguon khac.
+    // Moi case duoi day dung MOT ho nguon ngoai HTTP.
+    // =======================================================================
+
+    // Nguon: BufferedReader.readLine() - Juliet dung dang nay cho TCP,
+    // URLConnection, console va doc tep
+    public void nguonReadLineVaoSql(java.io.BufferedReader doc, Statement st)
+            throws Exception {
+        String data = doc.readLine();
+        st.executeQuery("SELECT * FROM users WHERE name = '" + data + "'");
+    }
+
+    // Nguon: bien moi truong
+    public void nguonMoiTruongVaoLenh() throws Exception {
+        String data = System.getenv("BACKUP_HOST");
+        Runtime.getRuntime().exec("rsync -a /var/data " + data);
+    }
+
+    // Nguon: System.getProperty / Properties doc tu tep cau hinh
+    public void nguonThuocTinhVaoDuongDan() throws Exception {
+        String data = System.getProperty("user.home");
+        new FileInputStream("/du_lieu/" + data);
+    }
+
+    // Nguon: doc tu CSDL roi noi vao cau lenh moi = tiem SQL BAC HAI
+    public void nguonCsdlVaoSql(ResultSet rs, Statement st) throws Exception {
+        String data = rs.getString(1);
+        st.executeUpdate("UPDATE log SET ghi_chu = '" + data + "'");
+    }
 }

@@ -107,7 +107,22 @@ cạnh "61.6% trên 6611 case" là so sánh hai thứ khác loại.
 
 ---
 
-## 4. Chưa có bộ đo
+## 4. Hai thay đổi đã làm sau lần đo, chưa có số mới
+
+Ghi ở đây để lần đo sau đối chiếu được. **Chưa có số** nghĩa là chưa chạy, không
+phải đã cải thiện.
+
+| Thay đổi | Dự đoán, và căn cứ |
+|---|---|
+| **Python: mở nguồn + 3 đích mới** (G6.2) | Trần cấu trúc 33.6% → **78.2%** của 2.250 case thuộc phạm vi rule. Báo nhầm **sẽ không gần 0**: sàn ≈ 22.6% vì bản sạch của BenchProctor khử độc bằng `if … return 400`, thứ `pattern-sanitizers` không diễn tả được. Chi tiết: `PHAT_HIEN_BENCHPROCTOR.md` |
+| **Java: mở nguồn ra ngoài HTTP** (G6.3) | Trần của Semgrep CE 14.0% → **54.1%**; dự đoán tỉ lệ bắt 11.8% → **~46%**. Căn cứ: nhãn của corpus cho thấy HTTP chỉ là 777/2997 case (25.9%), và lần đo #1 ra 11.8% nằm ngay dưới trần cũ 14.0% |
+
+Hai dự đoán này là **phép kiểm cho chẩn đoán**, không phải lời hứa. Nếu Java ra
+thấp hơn ~46% nhiều thì nguyên nhân không còn là thiếu nguồn và phải đọc lại đích.
+
+---
+
+## 5. Chưa có bộ đo
 
 | Tầng | Trạng thái |
 |---|---|
@@ -118,7 +133,7 @@ cạnh "61.6% trên 6611 case" là so sánh hai thứ khác loại.
 
 ---
 
-## 5. Vì sao không có một con số cho cả năm tầng
+## 6. Vì sao không có một con số cho cả năm tầng
 
 Năm tầng không cùng mẫu số. Juliet đếm lỗi tiêm ở mức mã nguồn; SCA đếm phiên
 bản thư viện dính CVE; DAST đếm endpoint chạy thật; Gitleaks đếm credential bị

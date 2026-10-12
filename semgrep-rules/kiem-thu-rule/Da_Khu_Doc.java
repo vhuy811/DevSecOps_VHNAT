@@ -82,4 +82,35 @@ public class Da_Khu_Doc {
         dbf.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
         return dbf;
     }
+
+    // =======================================================================
+    // Cac case duoi day dung NGUON VUA THEM (G6.3) nhung da khu doc dung cach,
+    // chot lai rang nguon rong hon KHONG keo theo bao nham.
+    // =======================================================================
+
+    // Nguon readLine() nhung truy van THAM SO HOA
+    public void readLineVaoSqlThamSoHoa(java.io.BufferedReader doc, Connection conn)
+            throws Exception {
+        String data = doc.readLine();
+        PreparedStatement st = conn.prepareStatement("SELECT * FROM users WHERE name = ?");
+        st.setString(1, data);
+        st.executeQuery();
+    }
+
+    // Nguon bien moi truong nhung truyen DANH SACH doi so, khong qua shell
+    public void moiTruongVaoDanhSachDoiSo() throws Exception {
+        String data = System.getenv("BACKUP_HOST");
+        new ProcessBuilder("rsync", "-a", "/var/data", data).start();
+    }
+
+    // Nguon System.getProperty nhung cat bo thu muc truoc khi ghep.
+    // Dung DUNG ham sanitizer ma rule khai (FilenameUtils.getName): ban dau
+    // toi viet `new File(...).getName()` - nhin thi tuong duong, nhung
+    // `new File($X, ...)` CHINH LA mot sink cua rule nay nen nguon se chay
+    // thang vao sink, va `getName()` khong phai `$P.getFileName()` da khai.
+    // Tuc la case "sach" do lai la mot lo hong that theo dinh nghia cua rule.
+    public void thuocTinhVaoDuongDanDaCat() throws Exception {
+        String data = FilenameUtils.getName(System.getProperty("user.home"));
+        new FileInputStream(new File("/du_lieu", data));
+    }
 }

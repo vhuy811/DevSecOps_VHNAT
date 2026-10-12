@@ -60,6 +60,31 @@ rules:
       - pattern: $REQ.getReader()
       - pattern: $REQ.getInputStream()
       - pattern: $REQ.getCookies()
+      # --- Mo rong nguon (G6.3) ---
+      # Do tren Juliet Java 1.3 (CWE-89/78/81, 4920 tep): ca 8 rule taint chi
+      # khai nguon HTTP servlet, nhung nhan chinh thuc cua corpus cho thay HTTP
+      # chi la 777/2997 case (25.9%). Nguon khac HTTP la 2220 case (74.1%).
+      # Doi chieu voi tran cua Semgrep CE (taint chi lan trong MOT ham):
+      #     tran cu   = HTTP & luong-trong-ham   = 420/2997 = 14.0%
+      #     tran moi  = moi nguon & trong-ham    = 1620/2997 = 54.1%
+      # Lan do that o CI cho rule du an bat 11.8% - nam ngay duoi tran 14.0%,
+      # tuc chan doan "thieu nguon" la dung chu khong phai rule viet sai.
+      # DU DOAN sau khi mo rong: khoang 46%.
+      #
+      # Day la cung mot buoc da lam cho bo rule C# o lan do #26 (47.3% -> 63.6%
+      # bat, cot bao nham giu nguyen 0.0%): mo rong nguon la mo rong vung bat
+      # ma khong mo rong vung bao nham, vi dich van la dich cu.
+      - pattern: $X.readLine()                # BufferedReader: TCP, URLConnection,
+                                              # console va doc tep deu qua day
+      - pattern: System.getenv(...)           # bien moi truong
+      - pattern: $P.getProperty(...)          # System.getProperty va Properties
+                                              # doc tu tep cau hinh
+      # Doc tu CSDL roi noi vao cau lenh moi = tiem SQL BAC HAI. Juliet Java co
+      # 259 case dang nay. Tren ma that day la nguon de bao nham hon cac nguon
+      # khac (doc gia tri cua chinh CSDL minh roi dung lai la viec binh thuong),
+      # nen bang tach theo rule can duoc doc ky o lan do sau.
+      - pattern: $RS.getString(...)
+      - pattern: $RS.getObject(...)
     pattern-sanitizers:
       - pattern: Integer.parseInt(...)
       - pattern: Long.parseLong(...)
@@ -107,6 +132,31 @@ rules:
       - pattern: $REQ.getQueryString()
       - pattern: $REQ.getPathInfo()
       - pattern: $REQ.getReader()
+      # --- Mo rong nguon (G6.3) ---
+      # Do tren Juliet Java 1.3 (CWE-89/78/81, 4920 tep): ca 8 rule taint chi
+      # khai nguon HTTP servlet, nhung nhan chinh thuc cua corpus cho thay HTTP
+      # chi la 777/2997 case (25.9%). Nguon khac HTTP la 2220 case (74.1%).
+      # Doi chieu voi tran cua Semgrep CE (taint chi lan trong MOT ham):
+      #     tran cu   = HTTP & luong-trong-ham   = 420/2997 = 14.0%
+      #     tran moi  = moi nguon & trong-ham    = 1620/2997 = 54.1%
+      # Lan do that o CI cho rule du an bat 11.8% - nam ngay duoi tran 14.0%,
+      # tuc chan doan "thieu nguon" la dung chu khong phai rule viet sai.
+      # DU DOAN sau khi mo rong: khoang 46%.
+      #
+      # Day la cung mot buoc da lam cho bo rule C# o lan do #26 (47.3% -> 63.6%
+      # bat, cot bao nham giu nguyen 0.0%): mo rong nguon la mo rong vung bat
+      # ma khong mo rong vung bao nham, vi dich van la dich cu.
+      - pattern: $X.readLine()                # BufferedReader: TCP, URLConnection,
+                                              # console va doc tep deu qua day
+      - pattern: System.getenv(...)           # bien moi truong
+      - pattern: $P.getProperty(...)          # System.getProperty va Properties
+                                              # doc tu tep cau hinh
+      # Doc tu CSDL roi noi vao cau lenh moi = tiem SQL BAC HAI. Juliet Java co
+      # 259 case dang nay. Tren ma that day la nguon de bao nham hon cac nguon
+      # khac (doc gia tri cua chinh CSDL minh roi dung lai la viec binh thuong),
+      # nen bang tach theo rule can duoc doc ky o lan do sau.
+      - pattern: $RS.getString(...)
+      - pattern: $RS.getObject(...)
     pattern-sanitizers:
       - pattern: Integer.parseInt(...)
     pattern-sinks:
@@ -120,6 +170,17 @@ rules:
   # ===========================================================================
   # CWE-22 : Path Traversal         ZAP ascan 6
   # ===========================================================================
+  # CAN THEO DOI RIENG O RULE NAY (G6.3): sau khi mo rong nguon, $X.readLine()
+  # la nguon va cac sink o duoi la mo tep. Dang "doc mot dong tu tep danh sach
+  # roi mo tep do" la viec hop le rat pho bien (xu ly manifest, danh sach cong
+  # viec), nhung Semgrep khong phan biet duoc readLine() do doc tu socket hay
+  # doc tu tep cuc bo - viec do can phan tich lien thu tuc. Day la ho hang gan
+  # cua loi da gap o ban C# (dso-taint-path-traversal tung khai File.ReadAll*
+  # vua la nguon vua la sink nen tu bao chinh no).
+  # Khac nhau o cho: lan nay KHONG trung nguon/sink, va Juliet coi ho nguon
+  # "File" trong cac case path-traversal la lo hong that theo dap an cua no.
+  # Nen giu lai va DOC KY cot bao nham cua rule nay trong bang tach theo rule;
+  # neu no cao ma "bat rieng" thap thi bo $X.readLine() khoi dung rule nay.
   - id: dso-java-taint-path-traversal
     mode: taint
     languages: [java]
@@ -142,6 +203,31 @@ rules:
       - pattern: $REQ.getHeader(...)
       - pattern: $REQ.getPathInfo()
       - pattern: $REQ.getRequestURI()
+      # --- Mo rong nguon (G6.3) ---
+      # Do tren Juliet Java 1.3 (CWE-89/78/81, 4920 tep): ca 8 rule taint chi
+      # khai nguon HTTP servlet, nhung nhan chinh thuc cua corpus cho thay HTTP
+      # chi la 777/2997 case (25.9%). Nguon khac HTTP la 2220 case (74.1%).
+      # Doi chieu voi tran cua Semgrep CE (taint chi lan trong MOT ham):
+      #     tran cu   = HTTP & luong-trong-ham   = 420/2997 = 14.0%
+      #     tran moi  = moi nguon & trong-ham    = 1620/2997 = 54.1%
+      # Lan do that o CI cho rule du an bat 11.8% - nam ngay duoi tran 14.0%,
+      # tuc chan doan "thieu nguon" la dung chu khong phai rule viet sai.
+      # DU DOAN sau khi mo rong: khoang 46%.
+      #
+      # Day la cung mot buoc da lam cho bo rule C# o lan do #26 (47.3% -> 63.6%
+      # bat, cot bao nham giu nguyen 0.0%): mo rong nguon la mo rong vung bat
+      # ma khong mo rong vung bao nham, vi dich van la dich cu.
+      - pattern: $X.readLine()                # BufferedReader: TCP, URLConnection,
+                                              # console va doc tep deu qua day
+      - pattern: System.getenv(...)           # bien moi truong
+      - pattern: $P.getProperty(...)          # System.getProperty va Properties
+                                              # doc tu tep cau hinh
+      # Doc tu CSDL roi noi vao cau lenh moi = tiem SQL BAC HAI. Juliet Java co
+      # 259 case dang nay. Tren ma that day la nguon de bao nham hon cac nguon
+      # khac (doc gia tri cua chinh CSDL minh roi dung lai la viec binh thuong),
+      # nen bang tach theo rule can duoc doc ky o lan do sau.
+      - pattern: $RS.getString(...)
+      - pattern: $RS.getObject(...)
     pattern-sanitizers:
       - pattern: FilenameUtils.getName(...)
       - pattern: $P.getFileName()
@@ -186,6 +272,31 @@ rules:
       - pattern: $REQ.getHeader(...)
       - pattern: $REQ.getQueryString()
       - pattern: $REQ.getCookies()
+      # --- Mo rong nguon (G6.3) ---
+      # Do tren Juliet Java 1.3 (CWE-89/78/81, 4920 tep): ca 8 rule taint chi
+      # khai nguon HTTP servlet, nhung nhan chinh thuc cua corpus cho thay HTTP
+      # chi la 777/2997 case (25.9%). Nguon khac HTTP la 2220 case (74.1%).
+      # Doi chieu voi tran cua Semgrep CE (taint chi lan trong MOT ham):
+      #     tran cu   = HTTP & luong-trong-ham   = 420/2997 = 14.0%
+      #     tran moi  = moi nguon & trong-ham    = 1620/2997 = 54.1%
+      # Lan do that o CI cho rule du an bat 11.8% - nam ngay duoi tran 14.0%,
+      # tuc chan doan "thieu nguon" la dung chu khong phai rule viet sai.
+      # DU DOAN sau khi mo rong: khoang 46%.
+      #
+      # Day la cung mot buoc da lam cho bo rule C# o lan do #26 (47.3% -> 63.6%
+      # bat, cot bao nham giu nguyen 0.0%): mo rong nguon la mo rong vung bat
+      # ma khong mo rong vung bao nham, vi dich van la dich cu.
+      - pattern: $X.readLine()                # BufferedReader: TCP, URLConnection,
+                                              # console va doc tep deu qua day
+      - pattern: System.getenv(...)           # bien moi truong
+      - pattern: $P.getProperty(...)          # System.getProperty va Properties
+                                              # doc tu tep cau hinh
+      # Doc tu CSDL roi noi vao cau lenh moi = tiem SQL BAC HAI. Juliet Java co
+      # 259 case dang nay. Tren ma that day la nguon de bao nham hon cac nguon
+      # khac (doc gia tri cua chinh CSDL minh roi dung lai la viec binh thuong),
+      # nen bang tach theo rule can duoc doc ky o lan do sau.
+      - pattern: $RS.getString(...)
+      - pattern: $RS.getObject(...)
     pattern-sanitizers:
       - pattern: HtmlUtils.htmlEscape(...)
       - pattern: StringEscapeUtils.escapeHtml4(...)
@@ -227,6 +338,31 @@ rules:
       - pattern: $REQ.getParameter(...)
       - pattern: $REQ.getHeader(...)
       - pattern: $REQ.getQueryString()
+      # --- Mo rong nguon (G6.3) ---
+      # Do tren Juliet Java 1.3 (CWE-89/78/81, 4920 tep): ca 8 rule taint chi
+      # khai nguon HTTP servlet, nhung nhan chinh thuc cua corpus cho thay HTTP
+      # chi la 777/2997 case (25.9%). Nguon khac HTTP la 2220 case (74.1%).
+      # Doi chieu voi tran cua Semgrep CE (taint chi lan trong MOT ham):
+      #     tran cu   = HTTP & luong-trong-ham   = 420/2997 = 14.0%
+      #     tran moi  = moi nguon & trong-ham    = 1620/2997 = 54.1%
+      # Lan do that o CI cho rule du an bat 11.8% - nam ngay duoi tran 14.0%,
+      # tuc chan doan "thieu nguon" la dung chu khong phai rule viet sai.
+      # DU DOAN sau khi mo rong: khoang 46%.
+      #
+      # Day la cung mot buoc da lam cho bo rule C# o lan do #26 (47.3% -> 63.6%
+      # bat, cot bao nham giu nguyen 0.0%): mo rong nguon la mo rong vung bat
+      # ma khong mo rong vung bao nham, vi dich van la dich cu.
+      - pattern: $X.readLine()                # BufferedReader: TCP, URLConnection,
+                                              # console va doc tep deu qua day
+      - pattern: System.getenv(...)           # bien moi truong
+      - pattern: $P.getProperty(...)          # System.getProperty va Properties
+                                              # doc tu tep cau hinh
+      # Doc tu CSDL roi noi vao cau lenh moi = tiem SQL BAC HAI. Juliet Java co
+      # 259 case dang nay. Tren ma that day la nguon de bao nham hon cac nguon
+      # khac (doc gia tri cua chinh CSDL minh roi dung lai la viec binh thuong),
+      # nen bang tach theo rule can duoc doc ky o lan do sau.
+      - pattern: $RS.getString(...)
+      - pattern: $RS.getObject(...)
     pattern-sinks:
       - patterns:
           - pattern-either:
@@ -256,6 +392,31 @@ rules:
       - pattern: $REQ.getParameter(...)
       - pattern: $REQ.getHeader(...)
       - pattern: $REQ.getQueryString()
+      # --- Mo rong nguon (G6.3) ---
+      # Do tren Juliet Java 1.3 (CWE-89/78/81, 4920 tep): ca 8 rule taint chi
+      # khai nguon HTTP servlet, nhung nhan chinh thuc cua corpus cho thay HTTP
+      # chi la 777/2997 case (25.9%). Nguon khac HTTP la 2220 case (74.1%).
+      # Doi chieu voi tran cua Semgrep CE (taint chi lan trong MOT ham):
+      #     tran cu   = HTTP & luong-trong-ham   = 420/2997 = 14.0%
+      #     tran moi  = moi nguon & trong-ham    = 1620/2997 = 54.1%
+      # Lan do that o CI cho rule du an bat 11.8% - nam ngay duoi tran 14.0%,
+      # tuc chan doan "thieu nguon" la dung chu khong phai rule viet sai.
+      # DU DOAN sau khi mo rong: khoang 46%.
+      #
+      # Day la cung mot buoc da lam cho bo rule C# o lan do #26 (47.3% -> 63.6%
+      # bat, cot bao nham giu nguyen 0.0%): mo rong nguon la mo rong vung bat
+      # ma khong mo rong vung bao nham, vi dich van la dich cu.
+      - pattern: $X.readLine()                # BufferedReader: TCP, URLConnection,
+                                              # console va doc tep deu qua day
+      - pattern: System.getenv(...)           # bien moi truong
+      - pattern: $P.getProperty(...)          # System.getProperty va Properties
+                                              # doc tu tep cau hinh
+      # Doc tu CSDL roi noi vao cau lenh moi = tiem SQL BAC HAI. Juliet Java co
+      # 259 case dang nay. Tren ma that day la nguon de bao nham hon cac nguon
+      # khac (doc gia tri cua chinh CSDL minh roi dung lai la viec binh thuong),
+      # nen bang tach theo rule can duoc doc ky o lan do sau.
+      - pattern: $RS.getString(...)
+      - pattern: $RS.getObject(...)
     pattern-sinks:
       - patterns:
           - pattern-either:
@@ -288,6 +449,31 @@ rules:
     pattern-sources:
       - pattern: $REQ.getParameter(...)
       - pattern: $REQ.getHeader(...)
+      # --- Mo rong nguon (G6.3) ---
+      # Do tren Juliet Java 1.3 (CWE-89/78/81, 4920 tep): ca 8 rule taint chi
+      # khai nguon HTTP servlet, nhung nhan chinh thuc cua corpus cho thay HTTP
+      # chi la 777/2997 case (25.9%). Nguon khac HTTP la 2220 case (74.1%).
+      # Doi chieu voi tran cua Semgrep CE (taint chi lan trong MOT ham):
+      #     tran cu   = HTTP & luong-trong-ham   = 420/2997 = 14.0%
+      #     tran moi  = moi nguon & trong-ham    = 1620/2997 = 54.1%
+      # Lan do that o CI cho rule du an bat 11.8% - nam ngay duoi tran 14.0%,
+      # tuc chan doan "thieu nguon" la dung chu khong phai rule viet sai.
+      # DU DOAN sau khi mo rong: khoang 46%.
+      #
+      # Day la cung mot buoc da lam cho bo rule C# o lan do #26 (47.3% -> 63.6%
+      # bat, cot bao nham giu nguyen 0.0%): mo rong nguon la mo rong vung bat
+      # ma khong mo rong vung bao nham, vi dich van la dich cu.
+      - pattern: $X.readLine()                # BufferedReader: TCP, URLConnection,
+                                              # console va doc tep deu qua day
+      - pattern: System.getenv(...)           # bien moi truong
+      - pattern: $P.getProperty(...)          # System.getProperty va Properties
+                                              # doc tu tep cau hinh
+      # Doc tu CSDL roi noi vao cau lenh moi = tiem SQL BAC HAI. Juliet Java co
+      # 259 case dang nay. Tren ma that day la nguon de bao nham hon cac nguon
+      # khac (doc gia tri cua chinh CSDL minh roi dung lai la viec binh thuong),
+      # nen bang tach theo rule can duoc doc ky o lan do sau.
+      - pattern: $RS.getString(...)
+      - pattern: $RS.getObject(...)
     pattern-sinks:
       - patterns:
           - pattern-either:
@@ -316,6 +502,31 @@ rules:
     pattern-sources:
       - pattern: $REQ.getParameter(...)
       - pattern: $REQ.getHeader(...)
+      # --- Mo rong nguon (G6.3) ---
+      # Do tren Juliet Java 1.3 (CWE-89/78/81, 4920 tep): ca 8 rule taint chi
+      # khai nguon HTTP servlet, nhung nhan chinh thuc cua corpus cho thay HTTP
+      # chi la 777/2997 case (25.9%). Nguon khac HTTP la 2220 case (74.1%).
+      # Doi chieu voi tran cua Semgrep CE (taint chi lan trong MOT ham):
+      #     tran cu   = HTTP & luong-trong-ham   = 420/2997 = 14.0%
+      #     tran moi  = moi nguon & trong-ham    = 1620/2997 = 54.1%
+      # Lan do that o CI cho rule du an bat 11.8% - nam ngay duoi tran 14.0%,
+      # tuc chan doan "thieu nguon" la dung chu khong phai rule viet sai.
+      # DU DOAN sau khi mo rong: khoang 46%.
+      #
+      # Day la cung mot buoc da lam cho bo rule C# o lan do #26 (47.3% -> 63.6%
+      # bat, cot bao nham giu nguyen 0.0%): mo rong nguon la mo rong vung bat
+      # ma khong mo rong vung bao nham, vi dich van la dich cu.
+      - pattern: $X.readLine()                # BufferedReader: TCP, URLConnection,
+                                              # console va doc tep deu qua day
+      - pattern: System.getenv(...)           # bien moi truong
+      - pattern: $P.getProperty(...)          # System.getProperty va Properties
+                                              # doc tu tep cau hinh
+      # Doc tu CSDL roi noi vao cau lenh moi = tiem SQL BAC HAI. Juliet Java co
+      # 259 case dang nay. Tren ma that day la nguon de bao nham hon cac nguon
+      # khac (doc gia tri cua chinh CSDL minh roi dung lai la viec binh thuong),
+      # nen bang tach theo rule can duoc doc ky o lan do sau.
+      - pattern: $RS.getString(...)
+      - pattern: $RS.getObject(...)
     pattern-sanitizers:
       - pattern: Encode.forLdapFilter(...)
       - pattern: Encode.forLdap(...)

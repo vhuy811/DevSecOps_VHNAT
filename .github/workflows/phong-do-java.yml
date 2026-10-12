@@ -24,12 +24,29 @@ name: Phong do Java
 # duoc DOC: Semgrep quet tinh, CodeQL chay voi build-mode none nen khong bien
 # dich va khong chay gi cua no. Khong co buoc nao thuc thi ma trong corpus.
 #
-# DU DOAN TRUOC KHI DO (de doi chieu, neu sai thi noi ra):
-# ca 8 rule taint Java chi khai nguon HTTP servlet (getParameter, getHeader,
-# getCookies...). Juliet Java co 12 ho nguon, chi 3 la HTTP - tuc 27% case.
-# Cong them taint cua Semgrep CE chi di trong mot ham (54% case co luong trong
-# ham), tran ly thuyet vao khoang 27% x 54% ~ 15%. Dung cai bay da gap o bo
-# rule C#, va cach sua da biet.
+# LAN DO #1 (da chay): rule du an bat 11.8% voi 0.3% bao nham.
+# Du doan truoc khi do la ~15% (27% case nguon HTTP x 54% case luong trong mot
+# ham). Thuc te 11.8% - nam ngay duoi tran, tuc chan doan "thieu nguon" dung.
+#
+# DA DO LAI TREN CORPUS de dinh luong chinh xac truoc khi sua (CWE-89/78/81,
+# 4920 tep, 2997 case):
+#     nguon HTTP                          777/2997 = 25.9%
+#     nguon KHAC HTTP                    2220/2997 = 74.1%
+#     tran cu  = HTTP & luong-trong-ham   420/2997 = 14.0%
+#     tran moi = moi nguon & trong-ham   1620/2997 = 54.1%
+# Hinh dang nguon that cua cac ho ngoai HTTP, doc tu ham bad cua corpus:
+#     Properties/System.getProperty  761 tep | ResultSet.getString  561 tep
+#     BufferedReader.readLine        (TCP, URLConnection, console, doc tep)
+#     System.getenv                  222 tep
+#
+# DU DOAN SAU KHI MO RONG NGUON (commit G6.3): 11.8% x (54.1/14.0) ~ 46%.
+# Neu lan do nay ra thap hon nhieu thi nguyen nhan KHONG con la thieu nguon,
+# va phai doc lai dich chu khong mo rong nguon tiep.
+#
+# LUU Y khi doc ket qua: lan do #1 cho thay tren Java rule cua du an KHONG
+# them gi cho cong chan, vi CodeQL-local mot minh da dat 94.2%. Gia tri cua bo
+# rule tu viet o Java nam o cho CodeQL khong co san (runner self-hosted, repo
+# private khong co GitHub Advanced Security), khong nam o do phu tang them.
 
 on:
   workflow_dispatch:
