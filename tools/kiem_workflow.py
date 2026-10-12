@@ -24,6 +24,8 @@ import re
 import sys
 from pathlib import Path
 
+import yaml
+
 WF = Path(__file__).resolve().parent.parent / ".github" / "workflows"
 
 # (ten, bieu thuc tim loi, giai thich + lan CI da hong)
@@ -47,6 +49,69 @@ LUAT: list[tuple[str, re.Pattern, str]] = [
         "persist-credentials: false.",
     ),
 ]
+
+
+# ---------------------------------------------------------------------------
+# PHEP KIEM CAU TRUC: HOP DONG QUYEN GIUA WORKFLOW DUNG CHUNG VA BEN GOI
+#
+# Workflow dung chung chay NESTED trong workflow cua repo goi. GitHub khong
+# cong quyen lai: mot job ben trong xin `pull-requests: read` ma ben goi khong
+# cap thi CA LAN CHAY chet ngay o buoc khoi dong, voi loi
+#   "The nested job 'X' is requesting 'pull-requests: read',
+#    but is only allowed 'pull-requests: none'."
+# Khong job nao chay, khong SARIF nao duoc day len, va - dang so nhat - khong
+# canh bao bao mat nao xuat hien.
+#
+# DA XAY RA THAT: commit a42d7b9 them `pull-requests: read` cho job nhan-dien
+# nhung khong sua mau vi-du-repo-khac.yml lan khoi permissions trong README.
+# Ngay sau khi nhanh do vao main, pipeline cua VulnShop-App chet voi
+# "Startup failure" o lan chay #52. Moi repo lam theo tai lieu deu se hong y
+# het, va hong theo kieu im lang - CI do nhung khong ai doc ra la do quyen.
+#
+# Phep kiem nay doi chieu quyen MA WORKFLOW DUNG CHUNG DOI voi quyen MA TAI
+# LIEU BAO BEN GOI CAP. Lech mot dong la bao.
+MUC = {"none": 0, "read": 1, "write": 2}
+GOC_REPO = Path(__file__).resolve().parent.parent
+
+
+def kiem_quyen_ben_goi() -> list[str]:
+    dung_chung = WF / "devsecops-reusable.yml"
+    mau_goi = GOC_REPO / "vi-du-repo-khac.yml"
+    if not dung_chung.is_file() or not mau_goi.is_file():
+        print("[BO QUA] khong thay devsecops-reusable.yml hoac vi-du-repo-khac.yml")
+        return []
+
+    cay = yaml.safe_load(dung_chung.read_text(encoding="utf-8")) or {}
+    can: dict[str, str] = {}
+    for ten_job, job in (cay.get("jobs") or {}).items():
+        q = (job or {}).get("permissions") or {}
+        if not isinstance(q, dict):
+            continue
+        for pham_vi, muc in q.items():
+            if MUC.get(str(muc), 0) > MUC.get(can.get(pham_vi, "none"), 0):
+                can[pham_vi] = str(muc)
+
+    cap = (yaml.safe_load(mau_goi.read_text(encoding="utf-8")) or {}).get("permissions") or {}
+    if not isinstance(cap, dict):
+        cap = {}
+
+    thieu = []
+    for pham_vi, muc in sorted(can.items()):
+        co = str(cap.get(pham_vi, "none"))
+        if MUC.get(co, 0) < MUC.get(muc, 0):
+            thieu.append(f"{pham_vi}: can '{muc}', mau chi cap '{co}'")
+
+    ten = "Mau cho ben goi cap du quyen workflow dung chung doi"
+    if thieu:
+        print(f"[HONG] {ten}")
+        for t in thieu:
+            print(f"       {t}")
+        print("       Thieu quyen thi CA LAN CHAY chet o buoc khoi dong "
+              "(Startup failure) va khong co canh bao bao mat nao.")
+        print("       Sua vi-du-repo-khac.yml VA khoi permissions trong README.")
+        return [f"{ten} -> {'; '.join(thieu)}"]
+    print(f"[DAT ] {ten} ({', '.join(f'{k}: {v}' for k, v in sorted(can.items()))})")
+    return []
 
 
 def main() -> int:
@@ -76,11 +141,14 @@ def main() -> int:
         else:
             print(f"[DAT ] {ten_luat}")
 
+    loi += kiem_quyen_ben_goi()
+
     print()
+    tong = len(LUAT) + 1
     if loi:
-        print(f"HONG {len(loi)}/{len(LUAT)} luat tren {len(tep)} workflow.")
+        print(f"HONG {len(loi)}/{tong} luat tren {len(tep)} workflow.")
         return 1
-    print(f"DAT het {len(LUAT)}/{len(LUAT)} luat tren {len(tep)} workflow.")
+    print(f"DAT het {tong}/{tong} luat tren {len(tep)} workflow.")
     return 0
 
 

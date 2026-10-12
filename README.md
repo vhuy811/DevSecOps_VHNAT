@@ -95,6 +95,7 @@ on:
 permissions:
   contents: read
   security-events: write
+  pull-requests: read      # job nhan-dien doc danh sach tep doi trong PR
 
 jobs:
   security:
