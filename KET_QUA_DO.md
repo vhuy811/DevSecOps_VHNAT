@@ -129,7 +129,7 @@ thấp hơn ~46% nhiều thì nguyên nhân không còn là thiếu nguồn và 
 |---|---|
 | Python (SAST) | bộ đo đã dựng (BenchProctor 18.300 case), chưa chạy xong |
 | SCA — thư viện đã có | đáp án đã dựng (15 gói, 4 hệ sinh thái), chưa chạy xong |
-| Secret (Gitleaks) | **chưa có đáp án** |
+| Secret (Gitleaks) | đáp án đã dựng (14 tệp, 7 dạng secret + 4 mồi, fixture sinh lúc chạy), chưa chạy xong |
 | Hạ tầng (Trivy config) | **chưa có đáp án** |
 
 ---

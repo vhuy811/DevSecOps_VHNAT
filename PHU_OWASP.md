@@ -31,7 +31,7 @@ Cột *đã đo* chỉ điền khi có số từ một phòng đo chạy đượ
 | **A04** Thiết kế không an toàn | — | **chưa phủ** | — |
 | **A05** Cấu hình sai | 5 rule XXE/DTD của đồ án; **Trivy** quét cấu hình hạ tầng; **DAST-runtime** kiểm header và cờ cookie | CHẶN | CWE-614 100%/0% (Juliet #28). DAST-runtime: 5/5 rule trên bộ kiểm chức năng. Trivy: **chưa có bộ đo** |
 | **A06** Thành phần lỗi thời | **SCA** — `sca.py` (chỉ NuGet), `retire.js` (chỉ JS nhúng sẵn), `dependency-review` (chỉ thư viện **mới** trong PR), **Trivy fs** (mọi hệ sinh thái, thư viện **đã có**) | CHẶN | có bộ đo từ G5.2: fixture sinh lúc chạy, 9 gói dính lỗ hổng + 6 gói sạch trên npm/pip/maven/nuget |
-| **A07** Xác thực hỏng | `dso-hardcoded-password`; **Gitleaks** quét secret; CodeQL | CHẶN | CWE-259 24%/0% (Juliet #28). Gitleaks: **chưa có bộ đo** |
+| **A07** Xác thực hỏng | `dso-hardcoded-password`; **Gitleaks** quét secret; CodeQL | CHẶN | CWE-259 24%/0% (Juliet #28). Gitleaks: đáp án đã dựng (G6.5) — 7 dạng secret phải bắt + 4 mồi phải im lặng, **chưa chạy xong** |
 | **A08** Toàn vẹn phần mềm/dữ liệu | Rule cộng đồng bắt deserialization (CWE-502) nhưng **không chặn**; `ky-image-reusable.yml` ký image | **chỉ báo** | **chưa đo.** Đồ án cố ý không viết rule CWE-502: ZAP không có active scan tương ứng nên không thể xác nhận động |
 | **A09** Ghi log và giám sát | CodeQL log injection (CWE-117) | CHẶN | CWE-117 **76%/2%** (Juliet #28) — và toàn bộ đến từ CodeQL, đồ án không có rule nào |
 | **A10** SSRF | 4 rule SSRF (C#, Python, Java) + CodeQL | CHẶN | **chưa đo riêng.** Juliet C# không có CWE-918; Juliet Java cũng không. BenchProctor Python có 600 case CWE-918 — sẽ có số sau phòng đo Python |
@@ -88,7 +88,12 @@ commit, Trivy đếm cấu hình sai. Muốn một con số cho cả năm tầng
 
 1. ~~Dựng đáp án cho SCA~~ — **xong (G5.2)**: `tools/kiem_thu_sca.py`, fixture sinh
    lúc chạy, 15 gói trên bốn hệ sinh thái. Việc này đồng thời tìm ra và bịt lỗ
-   "thư viện đã có không tầng nào quét". Còn **Gitleaks** thì chưa có đáp án.
+   "thư viện đã có không tầng nào quét". ~~Còn **Gitleaks** thì chưa có đáp án.~~
+   **Gitleaks: đáp án đã dựng (G6.5)** — 7 dạng secret phải bắt (AWS, GitHub PAT,
+   Slack, Stripe, khoá riêng RSA, Google API, npm) và 4 mồi phải im lặng (tệp
+   `.env` mẫu toàn placeholder, tài liệu có `changeme` và khoá ví dụ chính thức
+   của AWS, đọc từ biến môi trường, khoá công khai). Còn **Trivy config** thì
+   chưa có đáp án.
 2. **CWE-319** — đọc hàm goodB2G rồi viết rule. 148 case đang 0%.
 3. **CWE-328/338** — ~~đo báo nhầm trên mã nguồn thật~~ **bộ đo đã dựng (G6.4)**,
    chờ chạy: `phong-do-logic-nghiepvu.yml`. Có kết quả rồi mới quyết có nâng lên mức

@@ -197,6 +197,65 @@ jobs:
           set -o pipefail
           python tools/kiem_thu_bypass.py | tee -a "$GITHUB_STEP_SUMMARY"
 
+  secret:
+    # G6.5: DAP AN CHO TANG T0 (Gitleaks). Tang secret la mot trong hai tang
+    # CHUA CO BO DO nao. Pipeline chay Gitleaks voi cau hinh MAC DINH va bao
+    # cao chi noi "Gitleaks: N phat hien" - N=0 co the nghia la "ma nguon sach"
+    # hoac "khong rule nao khop", hai dieu rat khac nhau. Job nay phan biet.
+    #
+    # FIXTURE SINH LUC CHAY, KHONG COMMIT - bat buoc, vi hai ly do:
+    #   1. GitHub co push protection: commit mot chuoi CO HINH DANG secret that
+    #      se lam GitHub CHAN ca lan push, keo theo moi commit khac trong nhanh.
+    #   2. Tep "secret mau" nam trong repo se bi chinh Gitleaks cua pipeline bat
+    #      o moi lan chay, sinh canh bao vinh vien.
+    # Sinh vao RUNNER_TEMP, ngoai cay lam viec, nen khong co duong nao lan vao
+    # repo. Cung cach lam voi job sca.
+    #
+    # Dap an co HAI MUC: "chac_chan" (khang dinh - bo sot hay bao nham o day la
+    # sai that) va "can_do" (chua biet Gitleaks mac dinh xu ly the nao, chi in
+    # ra de doc). Doan truoc roi khang dinh la cach tu lua, nen nhung case chua
+    # biet chi duoc chuyen sang muc khang dinh SAU khi co ket qua lan dau.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false   # khong de GITHUB_TOKEN lai trong .git/config
+
+      - name: Sinh fixture secret (ngoai cay lam viec, khong commit)
+        run: |
+          python tools/kiem_thu_secret.py --sinh "$RUNNER_TEMP/fixture-secret" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Gitleaks - quet fixture (cung cau hinh nhu pipeline)
+        run: |
+          mkdir -p ket-qua
+          # --no-git: fixture khong phai repo git. --exit-code 0: de buoc cham
+          # quyet dinh dat/hong, khong phai gitleaks.
+          # KHONG dung --redact: bo cham can doc ten tep, va gia tri deu la gia.
+          docker run --rm \
+            -v "$RUNNER_TEMP/fixture-secret:/repo:ro" \
+            -v "$PWD/ket-qua:/ra" \
+            zricethezav/gitleaks:latest \
+            detect --source=/repo --no-git \
+            --report-format=sarif --report-path=/ra/gitleaks.sarif \
+            --exit-code 0
+          # Gitleaks KHONG tao tep SARIF khi khong tim thay gi - cung cai bay da
+          # xu ly trong devsecops-reusable.yml. O day "khong co tep" nghia la bo
+          # sot TAT CA, va bo cham phai bao hong chu khong duoc im lang.
+          if [ ! -f ket-qua/gitleaks.sarif ]; then
+            echo "Gitleaks khong sinh bao cao - coi nhu 0 phat hien."
+            printf '{"version":"2.1.0","runs":[]}' > ket-qua/gitleaks.sarif
+          fi
+
+      - name: Cham - bat duoc gi, bao nham gi
+        run: |
+          set -o pipefail
+          python tools/kiem_thu_secret.py \
+            --sarif ket-qua/gitleaks.sarif \
+            --md ket-qua/secret.md \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+
   bo-cham:
     # G6.1: KIEM CHINH BO CHAM. Moi con so trong bao cao di qua tools/cham_diem.py
     # - ti le bat, ti le bao nham, bang theo CWE, bang do nguong - va cho den gio
