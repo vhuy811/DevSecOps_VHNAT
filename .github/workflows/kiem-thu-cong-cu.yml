@@ -278,6 +278,13 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false   # khong de GITHUB_TOKEN lai trong .git/config
+      # Chay TRUOC moi thu: re, khong can docker/mang, va bat duoc loai loi
+      # lam chet job o giay thu 23 (xem tools/kiem_workflow.py).
+      - name: Cau hinh CI co loi da tung lam hong CI khong
+        run: |
+          set -o pipefail
+          python tools/kiem_workflow.py | tee -a "$GITHUB_STEP_SUMMARY"
+
       - name: Bo cham gan vai tro va tach rule co dung khong
         run: |
           set -o pipefail
