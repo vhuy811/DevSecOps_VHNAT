@@ -180,8 +180,11 @@ rules:
       - pattern: await $R.form()              # Starlette/FastAPI
       - pattern: await $R.body()
       - pattern: await $R.json()
-      # DA BO nguon cau hinh (os.environ / os.getenv) o rule nay - xem khoi
-      # "NGUON CAU HINH" o dau tep. Chi dso-py-taint-cmdi con giu.
+      # GIU nguon cau hinh o DUNG rule nay, va chi rule nay. Dich la THUC THI
+      # LENH, nen bien moi truong di vao shell that su nguy hiem - day cung la
+      # cho duy nhat bo rule chinh thuc semgrep/semgrep-rules dat nguon nay
+      # (11/59 tep, tat ca deu la dich thuc thi). Xem khoi "NGUON CAU HINH" o
+      # dau tep de biet vi sao moi rule KHAC da bo no di.
       - pattern: os.environ[...]
       - pattern: os.environ.get(...)
       - pattern: os.getenv(...)
