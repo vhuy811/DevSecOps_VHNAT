@@ -220,7 +220,15 @@ def scan_controller(path: Path, root: Path) -> list[dict]:
             "url_path": re.sub(r"/{2,}", "/", url),
             "method": method, "http_method": method,
             "route_source": source,
-            "needs_auth": class_auth and not ATTR_ANONYMOUS.search(blob),
+            # [Authorize] dat tren CHINH ACTION cung phai tinh, khong chi tren
+            # lop. Truoc day dong nay chi doc class_auth, nen mot action co
+            # [Authorize] rieng trong mot lop khong co [Authorize] se bi xep la
+            # testable - ZAP quet no khi chua dang nhap, bi da ve trang login,
+            # roi bao "khong tim thay lo hong". Mot diem mu im lang.
+            # Do duoc tren eShopOnWeb: UserController dat [Authorize] o cap
+            # phuong thuc (dong 36 va 43), ca hai action deu ra needs_auth=False.
+            "needs_auth": (class_auth or bool(ATTR_AUTHORIZE.search(blob)))
+                          and not ATTR_ANONYMOUS.search(blob),
             "has_path_placeholder": bool(PLACEHOLDER.search(url)),
             "params": names,
             "all_params": [p["name"] for p in params],

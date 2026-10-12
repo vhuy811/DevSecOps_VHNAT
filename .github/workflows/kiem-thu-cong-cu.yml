@@ -336,6 +336,30 @@ jobs:
             --md ket-qua/hatang.md \
             | tee -a "$GITHUB_STEP_SUMMARY"
 
+  ban-do-route:
+    # G5.4: DO TANG T3. Ban do route khong tim lo hong, nhung no quyet dinh
+    # DAST quet cho nao. Mot endpoint bi xep nham thi khong duoc quet, va bao
+    # cao van ghi "khong tim thay lo hong" - dung cai ket qua ma mot lan quet
+    # sach cung cho ra.
+    #
+    # Day la tang CUOI CUNG trong nam tang khong co phep do. Phat hien khi ra
+    # soat do phu cua chinh bo tu kiem nay. Lan dau chay no da bat duoc mot
+    # loi that: [Authorize] dat o cap PHUONG THUC khong duoc tinh, chi
+    # [Authorize] o cap lop moi duoc - nen mot action can dang nhap bi xep la
+    # testable.
+    #
+    # Khong can docker, khong can mang.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false   # khong de GITHUB_TOKEN lai trong .git/config
+      - name: Phan loai endpoint co dung dap an khong
+        run: |
+          set -o pipefail
+          python tools/kiem_thu_banto.py | tee -a "$GITHUB_STEP_SUMMARY"
+
   sca:
     # G5.2: DO TANG THU VIEN. Tang nay la tang duy nhat tung khong co bo do nao,
     # nen cau "bo sot bao nhieu" khong tra loi duoc. Fixture duoc SINH RA LUC
