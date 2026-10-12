@@ -41,24 +41,40 @@ import json
 import sys
 from pathlib import Path
 
+# LUAT DUOC GAI. Phep do cham theo DUNG ma luat nay, khong cham theo "co phat
+# hien nao khong".
+#
+# VI SAO: lan chay #44 da HONG vi dieu do. Ban da_sua sua dung DS-0002 (thieu
+# USER) nhung van thieu HEALTHCHECK, nen Trivy bao DS-0026 - va phep do, von
+# chi hoi "co phat hien nao khong", ket luan la bao nham. Trivy dung, dap an
+# sai. Neu cham theo "co phat hien nao khong" thi moi lan Trivy them mot luat
+# Dockerfile moi (anh :latest nen dieu nay se xay ra) la bo do hong oan.
+#
+# Cham theo ma luat thi phep do tra loi dung cau no dinh hoi: "tang ha tang co
+# bat duoc KHUYET DIEM DA GAI, va co im lang khi khuyet diem do da duoc sua
+# khong". Cac phat hien khac van duoc in ra de doc, nhung khong lam hong phep do.
+LUAT_GAI = "DS-0002"          # container chay bang root
+
 # (ten tep, noi dung, phai_bat, muc, mo ta)
 FIXTURE = [
     ("Dockerfile.co_loi", """FROM mcr.microsoft.com/dotnet/aspnet:9.0
 # Khong khai USER -> container chay bang root
 COPY app/ /app/
 EXPOSE 80
+HEALTHCHECK CMD wget -q --spider http://localhost:80/ || exit 1
 ENTRYPOINT ["dotnet", "/app/VulnShop.dll"]
 """, True, "chac_chan",
-     "khong khai USER nen container chay bang root (DS002)"),
+     "khong khai USER nen container chay bang root (DS-0002)"),
 
     ("Dockerfile.da_sua", """FROM mcr.microsoft.com/dotnet/aspnet:9.0
 COPY app/ /app/
 RUN adduser --disabled-password --gecos "" ungdung
 USER ungdung
 EXPOSE 8080
+HEALTHCHECK CMD wget -q --spider http://localhost:8080/ || exit 1
 ENTRYPOINT ["dotnet", "/app/VulnShop.dll"]
 """, False, "chac_chan",
-     "da tao user rieng va khai USER - ban doi chung, KHONG duoc bao"),
+     "da tao user rieng va khai USER - ban doi chung, KHONG duoc bao DS-0002"),
 ]
 
 
@@ -102,21 +118,29 @@ def cham(sarif: Path, md: Path | None) -> int:
 
     dong = ["### Phong do tang ha tang - Trivy config", "",
             f"Fixture sinh luc chay, khong commit - {len(FIXTURE)} Dockerfile.", "",
-            "| Tep | Dap an | Trivy | Rule | Ket qua |", "|---|---|---|---|---|"]
+            "| Tep | Dap an (DS-0002) | Trivy | Luat khac | Ket qua |",
+            "|---|---|---|---|---|"]
     hong: list[str] = []
 
+    khac_tong: dict[str, set[str]] = {}
     for ten, _, phai_bat, muc, mo_ta in FIXTURE:
         thay = theo_tep.get(ten, [])
-        co_chan = [r for r, lv in thay if lv == "error"]
-        bat = bool(thay)
+        ma = {r for r, _ in thay}
+        # Cham theo DUNG luat duoc gai, khong theo "co phat hien nao khong".
+        bat = LUAT_GAI in ma
         dat = (bat == phai_bat) if muc == "chac_chan" else True
-        rules = ", ".join(sorted({r for r, _ in thay})) or "-"
+        khac = sorted(ma - {LUAT_GAI})
+        khac_tong[ten] = set(khac)
         dong.append(f"| `{ten}` | {'bat' if phai_bat else 'im lang'} | "
-                    f"{'bat' if bat else 'im lang'} | {rules} | "
+                    f"{'bat' if bat else 'im lang'} | "
+                    f"{', '.join(khac) or '-'} | "
                     f"{'DAT' if dat else 'HONG'} |")
         if muc == "chac_chan" and not dat:
-            hong.append(f"{ten}: dap an '{'bat' if phai_bat else 'im lang'}' "
-                        f"nhung Trivy '{'bat' if bat else 'im lang'}'")
+            hong.append(f"{ten}: {LUAT_GAI} dap an "
+                        f"'{'bat' if phai_bat else 'im lang'}' nhung Trivy "
+                        f"'{'bat' if bat else 'im lang'}'")
+        # Bao nham o muc CHAN thi van phai bao, ke ca luat khac.
+        co_chan = [r for r, lv in thay if lv == "error"]
         if not phai_bat and co_chan:
             hong.append(f"{ten}: BAO NHAM o muc co quyen chan ({', '.join(co_chan)})")
 
@@ -125,8 +149,13 @@ def cham(sarif: Path, md: Path | None) -> int:
     if hong:
         dong.append("**HONG** - " + "; ".join(hong))
     else:
-        dong.append("**DAT** - tang ha tang bat dung ban co loi va im lang tren "
-                    "ban da sua.")
+        dong.append(f"**DAT** - tang ha tang bat dung {LUAT_GAI} o ban co loi va "
+                    f"im lang o ban da sua.")
+        dong.append("")
+        dong.append("Cot *Luat khac* chi de doc: Trivy co the them luat "
+                    "Dockerfile moi bat ky luc nao (anh ghim `:latest`), va "
+                    "phep do nay cham theo luat duoc gai nen khong hong oan "
+                    "vi chuyen do.")
 
     ra = "\n".join(dong)
     print(ra)
@@ -135,12 +164,83 @@ def cham(sarif: Path, md: Path | None) -> int:
     return 1 if hong else 0
 
 
+# ---------------------------------------------------------------------------
+# TU KIEM: chinh ham cham() co cham dung khong?
+# ---------------------------------------------------------------------------
+# Lan chay #44 hong vi ham cham() hoi sai cau: no hoi "co phat hien nao khong"
+# thay vi "co DS-0002 khong". Sua xong thi phai chung minh ban sua vua dung o
+# ca do da lam hong, vua KHONG lam phep do mat rang o cac ca hong that.
+# Khong can Trivy, khong can mang - dung SARIF dung san.
+TU_KIEM = [
+    ("dung canh lan #44 (da_sua con DS-0026)",
+     {"Dockerfile.co_loi": [("DS-0002", "warning"), ("DS-0026", "note")],
+      "Dockerfile.da_sua": [("DS-0026", "note")]}, 0),
+    ("ban da_sua sach hoan toan",
+     {"Dockerfile.co_loi": [("DS-0002", "warning")],
+      "Dockerfile.da_sua": []}, 0),
+    ("HONG THAT: da_sua van chay bang root",
+     {"Dockerfile.co_loi": [("DS-0002", "warning")],
+      "Dockerfile.da_sua": [("DS-0002", "warning")]}, 1),
+    ("HONG THAT: co_loi khong bi bat - tang ha tang mu",
+     {"Dockerfile.co_loi": [("DS-0026", "note")],
+      "Dockerfile.da_sua": []}, 1),
+    ("HONG THAT: da_sua bi bao o muc CHAN boi luat khac",
+     {"Dockerfile.co_loi": [("DS-0002", "warning")],
+      "Dockerfile.da_sua": [("DS-0013", "error")]}, 1),
+]
+
+
+def _sarif_gia(cap: dict) -> dict:
+    res = []
+    for ten, ds in cap.items():
+        for rid, lv in ds:
+            res.append({"ruleId": rid, "level": lv,
+                        "locations": [{"physicalLocation": {
+                            "artifactLocation": {"uri": ten}}}]})
+    return {"version": "2.1.0",
+            "runs": [{"tool": {"driver": {"name": "Trivy", "rules": []}},
+                      "results": res}]}
+
+
+def tu_kiem() -> int:
+    import io
+    import tempfile
+    from contextlib import redirect_stdout
+
+    print("### Tu kiem ham cham() cua phong do ha tang\n")
+    print("| Ca | Ma mong doi | Ma that | Ket qua |")
+    print("|---|---|---|---|")
+    hong = 0
+    for ten, cap, cho in TU_KIEM:
+        with tempfile.NamedTemporaryFile("w", suffix=".sarif", delete=False,
+                                         encoding="utf-8") as f:
+            json.dump(_sarif_gia(cap), f)
+            t = Path(f.name)
+        with redirect_stdout(io.StringIO()):
+            ma = cham(t, None)
+        t.unlink(missing_ok=True)
+        dat = ma == cho
+        hong += 0 if dat else 1
+        print(f"| {ten} | {cho} | {ma} | {'DAT' if dat else 'HONG'} |")
+    print()
+    if hong:
+        print(f"**HONG** - {hong}/{len(TU_KIEM)} ca tu kiem sai.")
+        return 1
+    print(f"**DAT** - {len(TU_KIEM)}/{len(TU_KIEM)} ca. Ham cham() cham theo ma "
+          f"luat {LUAT_GAI}, khong cham theo 'co phat hien nao khong'.")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--sinh", type=Path)
+    ap.add_argument("--tu-kiem", action="store_true",
+                    help="do chinh ham cham() bang SARIF dung san (khong can Trivy)")
     ap.add_argument("--sarif", type=Path)
     ap.add_argument("--md", type=Path)
     a = ap.parse_args()
+    if a.tu_kiem:
+        return tu_kiem()
     if a.sinh:
         return sinh(a.sinh)
     if a.sarif:

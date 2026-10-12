@@ -309,6 +309,11 @@ jobs:
         with:
           persist-credentials: false   # khong de GITHUB_TOKEN lai trong .git/config
 
+      - name: Tu kiem ham cham (khong can Trivy)
+        run: |
+          set -o pipefail
+          python tools/kiem_thu_hatang.py --tu-kiem | tee -a "$GITHUB_STEP_SUMMARY"
+
       - name: Sinh Dockerfile fixture (ngoai cay lam viec, khong commit)
         run: |
           python tools/kiem_thu_hatang.py --sinh "$RUNNER_TEMP/fixture-hatang" \
