@@ -180,8 +180,9 @@ def nguon_cauhinh_sai_cho(tep: Path) -> list[str]:
 
     VI SAO CHOT NAY TON TAI - no la ket luan cua mot lan do, khong phai so thich:
       - Bo rule chinh thuc semgrep/semgrep-rules: 0/21 rule taint Java dung
-        getenv hoac getProperty lam nguon. Ben Python chi 2/59 tep co, va ca
-        hai deu CHI dat nguon nay cho dich THUC THI LENH.
+        getenv hoac getProperty lam nguon. Ben Python co 11/59 tep dung, va TAT
+        CA deu dat nguon nay cho dich THUC THI (subprocess, os.system, asyncio
+        exec, spawn, chay chuoi ma) - khong tep nao dung cho SQL hay duong dan.
       - Juliet Java dung getProperty lam nguon o 761 tep va getenv o 222 tep -
         ho nguon ngoai-HTTP lon nhat cua corpus. Nhan chung la nhiem doc lam ti
         le bat tren Juliet tang manh.

@@ -38,9 +38,10 @@
 # BON SO DAN TOI QUYET DINH DO:
 #  1. Trong bo rule chinh thuc semgrep/semgrep-rules: 0 / 21 rule taint Java
 #     dung System.getenv hoac getProperty lam nguon - khong xuat hien mot lan
-#     nao. Ben Python chi 2 / 59 tep co, va ca hai deu CHI dat nguon nay cho
-#     DICH THUC THI LENH (dangerous-subprocess-use-tainted-env-args,
-#     dangerous-os-exec-tainted-env-args).
+#     nao. Ben Python co 11 / 59 tep dung, va TAT CA deu dat nguon nay cho DICH
+#     THUC THI: subprocess, os.system, asyncio exec, spawn process, hoac chay
+#     mot chuoi ma (code.InteractiveConsole, subinterpreters). KHONG tep nao
+#     dat nguon nay cho dich SQL, duong dan, XSS, SSRF hay chuyen huong.
 #  2. Trong Juliet Java (4920 tep / 2997 case): getProperty la nguon cua 761
 #     tep, getenv 222 tep - 983 tep, ho nguon ngoai-HTTP LON NHAT. Nhan nguon
 #     nay lam "nhiem doc" nang ti le bat cua corpus len rat nhieu.

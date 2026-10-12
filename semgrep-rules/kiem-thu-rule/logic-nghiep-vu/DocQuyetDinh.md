@@ -43,8 +43,9 @@ Nhưng Juliet dùng `getProperty` vì cần một giá trị mà trình biên d�
 lại được, **không** vì nó mô hình hoá kẻ tấn công. Mã thật dùng đúng hai hàm này
 để đọc **cấu hình triển khai** — giá trị do người vận hành đặt. Bằng chứng độc
 lập: trong `semgrep/semgrep-rules`, **0/21** rule taint Java dùng chúng làm
-nguồn; bên Python chỉ **2/59** tệp có, và cả hai đều **chỉ** đặt nguồn này cho
-đích *thực thi lệnh*.
+nguồn; bên Python có **11/59** tệp dùng, và **tất cả** đều đặt nguồn này cho
+đích *thực thi* (tiến trình, shell, hoặc chạy một chuỗi mã) — không tệp nào dùng
+nó cho SQL, đường dẫn, XSS, SSRF hay chuyển hướng.
 
 Đã bỏ nguồn cấu hình khỏi mọi rule taint trừ `*-cmdi`, ở cả ba bộ rule (C#,
 Java, Python). Hệ quả phải ghi thẳng vào báo cáo: **tỉ lệ bắt trên Juliet giảm**,

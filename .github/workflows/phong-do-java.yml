@@ -55,7 +55,9 @@ name: Phong do Java
 # tri ma trinh bien dich khong gap lai duoc, KHONG vi no mo hinh hoa ke tan cong.
 # Ma that dung dung hai ham nay de doc CAU HINH TRIEN KHAI. Bang chung doc lap:
 # trong bo rule chinh thuc semgrep/semgrep-rules, 0/21 rule taint Java dung
-# chung lam nguon, va 2/59 tep Python co dung thi CHI cho dich thuc thi lenh.
+# chung lam nguon. Ben Python co 11/59 tep dung, va TAT CA deu la dich THUC THI
+# (subprocess, os.system, asyncio exec, spawn, hoac chay mot chuoi ma) - khong
+# tep nao dat nguon nay cho dich SQL, duong dan, XSS, SSRF hay chuyen huong.
 #
 # Gia phai tra do duoc o "Phong do logic nghiep vu" #7: rule
 # dso-java-taint-path-traversal CHAN OAN mot ham chi lam

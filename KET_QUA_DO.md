@@ -286,7 +286,7 @@ nguồn. Không có gì để "khử độc" ở đây — hàm này **không c�
 | Bằng chứng | Số |
 |---|---|
 | Rule taint Java trong `semgrep/semgrep-rules` dùng `System.getenv` hoặc `getProperty` làm nguồn | **0 / 21** — không xuất hiện một lần nào |
-| Tệp rule Python chính thức có dùng, và **chỉ** cho đích *thực thi lệnh* | 2 / 59 |
+| Tệp rule Python chính thức có dùng — và **mọi** tệp trong số đó đều đặt nguồn này cho đích *thực thi* (tiến trình, shell, hoặc chạy một chuỗi mã) | 11 / 59 |
 | Tệp Juliet Java lấy `getProperty` (761) hoặc `getenv` (222) làm nguồn | **983 / 4920** — họ nguồn ngoài-HTTP lớn nhất của corpus |
 | Lần chặn oan trên corpus mã nghiệp vụ thật | **1** |
 
