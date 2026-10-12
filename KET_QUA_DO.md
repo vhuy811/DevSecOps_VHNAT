@@ -162,7 +162,7 @@ vì rule đó không dùng taint mà khớp trực tiếp cấu hình `resolve_e
 
 ---
 
-## 5. Hai thay đổi đã làm sau lần đo, chưa có số mới
+## 5. Ba thay đổi đã làm sau lần đo, chưa có số mới
 
 Ghi ở đây để lần đo sau đối chiếu được. **Chưa có số** nghĩa là chưa chạy, không
 phải đã cải thiện.
@@ -170,15 +170,107 @@ phải đã cải thiện.
 | Thay đổi | Dự đoán, và căn cứ |
 |---|---|
 | **Python: mở nguồn + 3 đích mới** (G6.2) | Trần cấu trúc 33.6% → **78.2%** của 2.250 case thuộc phạm vi rule. Báo nhầm **sẽ không gần 0**: sàn ≈ 22.6% vì bản sạch của BenchProctor khử độc bằng `if … return 400`, thứ `pattern-sanitizers` không diễn tả được. Chi tiết: `PHAT_HIEN_BENCHPROCTOR.md` |
-| **Java: mở nguồn ra ngoài HTTP** (G6.3) | Trần của Semgrep CE 14.0% → **54.1%**; dự đoán tỉ lệ bắt 11.8% → **~46%**. Căn cứ: nhãn của corpus cho thấy HTTP chỉ là 777/2997 case (25.9%), và lần đo #1 ra 11.8% nằm ngay dưới trần cũ 14.0% |
+| **Java: mở nguồn ra ngoài HTTP** (G6.3), **đã đảo ngược một phần** (G6.5) | Dự đoán ban đầu 11.8% → ~46%. Dự đoán đó **không còn hiệu lực**: hai trong bốn họ nguồn được thêm đã bị bỏ lại, vì chúng là *cấu hình* chứ không phải *dữ liệu*. Xem mục 6 — đây là phát hiện phương pháp đáng kể nhất của phần đo |
 | **Corpus logic nghiệp vụ** (G6.4) | Bộ đo mới cho câu "mã đúng có bị chặn không": 3 tệp, 38 hàm mã nghiệp vụ an toàn nhưng trông như lỗi. Đáp án **0 cảnh báo mức chặn**. Đây là bộ đo còn thiếu để quyết `dso-weak-hash` / `dso-weak-random` có nâng lên mức chặn được hay không |
 
-Hai dự đoán này là **phép kiểm cho chẩn đoán**, không phải lời hứa. Nếu Java ra
-thấp hơn ~46% nhiều thì nguyên nhân không còn là thiếu nguồn và phải đọc lại đích.
+Những dự đoán này là **phép kiểm cho chẩn đoán**, không phải lời hứa — và dòng
+Java ở trên là ví dụ về việc một phép kiểm như vậy *trượt*: không phải vì chẩn
+đoán "thiếu nguồn" sai, mà vì hai trong bốn họ nguồn được thêm **không mang
+quyền điều khiển của kẻ tấn công trên mã thật**. Mục 6 ghi đầy đủ.
 
 ---
 
-## 6. Chưa có bộ đo
+## 6. Khi điểm bắt là điểm tăng giả — họ nguồn "cấu hình"
+
+Đây là phát hiện quan trọng nhất mà phần đo của đồ án tạo ra, và nó chỉ hiện ra
+được vì có **ba** bộ đo chứ không phải một.
+
+### Việc đã làm, và vì sao nó trông đúng
+
+Lần đo Java #1 cho tỉ lệ bắt **11.8%**, nằm ngay dưới trần cấu trúc 14.0%. Chẩn
+đoán: rule thiếu nguồn. Đo lại nhãn của corpus xác nhận — nguồn HTTP chỉ chiếm
+777/2997 case (25.9%), còn **74.1%** case dùng nguồn khác. Bốn họ nguồn ngoài
+HTTP được thêm vào, và trần tính lại nhảy lên 54.1%.
+
+Lập luận khi đó: *"mở rộng nguồn là mở rộng vùng bắt mà không mở rộng vùng báo
+nhầm, vì đích vẫn là đích cũ."* Nghe hợp lý, và trên bộ rule C# nó đã đúng thật
+ở lần đo #26 (47.3% → 63.6% bắt, cột báo nhầm giữ nguyên 0.0%).
+
+### Việc bộ đo thứ ba phát hiện
+
+`Phòng đo logic nghiệp vụ #7` **chặn oan** một hàm mã đúng:
+
+```java
+public static File tepTamBaoCao() {
+    return new File(System.getProperty("java.io.tmpdir"), "bao_cao_tam.csv");
+}
+```
+
+`dso-java-taint-path-traversal` báo, vì `$P.getProperty(...)` vừa trở thành
+nguồn. Không có gì để "khử độc" ở đây — hàm này **không có** dữ liệu người dùng.
+
+### Bốn con số dẫn tới quyết định bỏ
+
+| Bằng chứng | Số |
+|---|---|
+| Rule taint Java trong `semgrep/semgrep-rules` dùng `System.getenv` hoặc `getProperty` làm nguồn | **0 / 21** — không xuất hiện một lần nào |
+| Tệp rule Python chính thức có dùng, và **chỉ** cho đích *thực thi lệnh* | 2 / 59 |
+| Tệp Juliet Java lấy `getProperty` (761) hoặc `getenv` (222) làm nguồn | **983 / 4920** — họ nguồn ngoài-HTTP lớn nhất của corpus |
+| Lần chặn oan trên corpus mã nghiệp vụ thật | **1** |
+
+### Vì sao hai số đó không mâu thuẫn nhau
+
+Juliet dùng `System.getProperty` vì nó cần **một giá trị mà trình biên dịch
+không gấp lại được** — đó là thủ thuật kỹ thuật để sinh test case, **không** phải
+một mô hình về kẻ tấn công. Mã thật dùng đúng hai hàm đó để đọc **cấu hình triển
+khai**: giá trị do người vận hành đặt. Ai đặt được system property cho tiến trình
+JVM thì đã chạy được mã trong tiến trình đó rồi — không còn gì để leo thang.
+
+Nên nhận họ nguồn này là "nhiễm độc" làm tỉ lệ bắt trên Juliet tăng mạnh **mà
+không** làm pipeline bắt thêm được một lỗ hổng thật nào. Câu *"mở rộng nguồn
+không mở rộng vùng báo nhầm"* chỉ đúng với nguồn **đọc dữ liệu** (`readLine`,
+`ResultSet.getString`). Với nguồn **cấu hình** nó sai, và cái giá **không hiện ra
+trên Juliet** — chỉ hiện ra trên mã thật.
+
+### Đã sửa gì
+
+Bỏ nguồn cấu hình khỏi mọi rule taint của cả ba bộ rule, giữ lại duy nhất ở rule
+`*-cmdi` (đích là thực thi lệnh — chỗ duy nhất bộ rule chính thức chấp nhận, và
+cũng là chỗ biến môi trường đi vào shell thật sự nguy hiểm):
+
+| Bộ rule | Nguồn bị bỏ | Số rule bị ảnh hưởng |
+|---|---|---|
+| `sast-detect.yaml` (C#) | `Environment.GetEnvironmentVariable` | 7 |
+| `sast-detect-java.yaml` | `System.getenv`, `$P.getProperty` | 8 |
+| `sast-detect-python.yaml` | `os.environ`, `os.getenv` | 9 |
+
+Giữ nguyên ở `pattern-sanitizers` của rule CWE-259/798: ở đó "giá trị đến từ biến
+môi trường" đúng là bằng chứng mật khẩu **không** bị viết cứng — ngược dấu hoàn
+toàn với việc dùng nó làm nguồn.
+
+### Phép kiểm, không phải chú thích
+
+Một quyết định chỉ ghi trong chú thích thì lần sau có người đi tìm điểm bắt sẽ
+thêm lại, và bảng đo Juliet sẽ tự khen. Nên có hai lớp chốt:
+
+1. `nguon_cauhinh_sai_cho()` trong `semgrep-rules/kiem-thu-rule/chay_kiem_thu.py`
+   — làm CI đổ **trước khi** chạy Semgrep nếu nguồn cấu hình xuất hiện ngoài rule
+   `*-cmdi`. Đã thử bốn hướng: ba tệp hiện tại sạch; đột biến trên cả ba tệp đều
+   bị bắt; nguồn nằm ở `pattern-sinks` / `pattern-sanitizers` được bỏ qua đúng.
+2. Hai case fixture *nguồn-cấu-hình-vào-đích-đường-dẫn* chuyển từ `Co_Loi.*` sang
+   `Da_Khu_Doc.*`, **bỏ luôn bước khử độc**, thành case **phải không bị bắt**
+   (thêm một case tương tự cho Python). Thêm lại nguồn thì điều kiện 2 của bộ
+   kiểm thử đổ ngay tại dòng đó.
+
+### Hệ quả phải ghi thẳng
+
+**Tỉ lệ bắt Juliet Java ở lần đo sau sẽ thấp hơn mức ~46% đã dự đoán.** Đó là con
+số *đúng hơn*, không phải con số *tệ hơn*. Và nếu đồ án chỉ có Juliet với
+BenchProctor, lần mở rộng nguồn đó đã được ghi vào báo cáo như một **cải tiến**.
+
+---
+
+## 7. Chưa có bộ đo
 
 | Tầng | Trạng thái |
 |---|---|
@@ -189,7 +281,7 @@ thấp hơn ~46% nhiều thì nguyên nhân không còn là thiếu nguồn và 
 
 ---
 
-## 7. Vì sao không có một con số cho cả năm tầng
+## 8. Vì sao không có một con số cho cả năm tầng
 
 Năm tầng không cùng mẫu số. Juliet đếm lỗi tiêm ở mức mã nguồn; SCA đếm phiên
 bản thư viện dính CVE; DAST đếm endpoint chạy thật; Gitleaks đếm credential bị
