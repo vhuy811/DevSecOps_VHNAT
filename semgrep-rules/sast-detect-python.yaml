@@ -1,0 +1,748 @@
+# =============================================================================
+# BO RULE PHAT HIEN - PYTHON (tang 2, phan tich tinh)
+# =============================================================================
+#
+# Cung triet ly voi sast-detect.yaml (ban C#):
+#   - Chi phu nhung CWE ma OWASP ZAP CO active scan rule, de canh bao tinh con
+#     duong di tiep den nhan CONFIRMED o tang doi sanh. Phan be rong (mat khau
+#     cung, ma hoa yeu, deserialization...) de cho bo rule cong dong p/python.
+#   - severity ERROR = co quyen CHAN merge. Chi dat cho rule tin cay cao.
+#   - Moi rule ghi "CWE-nnn:" o DAU thong diep VA trong metadata.cwe (tang doi
+#     sanh doc ca hai cho).
+#
+# VI SAO TOAN BO DUNG TAINT MODE (mode: taint)
+# Rule khop theo HINH DANG dong code khong phan biet duoc "noi hang so" voi
+# "noi input nguoi dung" - do tren Juliet C# cho thay chung bat 100% case loi
+# NHUNG bao nham 100% case da sua. Nen o day chi bao khi du lieu that su di tu
+# NGUON (doi tuong request) toi DICH ma khong qua ham lam sach.
+#
+# DIEM THEN CHOT - focus-metavariable O DOI SO THU NHAT:
+# Dang AN TOAN cua Python DBAPI la tham so hoa:
+#       cursor.execute("SELECT ... WHERE x = ?", (gia_tri,))
+# Gia tri nhiem doc nam o doi so THU HAI. Dang LO HONG la noi vao doi so THU
+# NHAT. Nho focus-metavariable: $X (chi doi so dau), rule KHONG bao nham dang
+# tham so hoa. Bo focus di la rule lap tuc bao nham moi truy van tham so hoa.
+#
+# GIOI HAN THAT: Semgrep ban cong dong lan theo luong trong MOT ham. Du lieu di
+# qua ham khac / tep khac la phan cua CodeQL (threat-models: local).
+#
+# NGUON CAU HINH (bien moi truong / system property) - DA BO KHOI RULE CHAN
+# -----------------------------------------------------------------------------
+# Tung co trong MOI rule taint cua tep nay, voi ly le "trong container dung
+# chung thi ke tan cong kiem soat duoc bien moi truong". Da BO, chi con
+# dso-py-taint-cmdi giu os.environ / os.getenv, vi dich la thuc thi lenh.
+#
+# BON SO DAN TOI QUYET DINH DO:
+#  1. Trong bo rule chinh thuc semgrep/semgrep-rules: 0 / 21 rule taint Java
+#     dung System.getenv hoac getProperty lam nguon - khong xuat hien mot lan
+#     nao. Ben Python co 11 / 59 tep dung, va TAT CA deu dat nguon nay cho DICH
+#     THUC THI: subprocess, os.system, asyncio exec, spawn process, hoac chay
+#     mot chuoi ma (code.InteractiveConsole, subinterpreters). KHONG tep nao
+#     dat nguon nay cho dich SQL, duong dan, XSS, SSRF hay chuyen huong.
+#  2. Trong Juliet Java (4920 tep / 2997 case): getProperty la nguon cua 761
+#     tep, getenv 222 tep - 983 tep, ho nguon ngoai-HTTP LON NHAT. Nhan nguon
+#     nay lam "nhiem doc" nang ti le bat cua corpus len rat nhieu.
+#  3. Juliet dung getProperty vi can mot gia tri ma trinh bien dich khong gap
+#     lai duoc, KHONG vi no mo hinh hoa ke tan cong. Ma that dung dung hai ham
+#     nay de doc CAU HINH TRIEN KHAI - gia tri do nguoi van hanh dat.
+#  4. Corpus logic nghiep vu (3 tep, 38 ham ma dung) do duoc hau qua that:
+#     dso-java-taint-path-traversal CHAN OAN tepTamBaoCao(), mot ham chi lam
+#     new File(System.getProperty("java.io.tmpdir"), "bao_cao_tam.csv").
+#
+# KET LUAN GHI VAO BAO CAO: "mo rong nguon la mo rong vung bat ma khong mo rong
+# vung bao nham" chi dung voi nguon DOC DU LIEU (readLine, ResultSet). Voi
+# nguon CAU HINH no sai, va cai gia phai tra khong hien ra tren Juliet - chi
+# hien ra tren corpus ma dung. Diem bat tren corpus tong hop tang len nho mot
+# ho nguon khong mang quyen dieu khien cua ke tan cong tren ma that KHONG phai
+# la diem tang that.
+#
+# NEU MUON DO LAI: git revert commit nay roi doc lai ca hai phong do - so Juliet
+# se tang, so chan oan tren corpus logic nghiep vu se tu 0 len 1.
+# =============================================================================
+
+rules:
+
+  # ===========================================================================
+  # CWE-89 : SQL Injection          ZAP ascan 40018
+  # ===========================================================================
+  - id: dso-py-taint-sqli
+    mode: taint
+    languages: [python]
+    severity: ERROR
+    message: >-
+      CWE-89: Du lieu tu request duoc noi vao cau lenh SQL (doi so thu nhat cua
+      execute / text() / .raw()) ma khong qua tham so hoa. Dung tham so cua
+      DBAPI: cursor.execute("... WHERE x = ?", (gia_tri,)) - dau ? / %s / :ten
+      va truyen gia tri o doi so thu hai.
+    metadata:
+      cwe: "CWE-89"
+      category: security
+      subcategory: [vuln]
+      confidence: HIGH
+      references:
+        - https://cwe.mitre.org/data/definitions/89.html
+    pattern-sources:
+      - pattern: $R.args[...]
+      - pattern: $R.args.get(...)
+      - pattern: $R.args.getlist(...)
+      - pattern: $R.form[...]
+      - pattern: $R.form.get(...)
+      - pattern: $R.values[...]
+      - pattern: $R.values.get(...)
+      - pattern: $R.get_json(...)
+      - pattern: $R.cookies[...]
+      - pattern: $R.cookies.get(...)
+      - pattern: $R.headers[...]
+      - pattern: $R.headers.get(...)
+      - pattern: $R.GET[...]
+      - pattern: $R.GET.get(...)
+      - pattern: $R.POST[...]
+      - pattern: $R.POST.get(...)
+      - pattern: $R.query_params[...]
+      - pattern: $R.query_params.get(...)
+      - pattern: request.json
+      - pattern: request.data
+      # --- Mo rong nguon (G6.2) ---
+      # Do tren BenchProctor 18.300 case: cac nguon HTTP khai o tren cham toi
+      # 41.5% case; 10 hinh dang duoi day cham toi THEM 33.8% case ma truoc do
+      # khong rule nao nhin thay. So dem tep that, khong phai uoc luong.
+      - pattern: $R.body                      # Django/Starlette: than yc tho
+      - pattern: $R.META[...]                 # Django: header qua WSGI
+      - pattern: $R.META.get(...)
+      - pattern: $R.get_data(...)             # Flask: than yc tho
+      - pattern: $R.COOKIES[...]              # Django: cookie (chu HOA)
+      - pattern: $R.COOKIES.get(...)
+      - pattern: await $R.form()              # Starlette/FastAPI
+      - pattern: await $R.body()
+      - pattern: await $R.json()
+      # DA BO nguon cau hinh (os.environ / os.getenv) o rule nay - xem khoi
+      # "NGUON CAU HINH" o dau tep. Chi dso-py-taint-cmdi con giu.
+    pattern-sanitizers:
+      - pattern: int(...)
+      - pattern: float(...)
+      - pattern: uuid.UUID(...)
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: $CUR.execute($X, ...)
+              - pattern: $CUR.executemany($X, ...)
+              - pattern: $CUR.executescript($X)
+              - pattern: sqlalchemy.text($X)
+              - pattern: text($X)
+              - pattern: $M.raw($X, ...)
+              - pattern: $M.extra(select=$X, ...)
+              - pattern: $M.extra(where=$X, ...)
+          - focus-metavariable: $X
+
+  # ===========================================================================
+  # CWE-78 : OS Command Injection   ZAP ascan 90020 / 90037
+  # ===========================================================================
+  - id: dso-py-taint-cmdi
+    mode: taint
+    languages: [python]
+    severity: ERROR
+    message: >-
+      CWE-78: Du lieu tu request di vao lenh he dieu hanh chay QUA SHELL
+      (os.system / os.popen / subprocess voi shell=True). Shell dien giai dau
+      cham phay, dau va, dau ong dan nen input nao cung thanh lenh moi. Dung
+      subprocess.run(["lenh", doi_so]) - danh sach, khong shell.
+    metadata:
+      cwe: "CWE-78"
+      category: security
+      subcategory: [vuln]
+      confidence: HIGH
+      references:
+        - https://cwe.mitre.org/data/definitions/78.html
+    pattern-sources:
+      - pattern: $R.args[...]
+      - pattern: $R.args.get(...)
+      - pattern: $R.form[...]
+      - pattern: $R.form.get(...)
+      - pattern: $R.values.get(...)
+      - pattern: $R.get_json(...)
+      - pattern: $R.cookies.get(...)
+      - pattern: $R.headers.get(...)
+      - pattern: $R.GET[...]
+      - pattern: $R.GET.get(...)
+      - pattern: $R.POST[...]
+      - pattern: $R.POST.get(...)
+      - pattern: $R.query_params.get(...)
+      # --- Mo rong nguon (G6.2) ---
+      # Do tren BenchProctor 18.300 case: cac nguon HTTP khai o tren cham toi
+      # 41.5% case; 10 hinh dang duoi day cham toi THEM 33.8% case ma truoc do
+      # khong rule nao nhin thay. So dem tep that, khong phai uoc luong.
+      - pattern: $R.body                      # Django/Starlette: than yc tho
+      - pattern: $R.META[...]                 # Django: header qua WSGI
+      - pattern: $R.META.get(...)
+      - pattern: $R.get_data(...)             # Flask: than yc tho
+      - pattern: $R.COOKIES[...]              # Django: cookie (chu HOA)
+      - pattern: $R.COOKIES.get(...)
+      - pattern: await $R.form()              # Starlette/FastAPI
+      - pattern: await $R.body()
+      - pattern: await $R.json()
+      # GIU nguon cau hinh o DUNG rule nay, va chi rule nay. Dich la THUC THI
+      # LENH, nen bien moi truong di vao shell that su nguy hiem - day cung la
+      # cho duy nhat bo rule chinh thuc semgrep/semgrep-rules dat nguon nay
+      # (11/59 tep, tat ca deu la dich thuc thi). Xem khoi "NGUON CAU HINH" o
+      # dau tep de biet vi sao moi rule KHAC da bo no di.
+      - pattern: os.environ[...]
+      - pattern: os.environ.get(...)
+      - pattern: os.getenv(...)
+    pattern-sanitizers:
+      - pattern: shlex.quote(...)
+      - pattern: int(...)
+    # CHI dang chay qua shell. subprocess.run(["ls", x]) KHONG o day - no an
+    # toan va liet vao day la bao nham dang da sua.
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: os.system($X)
+              - pattern: os.popen($X, ...)
+              - pattern: subprocess.run($X, ..., shell=True, ...)
+              - pattern: subprocess.call($X, ..., shell=True, ...)
+              - pattern: subprocess.check_call($X, ..., shell=True, ...)
+              - pattern: subprocess.check_output($X, ..., shell=True, ...)
+              - pattern: subprocess.Popen($X, ..., shell=True, ...)
+              - pattern: subprocess.getoutput($X)
+          - focus-metavariable: $X
+
+  # ===========================================================================
+  # CWE-22 : Path Traversal         ZAP ascan 6
+  # ===========================================================================
+  - id: dso-py-taint-path-traversal
+    mode: taint
+    languages: [python]
+    severity: ERROR
+    message: >-
+      CWE-22: Du lieu tu request duoc dung lam duong dan tep ma khong cat bo
+      thu muc. Chuoi "../" hoac duong dan tuyet doi cho phep doc/ghi ngoai thu
+      muc du dinh. Dung os.path.basename() hoac werkzeug secure_filename(), roi
+      kiem tra ket qua van nam trong thu muc goc.
+    metadata:
+      cwe: "CWE-22"
+      category: security
+      subcategory: [vuln]
+      confidence: HIGH
+      references:
+        - https://cwe.mitre.org/data/definitions/22.html
+    pattern-sources:
+      - pattern: $R.args[...]
+      - pattern: $R.args.get(...)
+      - pattern: $R.form[...]
+      - pattern: $R.form.get(...)
+      - pattern: $R.values.get(...)
+      - pattern: $R.get_json(...)
+      - pattern: $R.cookies.get(...)
+      - pattern: $R.headers.get(...)
+      - pattern: $R.GET[...]
+      - pattern: $R.GET.get(...)
+      - pattern: $R.POST[...]
+      - pattern: $R.POST.get(...)
+      - pattern: $R.query_params.get(...)
+      # --- Mo rong nguon (G6.2) ---
+      # Do tren BenchProctor 18.300 case: cac nguon HTTP khai o tren cham toi
+      # 41.5% case; 10 hinh dang duoi day cham toi THEM 33.8% case ma truoc do
+      # khong rule nao nhin thay. So dem tep that, khong phai uoc luong.
+      - pattern: $R.body                      # Django/Starlette: than yc tho
+      - pattern: $R.META[...]                 # Django: header qua WSGI
+      - pattern: $R.META.get(...)
+      - pattern: $R.get_data(...)             # Flask: than yc tho
+      - pattern: $R.COOKIES[...]              # Django: cookie (chu HOA)
+      - pattern: $R.COOKIES.get(...)
+      - pattern: await $R.form()              # Starlette/FastAPI
+      - pattern: await $R.body()
+      - pattern: await $R.json()
+      # DA BO nguon cau hinh (os.environ / os.getenv) o rule nay - xem khoi
+      # "NGUON CAU HINH" o dau tep. Chi dso-py-taint-cmdi con giu.
+    pattern-sanitizers:
+      - pattern: os.path.basename(...)
+      - pattern: secure_filename(...)
+      - pattern: werkzeug.utils.secure_filename(...)
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: open($X, ...)
+              - pattern: io.open($X, ...)
+              - pattern: os.remove($X)
+              - pattern: os.unlink($X)
+              - pattern: shutil.copy($X, ...)
+              - pattern: shutil.copyfile($X, ...)
+              - pattern: shutil.rmtree($X, ...)
+              - pattern: send_file($X, ...)
+              - pattern: flask.send_file($X, ...)
+              - pattern: send_from_directory($D, $X, ...)
+              - pattern: pathlib.Path($X).read_text(...)
+              - pattern: pathlib.Path($X).read_bytes()
+          - focus-metavariable: $X
+
+  # ===========================================================================
+  # CWE-79 : Cross-Site Scripting   ZAP ascan 40012 / 40014 / 40026
+  # ===========================================================================
+  - id: dso-py-taint-xss
+    mode: taint
+    languages: [python]
+    severity: ERROR
+    message: >-
+      CWE-79: Du lieu tu request duoc dua ra HTML ma khong ma hoa -
+      render_template_string / Markup / mark_safe / HttpResponse deu KHONG
+      escape. Dung template co auto-escape (render_template) hoac
+      html.escape(x) truoc khi ghep.
+    metadata:
+      cwe: "CWE-79"
+      category: security
+      subcategory: [vuln]
+      confidence: HIGH
+      references:
+        - https://cwe.mitre.org/data/definitions/79.html
+    pattern-sources:
+      - pattern: $R.args[...]
+      - pattern: $R.args.get(...)
+      - pattern: $R.form[...]
+      - pattern: $R.form.get(...)
+      - pattern: $R.values.get(...)
+      - pattern: $R.get_json(...)
+      - pattern: $R.cookies.get(...)
+      - pattern: $R.headers.get(...)
+      - pattern: $R.GET[...]
+      - pattern: $R.GET.get(...)
+      - pattern: $R.POST[...]
+      - pattern: $R.POST.get(...)
+      - pattern: $R.query_params.get(...)
+      # --- Mo rong nguon (G6.2) ---
+      # Do tren BenchProctor 18.300 case: cac nguon HTTP khai o tren cham toi
+      # 41.5% case; 10 hinh dang duoi day cham toi THEM 33.8% case ma truoc do
+      # khong rule nao nhin thay. So dem tep that, khong phai uoc luong.
+      - pattern: $R.body                      # Django/Starlette: than yc tho
+      - pattern: $R.META[...]                 # Django: header qua WSGI
+      - pattern: $R.META.get(...)
+      - pattern: $R.get_data(...)             # Flask: than yc tho
+      - pattern: $R.COOKIES[...]              # Django: cookie (chu HOA)
+      - pattern: $R.COOKIES.get(...)
+      - pattern: await $R.form()              # Starlette/FastAPI
+      - pattern: await $R.body()
+      - pattern: await $R.json()
+      # DA BO nguon cau hinh (os.environ / os.getenv) o rule nay - xem khoi
+      # "NGUON CAU HINH" o dau tep. Chi dso-py-taint-cmdi con giu.
+    pattern-sanitizers:
+      - pattern: html.escape(...)
+      - pattern: markupsafe.escape(...)
+      - pattern: escape(...)
+      - pattern: django.utils.html.escape(...)
+      - pattern: int(...)
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: render_template_string($X, ...)
+              - pattern: flask.render_template_string($X, ...)
+              - pattern: Markup($X)
+              - pattern: markupsafe.Markup($X)
+              - pattern: mark_safe($X)
+              - pattern: django.utils.safestring.mark_safe($X)
+              - pattern: HttpResponse($X, ...)
+              - pattern: django.http.HttpResponse($X, ...)
+          - focus-metavariable: $X
+
+  # ===========================================================================
+  # CWE-94 : Server-Side Code Injection   ZAP ascan 90019
+  # ===========================================================================
+  - id: dso-py-taint-code-injection
+    mode: taint
+    languages: [python]
+    severity: ERROR
+    message: >-
+      CWE-94: Du lieu tu request duoc dua vao eval / exec / compile - tuc la
+      chay ma tuy y tren may chu. Khong bao gio chay chuoi lay tu input; can
+      doc du lieu co cau truc thi dung ast.literal_eval hoac json.loads.
+    metadata:
+      cwe: "CWE-94"
+      category: security
+      subcategory: [vuln]
+      confidence: HIGH
+      references:
+        - https://cwe.mitre.org/data/definitions/94.html
+    pattern-sources:
+      - pattern: $R.args[...]
+      - pattern: $R.args.get(...)
+      - pattern: $R.form[...]
+      - pattern: $R.form.get(...)
+      - pattern: $R.values.get(...)
+      - pattern: $R.get_json(...)
+      - pattern: $R.cookies.get(...)
+      - pattern: $R.headers.get(...)
+      - pattern: $R.GET[...]
+      - pattern: $R.GET.get(...)
+      - pattern: $R.POST[...]
+      - pattern: $R.POST.get(...)
+      - pattern: $R.query_params.get(...)
+      # --- Mo rong nguon (G6.2) ---
+      # Do tren BenchProctor 18.300 case: cac nguon HTTP khai o tren cham toi
+      # 41.5% case; 10 hinh dang duoi day cham toi THEM 33.8% case ma truoc do
+      # khong rule nao nhin thay. So dem tep that, khong phai uoc luong.
+      - pattern: $R.body                      # Django/Starlette: than yc tho
+      - pattern: $R.META[...]                 # Django: header qua WSGI
+      - pattern: $R.META.get(...)
+      - pattern: $R.get_data(...)             # Flask: than yc tho
+      - pattern: $R.COOKIES[...]              # Django: cookie (chu HOA)
+      - pattern: $R.COOKIES.get(...)
+      - pattern: await $R.form()              # Starlette/FastAPI
+      - pattern: await $R.body()
+      - pattern: await $R.json()
+      # DA BO nguon cau hinh (os.environ / os.getenv) o rule nay - xem khoi
+      # "NGUON CAU HINH" o dau tep. Chi dso-py-taint-cmdi con giu.
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: eval($X, ...)
+              - pattern: exec($X, ...)
+              - pattern: compile($X, ...)
+          - focus-metavariable: $X
+
+  # ===========================================================================
+  # CWE-918 : Server-Side Request Forgery   ZAP ascan 40046
+  # ===========================================================================
+  - id: dso-py-taint-ssrf
+    mode: taint
+    languages: [python]
+    severity: ERROR
+    message: >-
+      CWE-918: May chu goi HTTP toi dia chi lay tu request. Ke tan cong tro dia
+      chi ve mang noi bo hoac endpoint metadata cua nha cung cap dam may
+      (169.254.169.254). Chi cho phep mot danh sach may chu biet truoc.
+    metadata:
+      cwe: "CWE-918"
+      category: security
+      subcategory: [vuln]
+      confidence: MEDIUM
+      references:
+        - https://cwe.mitre.org/data/definitions/918.html
+    pattern-sources:
+      - pattern: $R.args[...]
+      - pattern: $R.args.get(...)
+      - pattern: $R.form[...]
+      - pattern: $R.form.get(...)
+      - pattern: $R.values.get(...)
+      - pattern: $R.get_json(...)
+      - pattern: $R.cookies.get(...)
+      - pattern: $R.headers.get(...)
+      - pattern: $R.GET[...]
+      - pattern: $R.GET.get(...)
+      - pattern: $R.POST[...]
+      - pattern: $R.POST.get(...)
+      - pattern: $R.query_params.get(...)
+      # --- Mo rong nguon (G6.2) ---
+      # Do tren BenchProctor 18.300 case: cac nguon HTTP khai o tren cham toi
+      # 41.5% case; 10 hinh dang duoi day cham toi THEM 33.8% case ma truoc do
+      # khong rule nao nhin thay. So dem tep that, khong phai uoc luong.
+      - pattern: $R.body                      # Django/Starlette: than yc tho
+      - pattern: $R.META[...]                 # Django: header qua WSGI
+      - pattern: $R.META.get(...)
+      - pattern: $R.get_data(...)             # Flask: than yc tho
+      - pattern: $R.COOKIES[...]              # Django: cookie (chu HOA)
+      - pattern: $R.COOKIES.get(...)
+      - pattern: await $R.form()              # Starlette/FastAPI
+      - pattern: await $R.body()
+      - pattern: await $R.json()
+      # DA BO nguon cau hinh (os.environ / os.getenv) o rule nay - xem khoi
+      # "NGUON CAU HINH" o dau tep. Chi dso-py-taint-cmdi con giu.
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: requests.get($X, ...)
+              - pattern: requests.post($X, ...)
+              - pattern: requests.put($X, ...)
+              - pattern: requests.delete($X, ...)
+              - pattern: requests.head($X, ...)
+              - pattern: requests.request($M, $X, ...)
+              - pattern: httpx.get($X, ...)
+              - pattern: httpx.post($X, ...)
+              - pattern: urllib.request.urlopen($X, ...)
+              - pattern: urlopen($X, ...)
+              # Do tren BenchProctor: 72/300 case SSRF co loi dung socket
+              # tho, khong qua requests/urllib - truoc khong sink nao thay.
+              # Viet tuple tuong minh ($X, $CONG) thay vi ($X, ...): dang
+              # co dau ... LONG trong tuple khong thay trong bo rule chinh thuc
+              # nao cua Semgrep, nen khong co bang chung la Semgrep phan tich
+              # duoc. Dang tuong minh thi chac chan phan tich duoc, va van bat
+              # dung create_connection((host, port)).
+              - pattern: socket.create_connection(($X, $CONG), ...)
+              - pattern: create_connection(($X, $CONG), ...)
+          - focus-metavariable: $X
+
+  # ===========================================================================
+  # CWE-601 : Open Redirect         ZAP ascan 20019
+  # ===========================================================================
+  - id: dso-py-taint-open-redirect
+    mode: taint
+    languages: [python]
+    severity: ERROR
+    message: >-
+      CWE-601: Chuyen huong toi dia chi lay truc tiep tu request. Ke tan cong
+      gui link tro ve chinh trang cua ban roi day nan nhan sang trang gia mao.
+      Chi chuyen huong toi duong dan noi bo (url_for) hoac kiem tra host nam
+      trong danh sach cho phep.
+    metadata:
+      cwe: "CWE-601"
+      category: security
+      subcategory: [vuln]
+      confidence: MEDIUM
+      references:
+        - https://cwe.mitre.org/data/definitions/601.html
+    pattern-sources:
+      - pattern: $R.args[...]
+      - pattern: $R.args.get(...)
+      - pattern: $R.form[...]
+      - pattern: $R.form.get(...)
+      - pattern: $R.values.get(...)
+      - pattern: $R.cookies.get(...)
+      - pattern: $R.headers.get(...)
+      - pattern: $R.GET[...]
+      - pattern: $R.GET.get(...)
+      - pattern: $R.POST[...]
+      - pattern: $R.POST.get(...)
+      - pattern: $R.query_params.get(...)
+      # --- Mo rong nguon (G6.2) ---
+      # Do tren BenchProctor 18.300 case: cac nguon HTTP khai o tren cham toi
+      # 41.5% case; 10 hinh dang duoi day cham toi THEM 33.8% case ma truoc do
+      # khong rule nao nhin thay. So dem tep that, khong phai uoc luong.
+      - pattern: $R.body                      # Django/Starlette: than yc tho
+      - pattern: $R.META[...]                 # Django: header qua WSGI
+      - pattern: $R.META.get(...)
+      - pattern: $R.get_data(...)             # Flask: than yc tho
+      - pattern: $R.COOKIES[...]              # Django: cookie (chu HOA)
+      - pattern: $R.COOKIES.get(...)
+      - pattern: await $R.form()              # Starlette/FastAPI
+      - pattern: await $R.body()
+      - pattern: await $R.json()
+      # DA BO nguon cau hinh (os.environ / os.getenv) o rule nay - xem khoi
+      # "NGUON CAU HINH" o dau tep. Chi dso-py-taint-cmdi con giu.
+    pattern-sanitizers:
+      - pattern: url_for(...)
+      - pattern: flask.url_for(...)
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: redirect($X, ...)
+              - pattern: flask.redirect($X, ...)
+              - pattern: HttpResponseRedirect($X, ...)
+              - pattern: django.http.HttpResponseRedirect($X, ...)
+          - focus-metavariable: $X
+
+  # ===========================================================================
+  # CWE-611 : XML External Entity (XXE)   ZAP ascan 90023
+  # Khong dung taint: day la CAU HINH sai, biet chac khi doc dong code.
+  # ===========================================================================
+  - id: dso-py-xxe-resolve-entities
+    languages: [python]
+    severity: ERROR
+    message: >-
+      CWE-611: Bo phan tich XML duoc bat xu ly thuc the ngoai. Tai lieu XML gui
+      len co the khai bao thuc the tro toi tep cuc bo hoac URL noi bo - doc tep
+      may chu hoac gay SSRF. Dat resolve_entities=False (lxml) hoac dung
+      defusedxml thay cho bo phan tich mac dinh.
+    metadata:
+      cwe: "CWE-611"
+      category: security
+      subcategory: [vuln]
+      confidence: HIGH
+      references:
+        - https://cheatsheetseries.owasp.org/cheatsheets/XML_External_Entity_Prevention_Cheat_Sheet.html
+    pattern-either:
+      - pattern: etree.XMLParser(..., resolve_entities=True, ...)
+      - pattern: lxml.etree.XMLParser(..., resolve_entities=True, ...)
+      - pattern: XMLParser(..., resolve_entities=True, ...)
+      - pattern: etree.XMLParser(..., no_network=False, ...)
+
+  # ===========================================================================
+  # CWE-943 : NoSQL Injection (MongoDB $where / $expr)
+  # ===========================================================================
+  # VI SAO THEM RULE NAY (G6.2)
+  # Do tren BenchProctor 18.300 case: 150 case co loi thuoc nhom nay va KHONG
+  # CONG CU NAO cua du an nhin thay chung - bo rule chi co sink SQL (execute,
+  # text, raw), khong co sink MongoDB. Mot repo dung Mongo thi tang SAST cua du
+  # an mu hoan toan voi A03, du README noi "dung duoc cho nhieu loai repo".
+  #
+  # $where va $expr nhan mot bieu thuc JavaScript chay TREN SERVER Mongo. Noi
+  # chuoi vao do la cho ke tan cong viet JavaScript tuy y - nang hon SQLi vi
+  # khong co lop tham so hoa nao chen giua.
+  #
+  # Dang AN TOAN la truy van theo truong, khong dung $where:
+  #       db.users.find({"username": ten})      <- gia tri, khong phai ma
+  #
+  # VI SAO DE MUC ERROR (co quyen chan): tieu chi cua du an la "hinh dang hiem
+  # va gan nhu luon la loi that", khong phai ti le bao nham tren corpus. $where
+  # cong voi noi chuoi la dang hiem trong ma that va gan nhu luon sai. DU DOAN
+  # TREN BENCHPROCTOR: se bao nham khoang 27% case sach cua nhom nay, vi 80/300
+  # case sach dung "kiem bang if roi return 400" - mot dang ma pattern-sanitizers
+  # cua Semgrep KHONG dien ta duoc (xem PHAT_HIEN_BENCHPROCTOR.md). Con so do
+  # la dac diem cua corpus (moi case sach la mot case loi duoc sua vua du),
+  # khong suy ra duoc cho ma that.
+  - id: dso-py-taint-nosqli
+    mode: taint
+    languages: [python]
+    severity: ERROR
+    message: >-
+      CWE-943: Du lieu tu request duoc noi vao bieu thuc $where / $expr cua
+      MongoDB. Hai toan tu nay chay JavaScript tren server nen input thanh ma
+      thuc thi - khong co tham so hoa nao chen giua. Dung truy van theo truong:
+      db.users.find({"username": gia_tri}).
+    metadata:
+      cwe: "CWE-943"
+      category: security
+      subcategory: [vuln]
+      confidence: HIGH
+      references:
+        - https://cwe.mitre.org/data/definitions/943.html
+        - https://www.mongodb.com/docs/manual/reference/operator/query/where/
+    pattern-sources:
+      - pattern: $R.args[...]
+      - pattern: $R.args.get(...)
+      - pattern: $R.args.getlist(...)
+      - pattern: $R.form[...]
+      - pattern: $R.form.get(...)
+      - pattern: $R.values[...]
+      - pattern: $R.values.get(...)
+      - pattern: $R.get_json(...)
+      - pattern: $R.cookies[...]
+      - pattern: $R.cookies.get(...)
+      - pattern: $R.headers[...]
+      - pattern: $R.headers.get(...)
+      - pattern: $R.GET[...]
+      - pattern: $R.GET.get(...)
+      - pattern: $R.POST[...]
+      - pattern: $R.POST.get(...)
+      - pattern: $R.query_params[...]
+      - pattern: $R.query_params.get(...)
+      - pattern: request.json
+      - pattern: request.data
+      # --- Mo rong nguon (G6.2) ---
+      # Do tren BenchProctor 18.300 case: cac nguon HTTP khai o tren cham toi
+      # 41.5% case; 10 hinh dang duoi day cham toi THEM 33.8% case ma truoc do
+      # khong rule nao nhin thay. So dem tep that, khong phai uoc luong.
+      - pattern: $R.body                      # Django/Starlette: than yc tho
+      - pattern: $R.META[...]                 # Django: header qua WSGI
+      - pattern: $R.META.get(...)
+      - pattern: $R.get_data(...)             # Flask: than yc tho
+      - pattern: $R.COOKIES[...]              # Django: cookie (chu HOA)
+      - pattern: $R.COOKIES.get(...)
+      - pattern: await $R.form()              # Starlette/FastAPI
+      - pattern: await $R.body()
+      - pattern: await $R.json()
+      # DA BO nguon cau hinh (os.environ / os.getenv) o rule nay - xem khoi
+      # "NGUON CAU HINH" o dau tep. Chi dso-py-taint-cmdi con giu.
+    pattern-sanitizers:
+      - pattern: int(...)
+      - pattern: float(...)
+      - pattern: uuid.UUID(...)
+      - pattern: bson.ObjectId(...)
+      - pattern: ObjectId(...)
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              # Dang `{..., "k": $X, ...}` voi dau ... o CA HAI phia tung
+              # lam Semgrep tu choi ca tep rule (xem ghi chu trong
+              # chay_kiem_thu.py). Chi de ... o dau - do la dang Semgrep
+              # ghi trong tai lieu cho dict cua Python.
+              # Viet trong KHOI LITERAL (`pattern: |`), khong viet thang.
+              # `{` la cu phap DICT cua YAML: `pattern: {..., "$where": $X}`
+              # bi doc thanh mapping {'...': None, '$where': '$X'} - mot gia
+              # tri null ma Semgrep tu choi, va no tu choi CA TEP RULE. Dieu
+              # nguy hiem la yaml.safe_load van chay tron tru, nen kiem "YAML
+              # co hop le khong" o may KHONG bat duoc. Da mat mot vong CI.
+              # Khoi literal la cach cac rule chinh thuc cua Semgrep viet dict
+              # pattern, vi du trong semgrep-rules/python:
+              #     {..., 'BACKEND': ..., 'OPTIONS': {..., 'autoescape': $F, ...}, ...}
+              - pattern: |
+                  {..., "$where": $X, ...}
+              - pattern: |
+                  {..., '$where': $X, ...}
+              - pattern: |
+                  {..., "$expr": $X, ...}
+              - pattern: |
+                  {..., '$expr': $X, ...}
+          - focus-metavariable: $X
+
+  # ===========================================================================
+  # CWE-1336 : Server-Side Template Injection (SSTI)
+  # ===========================================================================
+  # VI SAO TACH RA KHOI RULE XSS (G6.2)
+  # render_template_string da nam trong sink cua dso-py-taint-xss, nhung rule
+  # do khai metadata.cwe = CWE-79. Tang doi sanh va bo cham deu gom theo HO
+  # CWE: ho cua 79 la {79,80,81,...}, con SSTI duoc danh so CWE-1336 thuoc ho
+  # {94,95,96,1336}. Hai ho KHONG giao nhau, nen canh bao SSTI do rule XSS
+  # phat ra bi BO khi cham - do tren BenchProctor la 147 case co loi khong
+  # duoc tinh, du Semgrep CO bao. Day la loi GAN NHAN, khong phai loi phat
+  # hien, va no lam ti le bat thap hon thuc te ma khong co dau hieu gi.
+  #
+  # Tach thanh rule rieng voi cwe dung la cach sua. SSTI cung khac XSS ve ban
+  # chat: XSS chay ma trong trinh duyet nguoi dung, SSTI chay ma TREN SERVER
+  # (Jinja2 cho truy cap __class__ / __subclasses__ dan den doc tep va RCE).
+  # Giu render_template_string o ca rule XSS: mot dong co the vua la XSS vua
+  # la SSTI, va hai rule co metadata khac nhau nen khong tinh trung case.
+  - id: dso-py-taint-ssti
+    mode: taint
+    languages: [python]
+    severity: ERROR
+    message: >-
+      CWE-1336: Du lieu tu request di vao CHUOI MAU cua bo render (Jinja2
+      render_template_string / Template). Input tro thanh ma mau chay tren
+      server - qua __class__ / __subclasses__ co the doc tep va thuc thi lenh.
+      Truyen du lieu lam BIEN cua mau co san: render_template("t.html", x=val).
+    metadata:
+      cwe: "CWE-1336"
+      category: security
+      subcategory: [vuln]
+      confidence: HIGH
+      references:
+        - https://cwe.mitre.org/data/definitions/1336.html
+        - https://portswigger.net/web-security/server-side-template-injection
+    pattern-sources:
+      - pattern: $R.args[...]
+      - pattern: $R.args.get(...)
+      - pattern: $R.args.getlist(...)
+      - pattern: $R.form[...]
+      - pattern: $R.form.get(...)
+      - pattern: $R.values[...]
+      - pattern: $R.values.get(...)
+      - pattern: $R.get_json(...)
+      - pattern: $R.cookies[...]
+      - pattern: $R.cookies.get(...)
+      - pattern: $R.headers[...]
+      - pattern: $R.headers.get(...)
+      - pattern: $R.GET[...]
+      - pattern: $R.GET.get(...)
+      - pattern: $R.POST[...]
+      - pattern: $R.POST.get(...)
+      - pattern: $R.query_params[...]
+      - pattern: $R.query_params.get(...)
+      - pattern: request.json
+      - pattern: request.data
+      # --- Mo rong nguon (G6.2) ---
+      # Do tren BenchProctor 18.300 case: cac nguon HTTP khai o tren cham toi
+      # 41.5% case; 10 hinh dang duoi day cham toi THEM 33.8% case ma truoc do
+      # khong rule nao nhin thay. So dem tep that, khong phai uoc luong.
+      - pattern: $R.body                      # Django/Starlette: than yc tho
+      - pattern: $R.META[...]                 # Django: header qua WSGI
+      - pattern: $R.META.get(...)
+      - pattern: $R.get_data(...)             # Flask: than yc tho
+      - pattern: $R.COOKIES[...]              # Django: cookie (chu HOA)
+      - pattern: $R.COOKIES.get(...)
+      - pattern: await $R.form()              # Starlette/FastAPI
+      - pattern: await $R.body()
+      - pattern: await $R.json()
+      # DA BO nguon cau hinh (os.environ / os.getenv) o rule nay - xem khoi
+      # "NGUON CAU HINH" o dau tep. Chi dso-py-taint-cmdi con giu.
+    pattern-sanitizers:
+      - pattern: int(...)
+      - pattern: float(...)
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: render_template_string($X, ...)
+              - pattern: flask.render_template_string($X, ...)
+              - pattern: jinja2.Template($X, ...)
+              # KHONG dat `Template($X, ...)` tran: string.Template cua stdlib
+              # cung ten do nhung chi thay the $bien, khong chay ma - bao no la
+              # bao nham, va rule nay co quyen chan nen cai gia la chan oan.
+              - pattern: jinja2.environment.Template($X, ...)
+              - pattern: $ENV.from_string($X, ...)
+          - focus-metavariable: $X

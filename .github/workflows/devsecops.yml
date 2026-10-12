@@ -19,8 +19,13 @@ name: DevSecOps - nam tang kiem thu
 
 on:
   pull_request:
+  # MOI nhanh deu duoc quet du 5 tang, ke ca nhanh vua tao va chua co PR -
+  # de khong ai phai mo PR chi de biet code minh co sach khong.
+  #
+  # Khong lo duyet HAI LAN: khi commit da co PR mo, job nhan-dien cua pipeline
+  # dung chung bo qua lan chay theo push (buoc "Chan trung"). Truoc day cho nay
+  # ghim branches: [main] chinh de tranh trung - gio da co co che chinh xac hon.
   push:
-    branches: [main]   # nhanh phu: mo PR la duoc quet - mot PR, mot check, mot moc
   workflow_dispatch:
   # Quet dinh ky. Ba kich hoat tren deu bat nguon tu MOT THAY DOI MA NGUON,
   # nen chung mu hoan toan voi mot loai rui ro: ma nguon dung yen nhung the
@@ -40,6 +45,7 @@ on:
 permissions:
   contents: read
   security-events: write
+  pull-requests: read      # job nhan-dien can doc danh sach PR de chan trung
 
 jobs:
   security:

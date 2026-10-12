@@ -81,6 +81,22 @@ def doc_json(p: str | None):
         return None
 
 
+def duong_dan_trong_thu_muc(duong: str, goc: Path | None = None) -> Path:
+    """Chuan hoa duong dan va BAT BUOC no nam trong thu muc lam viec.
+
+    Vi sao can: gate.py nhan duong dan tep tu doi so dong lenh cua workflow.
+    Mot gia tri kieu "../../.." hay mot duong dan tuyet doi se doc/ghi ra
+    ngoai vung lam viec cua CI. Chan bang cach chuan hoa roi doi chieu voi
+    goc - cung cach doc_cau_hinh() trong idor.py da lam.
+
+    Nem ValueError neu nam ngoai; noi goi quyet dinh xu ly.
+    """
+    g = (goc or Path.cwd()).resolve()
+    p = Path(duong).resolve()
+    p.relative_to(g)          # nam ngoai goc -> ValueError
+    return p
+
+
 def doc_sarif(p: str | None) -> list[dict] | None:
     """Tra ve danh sach ket qua kem MUC (error/warning/note). None neu khong co tep."""
     data = doc_json(p)
@@ -176,6 +192,154 @@ def khop_ngoai_le(ds: list[dict], loai: str, **k) -> dict | None:
 
 
 # ---------------------------------------------------------------------------
+# BACKSTOP - lo hong DA XAC NHAN khai thac dong, chan BAT KE dong da doi
+#
+# GitHub ruleset chi chan canh bao MOI trong code PR DA DOI. Mot lo hong that -
+# da bi ZAP ban payload khai thac thanh cong, hoac IDOR truy cap cheo tai khoan -
+# nhung duoc neo vao mot tep PR khong dong vao (vi du SQLi o Db.cs trong khi PR
+# chi them Controller) thi GitHub KHONG tinh la moi va cho merge. Do la PR #18.
+#
+# Backstop nay doc thang zap-alerts.json (khong qua buoc neo route cua SARIF),
+# nen no thay lo hong du no nam o dau. Chi tinh phat hien DA KIEM CHUNG DONG:
+#   - ZAP risk=High, confidence khong thuoc (Low, False Positive): active scan
+#     da ban payload va app phan hoi dung dau hieu khai thac.
+#   - IDOR/BOLA: probe co xac thuc doc duoc tai nguyen cua tai khoan khac.
+# SAST tinh (doan theo hinh dang code) KHONG vao day - no van theo mo hinh
+# "moi trong code da doi" cua GitHub de khong chan no tinh cu cua nguoi khac.
+# ---------------------------------------------------------------------------
+def _duong_dan(url: str) -> str:
+    """Lay phan path cua URL, chuan hoa de so van tay on dinh."""
+    from urllib.parse import urlparse
+    p = urlparse(url or "").path or (url or "")
+    return p.rstrip("/") or "/"
+
+
+def phat_hien_da_xac_nhan(zap: dict | None) -> list[dict]:
+    """Danh sach phat hien DAST da xac nhan khai thac, kem van tay on dinh."""
+    if not zap:
+        return []
+    out: list[dict] = []
+    for a in zap.get("alerts", []):
+        if a.get("risk") != "High":
+            continue
+        if str(a.get("confidence", "")) in ("Low", "False Positive"):
+            continue
+        ep = _duong_dan(a.get("url", ""))
+        out.append({
+            "loai": "dast", "nguon": "DAST", "cwe": str(a.get("cweid") or ""),
+            "plugin": str(a.get("plugin") or ""), "endpoint": ep,
+            "param": a.get("param") or "",
+            "loi": a.get("alert", ""),
+            "bang_chung": (f"payload: {a.get('attack', '')[:80]}" if a.get("attack")
+                           else (a.get("evidence", "") or "")[:80]),
+            "van_tay": f"zap|{a.get('cweid') or ''}|{ep}|{a.get('param') or ''}",
+        })
+    for f in zap.get("idor", []):
+        ep = _duong_dan(f.get("url", ""))
+        out.append({
+            "loai": "idor", "nguon": "DAST-idor", "cwe": "639",
+            "plugin": "idor", "endpoint": ep, "param": "",
+            "loi": f.get("alert", "IDOR/BOLA (CWE-639)"),
+            "bang_chung": (f.get("attack", "") or "")[:80],
+            "van_tay": f"idor|{ep}",
+        })
+    return out
+
+
+def _tai_baseline_xac_nhan(p: str | None) -> set[str]:
+    """Van tay cac phat hien xac nhan da biet tren main. Chap nhan 2 dang tep:
+    danh sach chuoi van tay, hoac {"van_tay": [...]}."""
+    if not p:
+        return set()
+    try:
+        # Ngoai thu muc lam viec -> coi nhu KHONG co baseline. Fail-closed:
+        # moi phat hien xac nhan deu thanh "moi", tuc chat hon chu khong long hon.
+        duong_dan_trong_thu_muc(p)
+    except ValueError:
+        print(f"::warning::--baseline-xac-nhan tro ra ngoai thu muc lam viec, "
+              f"bo qua baseline: {p}")
+        return set()
+    d = doc_json(p)
+    if isinstance(d, list):
+        return {str(x) for x in d}
+    if isinstance(d, dict):
+        return {str(x) for x in d.get("van_tay", [])}
+    return set()
+
+
+def _cong_xac_nhan(args, ngoai_le: list[dict]) -> int:
+    """Cong chan backstop, chay DOC LAP voi tom tat thuong. Thoat 1 neu con lo
+    hong DAST da xac nhan khong nam trong baseline/ngoai-le."""
+    zap = doc_json(args.zap)
+    baseline = _tai_baseline_xac_nhan(args.baseline_xac_nhan)
+    con_lai: list[dict] = []
+    da_ngoai_le: list[dict] = []
+    for p in phat_hien_da_xac_nhan(zap):
+        if p["van_tay"] in baseline:
+            continue
+        e = (khop_ngoai_le(ngoai_le, "dast-xac-nhan", url=p["endpoint"])
+             or khop_ngoai_le(ngoai_le, "idor", url=p["endpoint"])
+             or khop_ngoai_le(ngoai_le, "dast", plugin=p["plugin"], url=p["endpoint"]))
+        if e:
+            da_ngoai_le.append(e)
+            continue
+        con_lai.append(p)
+
+    con_lai.sort(key=lambda c: (c["nguon"], c["endpoint"]))
+    ket_luan = "CHAN" if con_lai else "QUA"
+
+    print("=" * 70)
+    if con_lai:
+        print(f"CONG XAC NHAN: CHAN - {len(con_lai)} lo hong DAST DA XAC NHAN khai thac")
+        print("  (chan bat ke tep do co nam trong thay doi cua PR hay khong)")
+        for i, p in enumerate(con_lai, 1):
+            o = p["endpoint"] + (f"?{p['param']}=" if p["param"] else "")
+            print(f"\n {i}. {p['nguon']}  CWE-{p['cwe']}  {o}")
+            print(f"    Loi : {p['loi']}")
+            if p["bang_chung"]:
+                print(f"    Bang chung: {p['bang_chung']}")
+        print("\n  Cho qua: sua lo hong, hoac ghi ngoai le co ly_do / nguoi_duyet / het_han")
+        print("  trong .devsecops/ngoai-le.json (loai 'dast-xac-nhan', khop theo 'url').")
+    else:
+        print("CONG XAC NHAN: QUA - khong co lo hong DAST da xac nhan nao ngoai baseline/ngoai-le.")
+    print("=" * 70)
+
+    # args.summary KHONG rang buoc vao thu muc lam viec duoc: mac dinh cua no la
+    # $GITHUB_STEP_SUMMARY, ma GitHub dat tep do NGOAI workspace (trong thu muc
+    # runner). Rang buoc vao cwd la mat han trang tom tat tren CI. Gia tri nay
+    # den tu moi truong cua runner chu khong tu noi dung repo, nen khong phai
+    # duong vao cua ke tan cong qua pull request.
+    if args.summary:
+        md = []
+        if con_lai:
+            md.append(f"\n## 🚫 Cổng xác nhận — CHẶN {len(con_lai)} lỗ hổng DAST đã chứng minh khai thác\n")
+            md.append("_Chặn bất kể dòng đó có nằm trong thay đổi của PR hay không — vì đây là lỗ hổng "
+                      "đã bị khai thác động thành công, không phải suy đoán tĩnh._\n")
+            md.append("| # | Nguồn | Endpoint | Lỗi | Bằng chứng |")
+            md.append("|---|---|---|---|---|")
+            for i, p in enumerate(con_lai, 1):
+                o = p["endpoint"] + (f"?{p['param']}=" if p["param"] else "")
+                md.append(f"| {i} | {p['nguon']} CWE-{p['cwe']} | `{o}` | {p['loi']} | {p['bang_chung']} |")
+        else:
+            md.append("\n## ✅ Cổng xác nhận — không có lỗ hổng DAST đã chứng minh nào mới\n")
+        with open(args.summary, "a", encoding="utf-8") as fh:
+            fh.write("\n".join(md) + "\n")
+
+    try:
+        out = duong_dan_trong_thu_muc(args.out)
+    except ValueError:
+        # Loi CAU HINH, khong phai ket luan bao mat. Dung ma 2 de khong ai doc
+        # lan thanh "co lo hong" (0 = qua, 1 = chan).
+        print(f"::error::--out tro ra ngoai thu muc lam viec: {args.out}")
+        return 2
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps({"ket_luan": ket_luan, "xac_nhan": con_lai,
+                               "ngoai_le_ap_dung": da_ngoai_le}, indent=2, ensure_ascii=False),
+                   encoding="utf-8")
+    return 1 if con_lai else 0
+
+
+# ---------------------------------------------------------------------------
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--sast", help="SARIF Semgrep quet day du")
@@ -188,6 +352,17 @@ def main() -> int:
     ap.add_argument("--cve-strict", action="store_true",
                     help="chan CVE Critical ke ca khi khong doi thu vien (quet dinh ky)")
     ap.add_argument("--zap", help="zap-alerts.json tu dast_scan.py")
+    ap.add_argument("--chan-xac-nhan", action="store_true",
+                    help="BACKSTOP (cong chan rieng): thoat ma 1 neu co phat hien DAST DA XAC NHAN "
+                         "khai thac - ZAP High tin cay khong-thap, hoac IDOR/BOLA - ma khong nam "
+                         "trong baseline/ngoai-le. CHAN BAT KE dong do co nam trong code PR da doi "
+                         "hay khong. Bit lo 'lo hong that nhung o tep khong doi nen GitHub khong "
+                         "tinh la moi' (PR #18 cua VulnShop-App). Lo logic doanh nghiep khong co "
+                         "probe xac nhan nen tu nhien khong roi vao day.")
+    ap.add_argument("--baseline-xac-nhan", default=".devsecops/baseline-confirmed.json",
+                    help="Danh sach van tay phat hien DAST da xac nhan CO SAN tren main (no ky thuat "
+                         "da biet). Khong co tep -> coi main sach -> moi phat hien xac nhan deu la "
+                         "moi (fail-closed, chat hon chu khong long hon).")
     ap.add_argument("--dast-skipped", default="", help="ly do tang dong bi bo qua, neu co")
     ap.add_argument("--routes", default="routes_map.json")
     ap.add_argument("--ngoai-le", default=".devsecops/ngoai-le.json")
@@ -200,6 +375,10 @@ def main() -> int:
     tham_khao: list[str] = [] # dong ghi chu khong chan
     ghi_chu: list[str] = []   # ve pham vi / bo qua
     ngoai_le, ngoai_le_het = doc_ngoai_le(args.ngoai_le)
+
+    # Backstop chay doc lap voi tom tat thuong: khong dong vao nhanh logic cu.
+    if args.chan_xac_nhan:
+        return _cong_xac_nhan(args, ngoai_le)
 
     def thieu_tang(ten: str, vi_sao: str) -> None:
         """Mot tang DUOC YEU CAU chay nhung khong co ket qua -> CHAN.

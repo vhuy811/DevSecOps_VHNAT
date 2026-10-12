@@ -12,6 +12,11 @@ obj/
 reports/
 scanners.json
 
+# Ket qua cua cac phong do (phong-do*.yml, kiem-thu-cong-cu.yml deu ghi vao day).
+# Chay mot phong do o may minh de lai thu muc nay; SARIF trong do co the chua
+# doan ma nguon cua corpus ben thu ba (Juliet, BenchProctor) nen khong commit.
+ket-qua/
+
 # Python
 __pycache__/
 *.pyc

@@ -1,0 +1,263 @@
+name: Phong do Java
+
+# G4.1 - DO BO RULE JAVA TREN CORPUS THAT
+#
+# VI SAO CAN TEP NAY
+# README noi bo cong cu "dung duoc cho nhieu loai repo": 46 rule C#, 10 rule
+# Python, 8 rule Java. Nhung chi bo rule C# tung duoc do tren corpus (Juliet
+# C# 1.3). Rule Java tu truoc den gio chi qua fixture Co_Loi.java /
+# Da_Khu_Doc.java - tuc chi chung minh "rule khong mu va khong bao nham tren
+# 9 case tu viet". Do khong phai mot ti le, va cau "dung duoc cho repo Java"
+# dang la tuyen bo chua kiem chung.
+#
+# Tep nay bien no thanh con so, bang dung phuong phap da dung cho C#: Juliet
+# Java 1.3 cua NIST, cham theo ham bad/good, tach theo CWE / duong di du lieu /
+# loai nguon.
+#
+# BO DO
+# NIST SARD bi proxy cua moi truong phat trien chan, nen dung ban mirror tren
+# GitHub (unittestbot/juliet-java-test-suite) va GHIM COMMIT. Ghim la bat buoc:
+# corpus doi thi so do cu khong con so sanh duoc voi so do moi, va khong ai
+# biet vi sao lech.
+#
+# AN TOAN: corpus la ma nguon cua repo khac va CO Y chua lo hong. O day no chi
+# duoc DOC: Semgrep quet tinh, CodeQL chay voi build-mode none nen khong bien
+# dich va khong chay gi cua no. Khong co buoc nao thuc thi ma trong corpus.
+#
+# LAN DO #1 (da chay): rule du an bat 11.8% voi 0.3% bao nham.
+# Du doan truoc khi do la ~15% (27% case nguon HTTP x 54% case luong trong mot
+# ham). Thuc te 11.8% - nam ngay duoi tran, tuc chan doan "thieu nguon" dung.
+#
+# DA DO LAI TREN CORPUS de dinh luong chinh xac truoc khi sua (CWE-89/78/81,
+# 4920 tep, 2997 case):
+#     nguon HTTP                          777/2997 = 25.9%
+#     nguon KHAC HTTP                    2220/2997 = 74.1%
+#     tran cu  = HTTP & luong-trong-ham   420/2997 = 14.0%
+#     tran moi = moi nguon & trong-ham   1620/2997 = 54.1%
+# Hinh dang nguon that cua cac ho ngoai HTTP, doc tu ham bad cua corpus:
+#     Properties/System.getProperty  761 tep | ResultSet.getString  561 tep
+#     BufferedReader.readLine        (TCP, URLConnection, console, doc tep)
+#     System.getenv                  222 tep
+#
+# DU DOAN SAU KHI MO RONG NGUON (commit G6.3): 11.8% x (54.1/14.0) ~ 46%.
+# Neu lan do nay ra thap hon nhieu thi nguyen nhan KHONG con la thieu nguon,
+# va phai doc lai dich chu khong mo rong nguon tiep.
+#
+# -----------------------------------------------------------------------------
+# DA DAO NGUOC MOT PHAN VIEC MO RONG TREN - va day la ket luan dang ke nhat cua
+# ca qua trinh do:
+#
+# Hai trong bon ho nguon duoc them la CAU HINH, khong phai du lieu: System.getenv
+# (222 tep) va System.getProperty (761 tep) - cong 983 tep, ho ngoai-HTTP LON
+# NHAT cua corpus. Nhan chung la nhiem doc lam ti le bat Juliet tang rat manh.
+#
+# Nhung chung chi la nguon TRONG JULIET. Juliet dung getProperty vi can mot gia
+# tri ma trinh bien dich khong gap lai duoc, KHONG vi no mo hinh hoa ke tan cong.
+# Ma that dung dung hai ham nay de doc CAU HINH TRIEN KHAI. Bang chung doc lap:
+# trong bo rule chinh thuc semgrep/semgrep-rules, 0/21 rule taint Java dung
+# chung lam nguon. Ben Python co 11/59 tep dung, va TAT CA deu la dich THUC THI
+# (subprocess, os.system, asyncio exec, spawn, hoac chay mot chuoi ma) - khong
+# tep nao dat nguon nay cho dich SQL, duong dan, XSS, SSRF hay chuyen huong.
+#
+# Gia phai tra do duoc o "Phong do logic nghiep vu" #7: rule
+# dso-java-taint-path-traversal CHAN OAN mot ham chi lam
+#     new File(System.getProperty("java.io.tmpdir"), "bao_cao_tam.csv")
+#
+# Da bo ca hai khoi moi rule taint tru dso-java-taint-cmdi (dich la thuc thi
+# lenh - cho duy nhat bo rule chinh thuc chap nhan). Giu lai: $X.readLine() va
+# $RS.getString/getObject - do la nguon DOC DU LIEU that.
+#
+# Nen ti le bat o lan do sau se THAP HON ~46%, va day la so dung hon chu khong
+# phai so te hon: "mo rong nguon la mo rong vung bat ma khong mo rong vung bao
+# nham" chi dung voi nguon doc du lieu. Voi nguon cau hinh no sai, va cai gia
+# khong hien ra tren Juliet - chi hien ra tren ma that.
+#
+# Chot kiem de khong ai (ke ca tac gia, dang di tim diem bat) them lai trong im
+# lang: nguon_cauhinh_sai_cho() trong semgrep-rules/kiem-thu-rule/chay_kiem_thu.py
+# -----------------------------------------------------------------------------
+#
+# LUU Y khi doc ket qua: lan do #1 cho thay tren Java rule cua du an KHONG
+# them gi cho cong chan, vi CodeQL-local mot minh da dat 94.2%. Gia tri cua bo
+# rule tu viet o Java nam o cho CodeQL khong co san (runner self-hosted, repo
+# private khong co GitHub Advanced Security), khong nam o do phu tang them.
+
+on:
+  workflow_dispatch:
+    inputs:
+      cwe:
+        description: 'Danh sach CWE (rong = mac dinh)'
+        required: false
+  pull_request:
+    paths:
+      - 'semgrep-rules/sast-detect-java.yaml'
+      - 'semgrep-rules/kiem-thu-rule/Co_Loi.java'
+      - 'semgrep-rules/kiem-thu-rule/Da_Khu_Doc.java'
+      - 'tools/cham_diem.py'
+      - '.github/workflows/phong-do-java.yml'
+
+permissions:
+  contents: read
+  actions: read
+  security-events: write   # codeql-action can quyen nay ke ca khi upload: never
+
+env:
+  # Ghim commit cua ban mirror. Doi SHA la doi bo do - phai ghi ro trong commit.
+  JULIET_JAVA_REPO: https://github.com/unittestbot/juliet-java-test-suite.git
+  JULIET_JAVA_SHA: 8b5b9d6edf20482abef09bf9300600556ba4e4b0
+  # Chi cac CWE ma bo rule Java nham tới. Corpus co 112 CWE; lay het thi CodeQL
+  # phai doc ca tram nghin tep ma phan lon khong rule nao cham toi.
+  # KHONG co CWE-918 (SSRF) va CWE-611 (XXE) trong corpus Java -> hai rule
+  # dso-java-taint-ssrf va dso-java-xxe-dtd-enabled khong do duoc o day.
+  CWE_MAC_DINH: '89,78,23,36,80,81,601,643,90'
+
+jobs:
+  juliet-java:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false   # khong de GITHUB_TOKEN lai trong .git/config
+
+      # Hong o day thi dung luon, khong ton thoi gian do corpus.
+      - name: Kiem thu rule tren fixture (Co_Loi / Da_Khu_Doc)
+        run: python semgrep-rules/kiem-thu-rule/chay_kiem_thu.py
+
+      - name: Lay Juliet Java 1.3 (ghim commit, chi cac CWE can do)
+        run: |
+          CWE="${{ inputs.cwe || env.CWE_MAC_DINH }}"
+          THU_MUC=$(echo "$CWE" | tr ',' '\n' | sed 's/^/juliet-cwe/' | tr '\n' ' ')
+          echo "Lay cac thu muc: $THU_MUC"
+          mkdir juliet_java && cd juliet_java
+          git init -q .
+          git remote add origin "$JULIET_JAVA_REPO"
+          # KHONG dung -q: git cua runner (2.43) khong co co nay cho
+          # sparse-checkout init va bao 'unknown switch' -> job chet.
+          # Da hong HAI lan vi dung ly do: CI #1 (luc viet moi) va CI #3
+          # (khi commit 5a7881a vo tinh dua -q tro lai VA xoa mat chinh
+          # dong chu thich nay). Nen gio co them tools/kiem_workflow.py
+          # canh giu - chu thich mot minh khong du.
+          git sparse-checkout init --cone
+          git sparse-checkout set $THU_MUC
+          # blob:none + depth 1 + sparse: 96MB thay vi 335MB cho ca repo.
+          git fetch -q --depth 1 --filter=blob:none origin "$JULIET_JAVA_SHA"
+          git checkout -q FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$JULIET_JAVA_SHA" \
+            || { echo "SHA khong khop - bo do khong phai ban da ghim"; exit 1; }
+          cd ..
+          SO_JAVA=$(find juliet_java -name '*.java' | wc -l)
+          echo "Tep .java lay duoc: $SO_JAVA"
+          # Khang dinh KET QUA chu khong chi khang dinh ma thoat. Hai lan trong
+          # phien nay bai thu cuc bo "da chay dung lenh nay" van lech voi runner
+          # (co -q cua sparse-checkout, ma thoat cua unzip). Doi hoi dung so tep
+          # da dem o may: lay thieu thi mau so sai va ti le se dep gia tao.
+          test "$SO_JAVA" -eq 9458 \
+            || { echo "So tep .java la $SO_JAVA, mong doi 9458 - sparse checkout khong day du"; exit 1; }
+
+      - name: Chon CWE va dong goi thu muc do
+        run: |
+          mkdir -p bench/src ket-qua
+          python tools/cham_diem.py chon --goc juliet_java \
+            --cwe "${{ inputs.cwe || env.CWE_MAC_DINH }}" --dich bench/src/testcases
+          # Xoa ban goc: de lai thi CodeQL doc hai lan so tep can thiet.
+          rm -rf juliet_java
+          echo "$JULIET_JAVA_SHA" > ket-qua/juliet-java.sha
+          # Ma mau ham Bad VA ham Good cua moi CWE - de doc sink that truoc khi
+          # sua rule, thay vi doan.
+          python tools/cham_diem.py mau --goc bench/src/testcases \
+            --cwe "${{ inputs.cwe || env.CWE_MAC_DINH }}" --md ket-qua/mau.md > /dev/null
+          cat ket-qua/mau.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Semgrep - rule du an (dang co quyen chan trong pipeline)
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src semgrep/semgrep \
+            semgrep scan --config semgrep-rules/sast-detect-java.yaml \
+            --no-git-ignore --disable-nosem --metrics=off \
+            --sarif --output ket-qua/semgrep-du-an.sarif bench/src
+
+      - name: Semgrep - rule cong dong (p/java, p/security-audit)
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src semgrep/semgrep \
+            semgrep scan --config p/java --config p/security-audit \
+            --no-git-ignore --disable-nosem --metrics=off \
+            --sarif --output ket-qua/semgrep-cong-dong.sarif bench/src
+
+      - name: CodeQL - khoi tao (Java, khong can build, security-extended)
+        id: cq_init
+        uses: github/codeql-action/init@v4
+        with:
+          languages: java
+          build-mode: none
+          queries: security-extended
+          source-root: bench/src
+
+      # Giong phong do C#: action analyze chi dung de dong goi CSDL, KHONG chay
+      # truy van. Tren pull_request action bat "diff-informed analysis" va chi
+      # bao canh bao trong dong PR sua - corpus khong nam trong diff nen cot
+      # codeql se tut gia tao.
+      - name: CodeQL - dong goi CSDL (khong chay truy van)
+        uses: github/codeql-action/analyze@v4
+        with:
+          upload: never
+          skip-queries: true
+          category: phong-do-juliet-java
+
+      - name: CodeQL - phan tich (threat model mac dinh = remote)
+        run: |
+          CQ="${{ steps.cq_init.outputs.codeql-path }}"
+          "$CQ" database analyze "$RUNNER_TEMP/codeql_databases/java" \
+            codeql/java-queries:codeql-suites/java-security-extended.qls \
+            --format=sarif-latest \
+            --output=ket-qua/codeql.sarif --threads=0 --rerun
+
+      - name: CodeQL - phan tich lai voi threat model local (do them)
+        continue-on-error: true
+        run: |
+          CQ="${{ steps.cq_init.outputs.codeql-path }}"
+          "$CQ" database analyze "$RUNNER_TEMP/codeql_databases/java" \
+            codeql/java-queries:codeql-suites/java-security-extended.qls \
+            --threat-model=local --format=sarif-latest \
+            --output=ket-qua/codeql-local.sarif --threads=0 --rerun
+          # --rerun bat buoc, neu khong CodeQL dung lai ket qua da luu trong CSDL
+          # va bo qua threat model moi.
+
+      # Nhom chan mo hinh DUNG cai pipeline that dang chay (xem
+      # devsecops-reusable.yml): Semgrep muc ERROR + CodeQL-local medium, tru
+      # hai truy van hinh dang java/concatenated-*.
+      #
+      # BO LOC O DAY PHAI GIONG BO LOC THAT, khong duoc gan dung. Neu lech thi
+      # cot `pipeline-hien-tai` cua bang do mot con so va cong chan that cho mot
+      # con so khac, roi bao cao trich con so khong ton tai o dau ca - do la thu
+      # te nhat mot bo do co the lam. Nen:
+      #   - query-filters cua pipeline loai: cs/xml/xpath-injection (chi C#),
+      #     java/concatenated-sql-query, java/concatenated-command-line.
+      #   - o day chi loai hai cai Java; cs/... khong sinh canh bao tren corpus
+      #     Java nen khong can nhac.
+      # Danh sach ID lay tu hang so TRUY_VAN_NOI_CHUOI trong tools/cham_diem.py
+      # (truc nguong dung chung hang so do, muc `med-noi`), nen hai cho khong
+      # lech nhau duoc.
+      #
+      # --do-nguong van do CA muc `medium` (khong loai gi) de doc duoc dung cai
+      # gia cua quyet dinh loai: so sanh `med-noi` voi `medium` tren cung bang.
+      - name: Cham diem
+        run: |
+          python tools/cham_diem.py juliet --goc bench/src/testcases \
+            --sarif semgrep-du-an=ket-qua/semgrep-du-an.sarif \
+            --sarif semgrep-cong-dong=ket-qua/semgrep-cong-dong.sarif \
+            --sarif codeql=ket-qua/codeql.sarif \
+            --sarif codeql-local=ket-qua/codeql-local.sarif \
+            --chan "chi-semgrep=semgrep-du-an:level=error" \
+            --chan "pipeline-hien-tai=semgrep-du-an:level=error" \
+            --chan "pipeline-hien-tai=codeql-local:sev>=4&!id=java/concatenated-sql-query,java/concatenated-command-line" \
+            --do-nguong \
+            --ten-bo-do "Juliet Java 1.3 (NIST, ban mirror ghim 8b5b9d6)" \
+            --out ket-qua/juliet-java.json --md ket-qua/juliet-java.md
+          cat ket-qua/juliet-java.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Luu ket qua
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: phong-do-juliet-java
+          path: ket-qua/
+          retention-days: 30

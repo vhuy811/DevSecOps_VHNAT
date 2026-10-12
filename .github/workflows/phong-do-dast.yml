@@ -49,11 +49,13 @@ jobs:
       - name: Lay bo cong cu
         uses: actions/checkout@v7
         with:
+          persist-credentials: false   # khong de GITHUB_TOKEN lai trong .git/config
           path: toolkit
 
       - name: Lay VulnShop-App o ban co loi
         uses: actions/checkout@v7
         with:
+          persist-credentials: false   # khong de GITHUB_TOKEN lai trong .git/config
           repository: vhuy811/VulnShop-App
           ref: ${{ matrix.ref }}
           path: app

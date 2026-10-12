@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Kiem thu bo rule Semgrep cua du an.
+Kiem thu bo rule Semgrep cua du an (C# + Python + Java).
 
 VI SAO CAN TEP NAY
 Mot rule chua chay thu thi chua phai la rule - no chi la mot y dinh viet bang
@@ -13,15 +13,19 @@ Tep nay bien dieu do thanh mot cau hoi tra loi duoc.
 BA DIEU KIEN DUOC KIEM TRA
   1. Moi rule PHAT HIEN phai bat duoc it nhat mot case trong Co_Loi.*
      -> that bai nghia la rule do mu, khong bao ve gi ca
-  2. KHONG rule phat hien nao duoc bat trong Da_Khu_Doc.cs
+  2. KHONG rule phat hien nao duoc bat trong Da_Khu_Doc.*
      -> that bai nghia la rule bao nham ma nguon da khu doc (duong tinh gia)
-  3. Moi rule SANITIZER phai bat duoc bang chung trong Da_Khu_Doc.cs
+  3. Moi rule SANITIZER phai bat duoc bang chung trong Da_Khu_Doc.*
      -> that bai nghia la khong co nhan FILTERED nao sinh ra duoc
+
+DA NGON NGU: moi ngon ngu co mot cap fixture Co_Loi.<duoi> / Da_Khu_Doc.<duoi>.
+Rule cua ngon ngu nao chi khop fixture cua ngon ngu do, nen dieu kien 1 van
+dung cho tung rule rieng le.
 
 CACH CHAY
     python semgrep-rules/kiem-thu-rule/chay_kiem_thu.py
 
-Can Docker Desktop dang chay, hoac semgrep cai san trong PATH.
+Can semgrep cai san trong PATH (pip install semgrep), hoac Docker dang chay.
 Ma tra ve 0 neu dat ca ba dieu kien, 1 neu khong.
 """
 from __future__ import annotations
@@ -35,12 +39,36 @@ import tempfile
 from pathlib import Path
 
 THU_MUC = Path(__file__).resolve().parent
+# Thu muc con PHAI loai khoi lan quet fixture. logic-nghiep-vu/ la corpus "ma
+# DUNG ma trong nhu loi" - no co bo cham rieng (tools/kiem_thu_logic_nghiepvu.py)
+# va dap an rieng (0 canh bao muc chan). De lan vao day thi hong hai chieu:
+#   - DIEU KIEN 1 nhan canh bao tren corpus lam "bang chung rule bat duoc loi",
+#     trong khi corpus do dang le phai SACH. Lan chay CI #6 cho thay dung the:
+#     dso-weak-hash va dso-weak-random "DAT" mot phan nho ban vao
+#     LogicNghiepVu.cs. Mot rule chi bat duoc corpus se qua dieu kien 1 bang
+#     chinh bao nham cua no.
+#   - va corpus khong duoc kiem o dieu kien 2 (chi xet tep ten Da_Khu_Doc.*),
+#     nen bao nham o do khong bi bat.
+LOAI_KHOI_FIXTURE = ("logic-nghiep-vu", "thu-vien-js")
 RULES = THU_MUC.parent
-TEP_PHAT_HIEN = RULES / "sast-detect.yaml"
-TEP_SANITIZER = RULES / "sanitizer-check.yaml"
-TEP_AN_TOAN = "Da_Khu_Doc.cs"
+
+# Moi tep rule PHAT HIEN. Tep khong ton tai thi bo qua, de ban bo cong cu cu
+# (chua co rule Python/Java) van chay kiem thu duoc.
+TEN_TEP_PHAT_HIEN = [
+    "sast-detect.yaml",          # C# / Razor
+    "sast-detect-python.yaml",   # Python
+    "sast-detect-java.yaml",     # Java
+]
+TEN_TEP_SANITIZER = "sanitizer-check.yaml"
+
+# Fixture "da khu doc" cua moi ngon ngu: Da_Khu_Doc.cs / .py / .java
+TIEN_TO_AN_TOAN = "Da_Khu_Doc"
 
 ID_RE = re.compile(r"^\s*-\s*id:\s*(\S+)\s*$", re.M)
+
+
+def tep_phat_hien() -> list[Path]:
+    return [RULES / t for t in TEN_TEP_PHAT_HIEN if (RULES / t).is_file()]
 
 
 def doc_id_rule(tep: Path) -> list[str]:
@@ -50,6 +78,141 @@ def doc_id_rule(tep: Path) -> list[str]:
     return ID_RE.findall(tep.read_text(encoding="utf-8"))
 
 
+def la_an_toan(ten_tep: str) -> bool:
+    """Tep fixture 'da khu doc' cua bat ky ngon ngu nao."""
+    return Path(ten_tep).stem == TIEN_TO_AN_TOAN
+
+
+KHOI_RULE_RE = re.compile(r"^  - id: (\S+)$", re.M)
+PATTERN_RE = re.compile(r"^\s*- pattern:\s*(.+?)\s*$", re.M)
+
+
+def pattern_khong_phai_chuoi(tep: Path) -> list[str]:
+    """Tim gia tri cua `pattern:` (va ho hang) KHONG duoc boc nhay.
+
+    VI SAO CAN CHOT NAY - mot cai bay da lam hong mot vong CI:
+        - pattern: {..., "$where": $X}
+    `{` va `[` la cu phap DICT/LIST cua YAML, nen dong tren bi doc thanh
+    mapping {'...': None, '$where': '$X'}. Semgrep tu choi vi "null values are
+    prohibited", va no tu choi CA TEP RULE - tuc 10 rule Python mat sach, roi
+    lan quet tra ve 0 ket qua cho MOI rule cua MOI tep.
+
+    Cai bay o cho: yaml.safe_load chay HOAN TOAN tron tru. Kiem "YAML co hop le
+    khong" o may KHONG bat duoc loi nay - vi no hop le, chi khong phai thu minh
+    dinh viet. Chot nay kiem dung cai can kiem: gia tri co duoc boc nhay khong.
+
+    Dung regex chu khong dung PyYAML: cac job phong do khong cai PyYAML, va mot
+    chot an toan thi khong duoc them phu thuoc moi.
+    """
+    KHOA = (r"pattern|pattern-not|pattern-inside|pattern-not-inside"
+            r"|pattern-regex|pattern-not-regex|focus-metavariable")
+    rx = re.compile(rf"^\s*-?\s*({KHOA}):\s*([\{{\[].*)$")
+    van_de: list[str] = []
+    for i, dong in enumerate(tep.read_text(encoding="utf-8").splitlines(), 1):
+        m = rx.match(dong)
+        if m:
+            van_de.append(
+                f"{tep.name}:{i}: `{m.group(1)}:` bat dau bang "
+                f"{m.group(2)[0]!r} nen YAML doc thanh dict/list, khong phai "
+                f"chuoi -> Semgrep tu choi CA TEP. Boc nhay: "
+                f"{m.group(1)}: '{m.group(2)[:40]}...'")
+    return van_de
+
+
+def nguon_sink_trung(tep: Path) -> list[str]:
+    """Tim rule taint co mot pattern vua la NGUON vua la SINK.
+
+    Day la mot cai bay im lang. Vi du that (CI #20): rule
+    dso-taint-path-traversal khai File.ReadAllText(...) la nguon, trong khi
+    sink cua no la File.$F($X, ...) voi $F la metavariable - nen
+    File.ReadAllText khop ca hai dau va rule tu bao chinh no, ke ca khi doi so
+    la hang chuoi. Hau qua neu lot luoi: moi loi goi File.ReadAllText trong
+    ung dung thanh canh bao muc ERROR, tuc la chan merge moi lan doc tep.
+
+    Kiem o day vi no khong can chay Semgrep, va vi bao nham dang nay rat kho
+    doc khi nhin qua ket qua quet - no giong mot canh bao that.
+    """
+    van_de: list[str] = []
+    noi_dung = tep.read_text(encoding="utf-8")
+    moc = [(m.group(1), m.start()) for m in KHOI_RULE_RE.finditer(noi_dung)]
+    for k, (rid, bd) in enumerate(moc):
+        kt = moc[k + 1][1] if k + 1 < len(moc) else len(noi_dung)
+        khoi = noi_dung[bd:kt]
+        if "mode: taint" not in khoi:
+            continue
+
+        def lay(ten: str) -> set[str]:
+            if f"    {ten}:" not in khoi:
+                return set()
+            sau = khoi.split(f"    {ten}:", 1)[1]
+            # dung o muc thuoc dau tien cua rule (4 space + chu)
+            for d in ("\n    pattern-", "\n    metadata:", "\n    message:",
+                      "\n    severity:", "\n    languages:", "\n    mode:"):
+                i = sau.find(d)
+                if i > 0:
+                    sau = sau[:i]
+            return set(PATTERN_RE.findall(sau))
+
+        nguon, sink = lay("pattern-sources"), lay("pattern-sinks")
+        trung = nguon & sink
+        for s in sink:                      # sink dung metavariable cho ten ham
+            if ".$F(" in s:
+                tien = s.split(".$F(")[0] + "."
+                trung |= {n for n in nguon if n.startswith(tien)}
+        if trung:
+            van_de.append(f"{rid} ({tep.name}): pattern vua la nguon vua la sink "
+                          f"-> {', '.join(sorted(trung))}")
+    return van_de
+
+
+NGUON_CAUHINH_RE = re.compile(
+    r"^\s*- pattern:\s*(os\.environ\[\.\.\.\]|os\.environ\.get\(\.\.\.\)"
+    r"|os\.getenv\(\.\.\.\)|System\.getenv\(\.\.\.\)"
+    r"|\$P\.getProperty\(\.\.\.\)"
+    r"|Environment\.GetEnvironmentVariable\(\.\.\.\))\s*(#.*)?$")
+
+
+def nguon_cauhinh_sai_cho(tep: Path) -> list[str]:
+    """Nguon CAU HINH chi duoc lam nguon cho rule tiem LENH, khong cho rule khac.
+
+    Nguon cau hinh = bien moi truong va system property: os.environ, os.getenv,
+    System.getenv, $P.getProperty.
+
+    VI SAO CHOT NAY TON TAI - no la ket luan cua mot lan do, khong phai so thich:
+      - Bo rule chinh thuc semgrep/semgrep-rules: 0/21 rule taint Java dung
+        getenv hoac getProperty lam nguon. Ben Python co 11/59 tep dung, va TAT
+        CA deu dat nguon nay cho dich THUC THI (subprocess, os.system, asyncio
+        exec, spawn, chay chuoi ma) - khong tep nao dung cho SQL hay duong dan.
+      - Juliet Java dung getProperty lam nguon o 761 tep va getenv o 222 tep -
+        ho nguon ngoai-HTTP lon nhat cua corpus. Nhan chung la nhiem doc lam ti
+        le bat tren Juliet tang manh.
+      - Nhung ma THAT dung hai ham nay de doc CAU HINH TRIEN KHAI. Corpus logic
+        nghiep vu do duoc hau qua: dso-java-taint-path-traversal chan oan
+        new File(System.getProperty("java.io.tmpdir"), "bao_cao_tam.csv").
+
+    Tuc la: mo rong sang nguon cau hinh lam dep so tren corpus tong hop va lam
+    xau hanh vi tren ma that. Chot nay o day de lan sau co ai (ke ca chinh tac
+    gia, dang di tim diem bat) them lai thi CI noi ra ngay, thay vi de bang do
+    Juliet tu khen minh. Chu thich trong tep rule khong phai mot phep kiem.
+    """
+    van_de: list[str] = []
+    rule, trong_nguon = None, False
+    for i, dong in enumerate(tep.read_text(encoding="utf-8").splitlines(), 1):
+        m = KHOI_RULE_RE.match(dong)
+        if m:
+            rule, trong_nguon = m.group(1), False
+        if re.match(r"^\s*pattern-sources:", dong):
+            trong_nguon = True
+        elif re.match(r"^\s*pattern-(sinks|sanitizers|propagators):", dong):
+            trong_nguon = False
+        mn = NGUON_CAUHINH_RE.match(dong)
+        if trong_nguon and mn and not (rule or "").endswith("-cmdi"):
+            van_de.append(
+                f"{tep.name}:{i}: rule `{rule}` lay `{mn.group(1)}` lam nguon. "
+                f"Nguon cau hinh chi duoc dung o rule `-cmdi`.")
+    return van_de
+
+
 def chay_semgrep(out: Path) -> None:
     """Chay Semgrep tren thu muc fixture, xuat JSON ra `out`.
 
@@ -57,29 +220,41 @@ def chay_semgrep(out: Path) -> None:
     bo cong cu. Khong co ca hai thi bao ro rang - KHONG duoc im lang bo qua
     roi bao "dat", vi khong chay duoc khac hoan toan voi chay xong khong loi.
     """
-    cau_hinh = [f"--config={TEP_PHAT_HIEN}", f"--config={TEP_SANITIZER}"]
+    ds_phat_hien = tep_phat_hien()
+    if not ds_phat_hien:
+        raise SystemExit(f"Khong tim thay tep rule phat hien nao trong {RULES}")
 
     if shutil.which("semgrep"):
-        lenh = ["semgrep", "scan", *cau_hinh, str(THU_MUC),
+        cau_hinh = [f"--config={p}" for p in ds_phat_hien]
+        cau_hinh.append(f"--config={RULES / TEN_TEP_SANITIZER}")
+        loai = [f"--exclude={x}" for x in LOAI_KHOI_FIXTURE]
+        lenh = ["semgrep", "scan", *cau_hinh, *loai, str(THU_MUC),
                 "--json", "--output", str(out), "--metrics=off", "--quiet"]
-        subprocess.run(lenh, check=False, encoding="utf-8", errors="replace")
+        kq = subprocess.run(lenh, capture_output=True, text=True,
+                            encoding="utf-8", errors="replace")
+        if kq.returncode >= 2 or not out.is_file():
+            raise SystemExit(
+                f"Semgrep khong chay duoc (ma thoat {kq.returncode}).\n"
+                f"{(kq.stderr or kq.stdout or '').strip()[:1200]}")
         return
 
     if not shutil.which("docker"):
         raise SystemExit(
             "Khong tim thay semgrep lan docker.\n"
-            "  - Bat Docker Desktop len, hoac\n"
-            "  - pip install semgrep"
+            "  - pip install semgrep, hoac\n"
+            "  - bat Docker Desktop len"
         )
 
+    cau_hinh = [f"--config=/rules/{p.name}" for p in ds_phat_hien]
+    cau_hinh.append(f"--config=/rules/{TEN_TEP_SANITIZER}")
     lenh = [
         "docker", "run", "--rm",
         "-v", f"{THU_MUC}:/fixture:ro",
         "-v", f"{RULES}:/rules:ro",
         "-v", f"{out.parent}:/out",
         "-w", "/fixture", "semgrep/semgrep", "semgrep", "scan",
-        "--config=/rules/sast-detect.yaml",
-        "--config=/rules/sanitizer-check.yaml",
+        *cau_hinh,
+        *[f"--exclude={x}" for x in LOAI_KHOI_FIXTURE],
         ".", "--json", "--output", f"/out/{out.name}",
         "--metrics=off", "--quiet",
     ]
@@ -97,10 +272,56 @@ def chay_semgrep(out: Path) -> None:
 
 
 def main() -> int:
-    id_phat_hien = doc_id_rule(TEP_PHAT_HIEN)
-    id_sanitizer = doc_id_rule(TEP_SANITIZER)
+    ds_phat_hien = tep_phat_hien()
+    id_phat_hien: list[str] = []
+    nguon_rule: dict[str, str] = {}
+    for p in ds_phat_hien:
+        for rid in doc_id_rule(p):
+            id_phat_hien.append(rid)
+            nguon_rule[rid] = p.name
+    id_sanitizer = doc_id_rule(RULES / TEN_TEP_SANITIZER)
+
+    print(f"[*] {len(ds_phat_hien)} tep rule phat hien: "
+          f"{', '.join(p.name for p in ds_phat_hien)}")
     print(f"[*] {len(id_phat_hien)} rule phat hien, "
           f"{len(id_sanitizer)} rule sanitizer")
+    trung_lap = {r for r in id_phat_hien if id_phat_hien.count(r) > 1}
+    if trung_lap:
+        # id trung nhau giua cac tep rule se lam sarif_tools.id_ngan() gop
+        # nham hai rule khac nhau thanh mot.
+        print(f"  HONG    id rule bi trung giua cac tep: {', '.join(sorted(trung_lap))}")
+        return 1
+    # Tien kiem khong can Semgrep: gia tri pattern phai la CHUOI.
+    sai_kieu = [x for pth in list(ds_phat_hien) + [RULES / TEN_TEP_SANITIZER]
+                for x in pattern_khong_phai_chuoi(pth)]
+    if sai_kieu:
+        print(f"  HONG    {len(sai_kieu)} pattern khong phai chuoi "
+              f"(Semgrep se tu choi CA TEP RULE):")
+        for x in sai_kieu:
+            print(f"            - {x}")
+        return 1
+
+    # Tien kiem khong can Semgrep: bay nguon/sink trung nhau.
+    bay = [x for pth in ds_phat_hien for x in nguon_sink_trung(pth)]
+    if bay:
+        print(f"  HONG    {len(bay)} rule taint co pattern vua la nguon vua la sink:")
+        for x in bay:
+            print(f"            {x}")
+        print("    Rule nhu vay tu bao chinh no o moi loi goi, khong lien quan")
+        print("    luong du lieu. Bo pattern do khoi nguon cua dung rule do.")
+        return 1
+
+    # Tien kiem khong can Semgrep: nguon cau hinh dat sai cho.
+    sai_cho = [x for pth in ds_phat_hien for x in nguon_cauhinh_sai_cho(pth)]
+    if sai_cho:
+        print(f"  HONG    {len(sai_cho)} rule lay nguon CAU HINH ngoai rule -cmdi:")
+        for x in sai_cho:
+            print(f"            {x}")
+        print("    Bien moi truong / system property la cau hinh TRIEN KHAI, do")
+        print("    nguoi van hanh dat - khong phai du lieu ke tan cong dieu khien.")
+        print("    Doc khoi 'NGUON CAU HINH' o dau tep rule de biet ly do day du.")
+        return 1
+
     print("[*] Dang chay Semgrep tren fixture ...\n")
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -108,11 +329,59 @@ def main() -> int:
         chay_semgrep(out)
         data = json.loads(out.read_text(encoding="utf-8"))
 
-    # Gom ket qua theo (id rule -> tap tep da bat)
+    # ---------------------------------------------------------------- CHOT
+    # "Khong co ket qua" KHAC HOAN TOAN "da quet va sach". Du an da ap nguyen
+    # tac nay cho Gitleaks trong devsecops-reusable.yml, nhung o day thi quen -
+    # va cai gia phai tra la mot vong CI:
+    #
+    #   Lan chay "Phong do logic nghiep vu" #2: Semgrep tu choi mot tep rule,
+    #   van ghi ra JSON hop le voi "errors" day va "results": [], roi bo kiem
+    #   nay doc thay 0 ket qua va bao CA 64 rule phat hien + 9 rule sanitizer
+    #   deu "mu". Nghiem trong hon: DIEU KIEN 2 (khong duoc bao nham ma da khu
+    #   doc) bao **DAT** - vi khong co canh bao nao thi dung la khong bao nham.
+    #   Tuc mot rule sai cu phap lam MU TOAN BO cong chan, ma bo kiem van co
+    #   mot dong mau xanh.
+    #
+    # Hai chot duoi day bien ca hai truong hop do thanh loi dung ten cua no.
+    loi_semgrep = data.get("errors") or []
+    if loi_semgrep:
+        print("  HONG    Semgrep bao loi khi nap/chay rule - KHONG phai rule mu:")
+        for e in loi_semgrep[:8]:
+            if isinstance(e, dict):
+                mo_ta = (e.get("long_msg") or e.get("message")
+                         or e.get("short_msg") or str(e))
+                cho = ((e.get("path") or "")
+                       or ((e.get("spans") or [{}])[0].get("file", "")))
+                print(f"            - {cho}: {str(mo_ta)[:300]}")
+            else:
+                print(f"            - {str(e)[:300]}")
+        if len(loi_semgrep) > 8:
+            print(f"            ... con {len(loi_semgrep) - 8} loi nua")
+        print("\n  Mot tep rule hong lam Semgrep tra ve 0 ket qua cho MOI rule,")
+        print("  ke ca cac rule van dung. Sua loi tren truoc, dung doc tiep bang.")
+        return 2
+    if not data.get("results"):
+        print("  HONG    Semgrep chay xong nhung khong co MOT ket qua nao tren")
+        print("          fixture - trong khi Co_Loi.* co y chua lo hong cho moi")
+        print("          rule. Day la dau hieu quet HONG, khong phai rule mu.")
+        return 2
+
+    # Gom ket qua theo (id rule -> tap tep da bat), kem so dong.
+    # So dong la bat buoc: mot bao nham chi ghi "bat nham Da_Khu_Doc.cs" thi
+    # nguoi sua phai do tay ca tep de tim cho. Da mat mot vong CI vi thieu no.
     trung: dict[str, set[str]] = {}
+    dong_bat: dict[tuple[str, str], set[int]] = {}
     for r in data.get("results", []):
         rid = r.get("check_id", "").split(".")[-1]
-        trung.setdefault(rid, set()).add(Path(r.get("path", "")).name)
+        ten = Path(r.get("path", "")).name
+        trung.setdefault(rid, set()).add(ten)
+        ln = (r.get("start") or {}).get("line")
+        if isinstance(ln, int):
+            dong_bat.setdefault((rid, ten), set()).add(ln)
+
+    def vi_tri(rid: str, ten: str) -> str:
+        ds = sorted(dong_bat.get((rid, ten), ()))
+        return f"{ten}:{','.join(str(x) for x in ds)}" if ds else ten
 
     hong: list[str] = []
 
@@ -121,29 +390,32 @@ def main() -> int:
     print("-" * 68)
     for rid in id_phat_hien:
         tep = trung.get(rid, set())
-        co_loi = {t for t in tep if t != TEP_AN_TOAN}
+        co_loi = {t for t in tep if not la_an_toan(t)}
         if co_loi:
             print(f"  DAT     {rid:<45} {', '.join(sorted(co_loi))}")
         else:
-            print(f"  HONG    {rid:<45} khong bat duoc gi")
-            hong.append(f"rule phat hien mu: {rid}")
+            print(f"  HONG    {rid:<45} khong bat duoc gi  [{nguon_rule[rid]}]")
+            hong.append(f"rule phat hien mu: {rid} ({nguon_rule[rid]})")
 
     # --- Dieu kien 2: khong duoc bat nham ma nguon da khu doc ---------------
     print("\nDIEU KIEN 2 - co bao nham ma nguon da khu doc khong")
     print("-" * 68)
-    bao_nham = [rid for rid in id_phat_hien if TEP_AN_TOAN in trung.get(rid, set())]
+    bao_nham = [(rid, sorted(t for t in trung.get(rid, set()) if la_an_toan(t)))
+                for rid in id_phat_hien]
+    bao_nham = [(rid, tep) for rid, tep in bao_nham if tep]
     if bao_nham:
-        for rid in bao_nham:
-            print(f"  HONG    {rid:<45} bat nham {TEP_AN_TOAN}")
-            hong.append(f"duong tinh gia: {rid}")
+        for rid, tep in bao_nham:
+            cho = ", ".join(vi_tri(rid, t_) for t_ in tep)
+            print(f"  HONG    {rid:<45} bat nham {cho}")
+            hong.append(f"duong tinh gia: {rid} tren {cho}")
     else:
-        print(f"  DAT     khong rule nao bat nham {TEP_AN_TOAN}")
+        print(f"  DAT     khong rule nao bat nham {TIEN_TO_AN_TOAN}.*")
 
     # --- Dieu kien 3: sanitizer phai tim duoc bang chung --------------------
     print("\nDIEU KIEN 3 - rule sanitizer co tim duoc bang chung khu doc khong")
     print("-" * 68)
     for rid in id_sanitizer:
-        if TEP_AN_TOAN in trung.get(rid, set()):
+        if any(la_an_toan(t) for t in trung.get(rid, set())):
             print(f"  DAT     {rid}")
         else:
             print(f"  HONG    {rid:<45} khong tim thay bang chung")
