@@ -294,6 +294,48 @@ jobs:
           set -o pipefail
           python tools/kiem_thu_pha_cham_diem.py | tee -a "$GITHUB_STEP_SUMMARY"
 
+  ha-tang:
+    # G5.3: DO TANG HA TANG. Tang nay la tang CUOI CUNG chua co bo do nao, va
+    # no vua bi phat hien la khong co dong nao trong bang tom tat ket qua -
+    # chay that, day SARIF that, nhung nguoi doc bao cao khong thay gi.
+    #
+    # Fixture SINH LUC CHAY, khong commit: mot Dockerfile co loi co y va mot
+    # ban da sua cua chinh no. Doi hoi ban co loi bi bat VA ban da sua im lang.
+    # Dieu kien thu hai quan trong ngang dieu kien thu nhat.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false   # khong de GITHUB_TOKEN lai trong .git/config
+
+      - name: Sinh Dockerfile fixture (ngoai cay lam viec, khong commit)
+        run: |
+          python tools/kiem_thu_hatang.py --sinh "$RUNNER_TEMP/fixture-hatang" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Trivy config - quet fixture (cung cau hinh nhu pipeline)
+        run: |
+          mkdir -p ket-qua
+          docker run --rm \
+            -v "$RUNNER_TEMP/fixture-hatang:/target:ro" \
+            -v "$PWD/ket-qua:/out" \
+            aquasec/trivy:latest config /target \
+            --format sarif --output /out/trivy-config.sarif \
+            --exit-code 0
+          if [ ! -f ket-qua/trivy-config.sarif ]; then
+            echo "Trivy khong sinh bao cao - coi nhu 0 phat hien."
+            printf '{"version":"2.1.0","runs":[]}' > ket-qua/trivy-config.sarif
+          fi
+
+      - name: Cham - bat duoc gi, bao nham gi
+        run: |
+          set -o pipefail
+          python tools/kiem_thu_hatang.py \
+            --sarif ket-qua/trivy-config.sarif \
+            --md ket-qua/hatang.md \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+
   sca:
     # G5.2: DO TANG THU VIEN. Tang nay la tang duy nhat tung khong co bo do nao,
     # nen cau "bo sot bao nhieu" khong tra loi duoc. Fixture duoc SINH RA LUC

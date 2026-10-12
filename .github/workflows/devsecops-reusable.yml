@@ -656,6 +656,14 @@ jobs:
           print(f"| 1b. Thu vien JS nhung san | {'CHUA quet duoc' if tv is None else f'{tv} lo hong (retire.js)'} |")
           a, b = n_sarif("reports/semgrep-du-an.sarif"), n_sarif("reports/semgrep-cong-dong.sarif")
           if a is not None: print(f"| 2. Ma nguon | rule du an {a} · rule cong dong {b} |")
+          # Tang ha tang: Trivy config doc Dockerfile + cau hinh trien khai.
+          # Dong nay TUNG BI THIEU khoi bang: tang van chay, van day SARIF len
+          # Code Scanning, nhung bang tom tat khong in gi - nen nguoi doc bao
+          # cao tuong tang nay khong ton tai. Day dung la kieu "tang im lang"
+          # ma chinh du an nay canh bao.
+          ht = n_sarif("reports/trivy-config.sarif")
+          if ht is not None:
+              print(f"| 2b. Ha tang | {ht} loi cau hinh (Trivy config tren Dockerfile) |")
           rm = j("routes_map.json")
           if rm:
               s = rm.get("summary", {}); print(f"| 3. Pham vi | {s.get('testable',0)}/{sum(s.values())} endpoint DAST toi duoc |")
