@@ -16,7 +16,8 @@ import os
 import subprocess
 
 import requests
-from flask import redirect, render_template_string, request, url_for
+from flask import (redirect, render_template, render_template_string,
+                   request, url_for)
 from lxml import etree
 from markupsafe import escape
 from werkzeug.utils import secure_filename
@@ -69,3 +70,55 @@ def redirect_noi_bo():
 def xxe_tat_thuc_the(du_lieu_xml):
     bo_doc = etree.XMLParser(resolve_entities=False, no_network=True)
     return etree.fromstring(du_lieu_xml, bo_doc)
+
+
+# CWE-943: truy van theo TRUONG, khong dung $where - gia tri khong phai ma
+def nosql_truy_van_theo_truong(mongo_db):
+    ten = request.args.get("ten")
+    return mongo_db.users.find({"username": ten})
+
+
+# CWE-1336: mau co san tren dia, du lieu truyen lam BIEN cua mau
+def ssti_mau_co_san():
+    ten = request.args.get("ten")
+    return render_template("chao.html", ten=ten)
+
+
+# CWE-1336: string.Template cua stdlib chi thay the $bien, KHONG chay ma.
+# Case nay ton tai de chot lai quyet dinh khong dat `Template($X, ...)` tran
+# trong sink SSTI - neu ai them lai, dieu kien 2 se do.
+def template_stdlib_khong_chay_ma():
+    import string
+    ten = request.args.get("ten")
+    return string.Template("Chao $ten").substitute(ten=ten)
+
+
+# ===========================================================================
+# Cac case duoi day dung NGUON VUA THEM (G6.2) nhung da khu doc dung cach.
+# Chung chot lai rang mo rong nguon KHONG keo theo bao nham: nguon rong hon
+# ma dich van an toan thi phai im lang.
+# ===========================================================================
+
+# Nguon request.META.get nhung truy van THAM SO HOA
+def meta_vao_sql_tham_so_hoa(cur):
+    tac_nhan = request.META.get("HTTP_USER_AGENT")
+    cur.execute("SELECT * FROM log WHERE ua = ?", (tac_nhan,))
+
+
+# Nguon bien moi truong nhung danh sach doi so, KHONG qua shell
+def moi_truong_vao_danh_sach_doi_so():
+    dich = os.environ.get("BACKUP_HOST")
+    subprocess.run(["rsync", "-a", "/var/data", dich])
+
+
+# Nguon request.get_data nhung ma hoa HTML truoc khi ghep
+def get_data_vao_xss_da_ma_hoa():
+    du_lieu = request.get_data(as_text=True)
+    return render_template_string("<p>" + escape(du_lieu) + "</p>")
+
+
+# Nguon request.COOKIES.get nhung cat bo thu muc truoc khi ghep
+def cookies_vao_duong_dan_da_cat():
+    phien = secure_filename(request.COOKIES.get("session"))
+    with open(os.path.join("/du_lieu", phien)) as fh:
+        return fh.read()

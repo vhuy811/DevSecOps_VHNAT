@@ -15,9 +15,11 @@
 # =============================================================================
 
 import os
+import socket
 import subprocess
 
 import requests
+import jinja2
 from flask import redirect, render_template_string, request
 from lxml import etree
 
@@ -103,3 +105,64 @@ def open_redirect():
 def xxe_resolve_entities(du_lieu_xml):
     bo_doc = etree.XMLParser(resolve_entities=True)
     return etree.fromstring(du_lieu_xml, bo_doc)
+
+
+# ---------------------------------------------------------------------------
+# CWE-943 : NoSQL Injection - $where chay JavaScript tren server Mongo
+# rule: dso-py-taint-nosqli
+# ---------------------------------------------------------------------------
+def nosqli_where_noi_chuoi(mongo_db):
+    ten = request.args.get("ten")
+    return mongo_db.users.find({"$where": "this.username == '" + ten + "'"})
+
+
+# ---------------------------------------------------------------------------
+# CWE-1336 : Server-Side Template Injection - chuoi MAU do nguoi dung dieu khien
+# rule: dso-py-taint-ssti
+# ---------------------------------------------------------------------------
+def ssti_from_string(moi_truong: jinja2.Environment):
+    mau = request.args.get("mau")
+    return moi_truong.from_string(mau).render()
+
+
+# ===========================================================================
+# CAC CASE DUOI DAY KIEM PHAN MO RONG NGUON (G6.2), khong phai rule moi.
+# Moi case dung MOT hinh dang nguon vua them. Truoc khi mo rong, khong rule
+# nao nhin thay chung - do tren BenchProctor la 33.8% case nam o dang nay.
+# ===========================================================================
+
+# Nguon: request.META.get (Django doc header qua WSGI)  -> sink SQL
+def nguon_meta_vao_sql(cur):
+    tac_nhan = request.META.get("HTTP_USER_AGENT")
+    cur.execute("SELECT * FROM log WHERE ua = '" + tac_nhan + "'")
+
+
+# Nguon: request.body (than yeu cau tho)  -> sink shell
+def nguon_body_vao_shell():
+    noi_dung = request.body
+    os.system("echo " + noi_dung)
+
+
+# Nguon: request.COOKIES.get (Django, chu HOA)  -> sink duong dan
+def nguon_cookies_vao_duong_dan():
+    phien = request.COOKIES.get("session")
+    with open("/du_lieu/" + phien) as fh:
+        return fh.read()
+
+
+# Nguon: request.get_data (Flask, than yeu cau tho)  -> sink XSS
+def nguon_get_data_vao_xss():
+    du_lieu = request.get_data(as_text=True)
+    return render_template_string("<p>" + du_lieu + "</p>")
+
+
+# Nguon: bien moi truong (nguon CUC BO, giong threat model local cua CodeQL)
+def nguon_moi_truong_vao_shell():
+    dich = os.environ.get("BACKUP_HOST")
+    os.system("rsync -a /var/data " + dich)
+
+
+# Sink moi: socket tho - 72/300 case SSRF cua BenchProctor dung dang nay
+def ssrf_socket_tho():
+    may = request.args.get("may")
+    return socket.create_connection((may, 80))

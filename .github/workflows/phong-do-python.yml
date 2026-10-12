@@ -34,11 +34,26 @@ name: Phong do Python
 #      ca 4 dung, case "sach" dung sanitizer that (bleach, realpath + kiem tien
 #      to, allowlist, truy van tham so hoa). 4/18.300 la mau nho.
 #
-# DU DOAN TRUOC KHI DO: da liet ke toan bo hinh dang nguon ma corpus dung va
-# doi chieu voi nguon khai trong rule. Rule phu 5/13 hinh dang (~55% so lan
-# xuat hien): thieu request.META.get, os.environ.get, request.COOKIES.get,
-# request.body, await request.form()/body(), request.get_data(). Sink thi khop
-# het (db.execute, subprocess.Popen shell=True, open(), requests.get()).
+# DA DO TRUOC KHI SUA RULE - chi tiet trong PHAT_HIEN_BENCHPROCTOR.md.
+# Bon con so quyet dinh cac thay doi o commit G6.2:
+#   - 8 rule cua du an chi nham toi 2.250/9.150 case co loi (24.6%). Phan con
+#     lai la 46 category khac (authzfailure, hardcodedcreds, loginjection...)
+#     ma du an co y khong phu. Nen ti le bat cua RULE DU AN tren bo do nay
+#     khong the vuot ~24.6% - dung dat canh "61.6% tren Juliet C#".
+#   - Nguon da khai cham toi 41.5% case; 10 hinh dang vua them cham toi THEM
+#     33.8% (request.body 2032 case, request.META.get 1724, os.environ 1231,
+#     await request.body() 847, request.get_data 581, request.COOKIES 377).
+#   - Ba lo DICH that: NoSQL $where 150 case (khong cong cu nao thay),
+#     SSTI 147 case (bi bo khi cham vi gan nhan CWE-79 thay vi CWE-1336),
+#     socket tho 72 case. Da bit ca ba.
+#   - Tran cau truc: 33.6% -> 78.2% cua 2.250 case.
+#
+# DU DOAN TI LE BAO NHAM: se KHONG gan 0 nhu Juliet C#. Ban SACH cua
+# BenchProctor khu doc bang "kiem bang if roi return 400", gia tri toi dich
+# KHONG doi - pattern-sanitizers cua Semgrep chi khop bieu thuc LAM DOI gia
+# tri, nen khong khai duoc dang do. Dau hieu nay co o 22.6% case sach va chi
+# 1.8% case loi, nen san bao nham vao khoang 22%. Day la gioi han cua phuong
+# phap, khong phai cua cach viet rule.
 
 on:
   workflow_dispatch:

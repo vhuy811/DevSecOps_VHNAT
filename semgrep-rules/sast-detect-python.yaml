@@ -69,6 +69,28 @@ rules:
       - pattern: $R.query_params.get(...)
       - pattern: request.json
       - pattern: request.data
+      # --- Mo rong nguon (G6.2) ---
+      # Do tren BenchProctor 18.300 case: cac nguon HTTP khai o tren cham toi
+      # 41.5% case; 10 hinh dang duoi day cham toi THEM 33.8% case ma truoc do
+      # khong rule nao nhin thay. So dem tep that, khong phai uoc luong.
+      - pattern: $R.body                      # Django/Starlette: than yc tho
+      - pattern: $R.META[...]                 # Django: header qua WSGI
+      - pattern: $R.META.get(...)
+      - pattern: $R.get_data(...)             # Flask: than yc tho
+      - pattern: $R.COOKIES[...]              # Django: cookie (chu HOA)
+      - pattern: $R.COOKIES.get(...)
+      - pattern: await $R.form()              # Starlette/FastAPI
+      - pattern: await $R.body()
+      - pattern: await $R.json()
+      # Nguon CUC BO, khong phai HTTP - giong "threat model local" cua CodeQL.
+      # Bien moi truong do nguoi trien khai dat, nhung trong container dung
+      # chung thi ke tan cong kiem soat duoc. Bo rule C# da mo rong y nhu vay
+      # o lan do #26 va cot bao nham giu nguyen 0.0%, nen them o day cung mot
+      # ly le. CAN THEO DOI: tren ma THAT, os.environ di vao shell=True la dang
+      # hop le cua ma trien khai - bang tach theo rule se cho biet ngay.
+      - pattern: os.environ[...]
+      - pattern: os.environ.get(...)
+      - pattern: os.getenv(...)
     pattern-sanitizers:
       - pattern: int(...)
       - pattern: float(...)
@@ -119,6 +141,28 @@ rules:
       - pattern: $R.POST[...]
       - pattern: $R.POST.get(...)
       - pattern: $R.query_params.get(...)
+      # --- Mo rong nguon (G6.2) ---
+      # Do tren BenchProctor 18.300 case: cac nguon HTTP khai o tren cham toi
+      # 41.5% case; 10 hinh dang duoi day cham toi THEM 33.8% case ma truoc do
+      # khong rule nao nhin thay. So dem tep that, khong phai uoc luong.
+      - pattern: $R.body                      # Django/Starlette: than yc tho
+      - pattern: $R.META[...]                 # Django: header qua WSGI
+      - pattern: $R.META.get(...)
+      - pattern: $R.get_data(...)             # Flask: than yc tho
+      - pattern: $R.COOKIES[...]              # Django: cookie (chu HOA)
+      - pattern: $R.COOKIES.get(...)
+      - pattern: await $R.form()              # Starlette/FastAPI
+      - pattern: await $R.body()
+      - pattern: await $R.json()
+      # Nguon CUC BO, khong phai HTTP - giong "threat model local" cua CodeQL.
+      # Bien moi truong do nguoi trien khai dat, nhung trong container dung
+      # chung thi ke tan cong kiem soat duoc. Bo rule C# da mo rong y nhu vay
+      # o lan do #26 va cot bao nham giu nguyen 0.0%, nen them o day cung mot
+      # ly le. CAN THEO DOI: tren ma THAT, os.environ di vao shell=True la dang
+      # hop le cua ma trien khai - bang tach theo rule se cho biet ngay.
+      - pattern: os.environ[...]
+      - pattern: os.environ.get(...)
+      - pattern: os.getenv(...)
     pattern-sanitizers:
       - pattern: shlex.quote(...)
       - pattern: int(...)
@@ -170,6 +214,28 @@ rules:
       - pattern: $R.POST[...]
       - pattern: $R.POST.get(...)
       - pattern: $R.query_params.get(...)
+      # --- Mo rong nguon (G6.2) ---
+      # Do tren BenchProctor 18.300 case: cac nguon HTTP khai o tren cham toi
+      # 41.5% case; 10 hinh dang duoi day cham toi THEM 33.8% case ma truoc do
+      # khong rule nao nhin thay. So dem tep that, khong phai uoc luong.
+      - pattern: $R.body                      # Django/Starlette: than yc tho
+      - pattern: $R.META[...]                 # Django: header qua WSGI
+      - pattern: $R.META.get(...)
+      - pattern: $R.get_data(...)             # Flask: than yc tho
+      - pattern: $R.COOKIES[...]              # Django: cookie (chu HOA)
+      - pattern: $R.COOKIES.get(...)
+      - pattern: await $R.form()              # Starlette/FastAPI
+      - pattern: await $R.body()
+      - pattern: await $R.json()
+      # Nguon CUC BO, khong phai HTTP - giong "threat model local" cua CodeQL.
+      # Bien moi truong do nguoi trien khai dat, nhung trong container dung
+      # chung thi ke tan cong kiem soat duoc. Bo rule C# da mo rong y nhu vay
+      # o lan do #26 va cot bao nham giu nguyen 0.0%, nen them o day cung mot
+      # ly le. CAN THEO DOI: tren ma THAT, os.environ di vao shell=True la dang
+      # hop le cua ma trien khai - bang tach theo rule se cho biet ngay.
+      - pattern: os.environ[...]
+      - pattern: os.environ.get(...)
+      - pattern: os.getenv(...)
     pattern-sanitizers:
       - pattern: os.path.basename(...)
       - pattern: secure_filename(...)
@@ -224,6 +290,28 @@ rules:
       - pattern: $R.POST[...]
       - pattern: $R.POST.get(...)
       - pattern: $R.query_params.get(...)
+      # --- Mo rong nguon (G6.2) ---
+      # Do tren BenchProctor 18.300 case: cac nguon HTTP khai o tren cham toi
+      # 41.5% case; 10 hinh dang duoi day cham toi THEM 33.8% case ma truoc do
+      # khong rule nao nhin thay. So dem tep that, khong phai uoc luong.
+      - pattern: $R.body                      # Django/Starlette: than yc tho
+      - pattern: $R.META[...]                 # Django: header qua WSGI
+      - pattern: $R.META.get(...)
+      - pattern: $R.get_data(...)             # Flask: than yc tho
+      - pattern: $R.COOKIES[...]              # Django: cookie (chu HOA)
+      - pattern: $R.COOKIES.get(...)
+      - pattern: await $R.form()              # Starlette/FastAPI
+      - pattern: await $R.body()
+      - pattern: await $R.json()
+      # Nguon CUC BO, khong phai HTTP - giong "threat model local" cua CodeQL.
+      # Bien moi truong do nguoi trien khai dat, nhung trong container dung
+      # chung thi ke tan cong kiem soat duoc. Bo rule C# da mo rong y nhu vay
+      # o lan do #26 va cot bao nham giu nguyen 0.0%, nen them o day cung mot
+      # ly le. CAN THEO DOI: tren ma THAT, os.environ di vao shell=True la dang
+      # hop le cua ma trien khai - bang tach theo rule se cho biet ngay.
+      - pattern: os.environ[...]
+      - pattern: os.environ.get(...)
+      - pattern: os.getenv(...)
     pattern-sanitizers:
       - pattern: html.escape(...)
       - pattern: markupsafe.escape(...)
@@ -275,6 +363,28 @@ rules:
       - pattern: $R.POST[...]
       - pattern: $R.POST.get(...)
       - pattern: $R.query_params.get(...)
+      # --- Mo rong nguon (G6.2) ---
+      # Do tren BenchProctor 18.300 case: cac nguon HTTP khai o tren cham toi
+      # 41.5% case; 10 hinh dang duoi day cham toi THEM 33.8% case ma truoc do
+      # khong rule nao nhin thay. So dem tep that, khong phai uoc luong.
+      - pattern: $R.body                      # Django/Starlette: than yc tho
+      - pattern: $R.META[...]                 # Django: header qua WSGI
+      - pattern: $R.META.get(...)
+      - pattern: $R.get_data(...)             # Flask: than yc tho
+      - pattern: $R.COOKIES[...]              # Django: cookie (chu HOA)
+      - pattern: $R.COOKIES.get(...)
+      - pattern: await $R.form()              # Starlette/FastAPI
+      - pattern: await $R.body()
+      - pattern: await $R.json()
+      # Nguon CUC BO, khong phai HTTP - giong "threat model local" cua CodeQL.
+      # Bien moi truong do nguoi trien khai dat, nhung trong container dung
+      # chung thi ke tan cong kiem soat duoc. Bo rule C# da mo rong y nhu vay
+      # o lan do #26 va cot bao nham giu nguyen 0.0%, nen them o day cung mot
+      # ly le. CAN THEO DOI: tren ma THAT, os.environ di vao shell=True la dang
+      # hop le cua ma trien khai - bang tach theo rule se cho biet ngay.
+      - pattern: os.environ[...]
+      - pattern: os.environ.get(...)
+      - pattern: os.getenv(...)
     pattern-sinks:
       - patterns:
           - pattern-either:
@@ -315,6 +425,28 @@ rules:
       - pattern: $R.POST[...]
       - pattern: $R.POST.get(...)
       - pattern: $R.query_params.get(...)
+      # --- Mo rong nguon (G6.2) ---
+      # Do tren BenchProctor 18.300 case: cac nguon HTTP khai o tren cham toi
+      # 41.5% case; 10 hinh dang duoi day cham toi THEM 33.8% case ma truoc do
+      # khong rule nao nhin thay. So dem tep that, khong phai uoc luong.
+      - pattern: $R.body                      # Django/Starlette: than yc tho
+      - pattern: $R.META[...]                 # Django: header qua WSGI
+      - pattern: $R.META.get(...)
+      - pattern: $R.get_data(...)             # Flask: than yc tho
+      - pattern: $R.COOKIES[...]              # Django: cookie (chu HOA)
+      - pattern: $R.COOKIES.get(...)
+      - pattern: await $R.form()              # Starlette/FastAPI
+      - pattern: await $R.body()
+      - pattern: await $R.json()
+      # Nguon CUC BO, khong phai HTTP - giong "threat model local" cua CodeQL.
+      # Bien moi truong do nguoi trien khai dat, nhung trong container dung
+      # chung thi ke tan cong kiem soat duoc. Bo rule C# da mo rong y nhu vay
+      # o lan do #26 va cot bao nham giu nguyen 0.0%, nen them o day cung mot
+      # ly le. CAN THEO DOI: tren ma THAT, os.environ di vao shell=True la dang
+      # hop le cua ma trien khai - bang tach theo rule se cho biet ngay.
+      - pattern: os.environ[...]
+      - pattern: os.environ.get(...)
+      - pattern: os.getenv(...)
     pattern-sinks:
       - patterns:
           - pattern-either:
@@ -328,6 +460,10 @@ rules:
               - pattern: httpx.post($X, ...)
               - pattern: urllib.request.urlopen($X, ...)
               - pattern: urlopen($X, ...)
+              # Do tren BenchProctor: 72/300 case SSRF co loi dung socket
+              # tho, khong qua requests/urllib - truoc khong sink nao thay.
+              - pattern: socket.create_connection(($X, ...), ...)
+              - pattern: create_connection(($X, ...), ...)
           - focus-metavariable: $X
 
   # ===========================================================================
@@ -362,6 +498,28 @@ rules:
       - pattern: $R.POST[...]
       - pattern: $R.POST.get(...)
       - pattern: $R.query_params.get(...)
+      # --- Mo rong nguon (G6.2) ---
+      # Do tren BenchProctor 18.300 case: cac nguon HTTP khai o tren cham toi
+      # 41.5% case; 10 hinh dang duoi day cham toi THEM 33.8% case ma truoc do
+      # khong rule nao nhin thay. So dem tep that, khong phai uoc luong.
+      - pattern: $R.body                      # Django/Starlette: than yc tho
+      - pattern: $R.META[...]                 # Django: header qua WSGI
+      - pattern: $R.META.get(...)
+      - pattern: $R.get_data(...)             # Flask: than yc tho
+      - pattern: $R.COOKIES[...]              # Django: cookie (chu HOA)
+      - pattern: $R.COOKIES.get(...)
+      - pattern: await $R.form()              # Starlette/FastAPI
+      - pattern: await $R.body()
+      - pattern: await $R.json()
+      # Nguon CUC BO, khong phai HTTP - giong "threat model local" cua CodeQL.
+      # Bien moi truong do nguoi trien khai dat, nhung trong container dung
+      # chung thi ke tan cong kiem soat duoc. Bo rule C# da mo rong y nhu vay
+      # o lan do #26 va cot bao nham giu nguyen 0.0%, nen them o day cung mot
+      # ly le. CAN THEO DOI: tren ma THAT, os.environ di vao shell=True la dang
+      # hop le cua ma trien khai - bang tach theo rule se cho biet ngay.
+      - pattern: os.environ[...]
+      - pattern: os.environ.get(...)
+      - pattern: os.getenv(...)
     pattern-sanitizers:
       - pattern: url_for(...)
       - pattern: flask.url_for(...)
@@ -398,3 +556,195 @@ rules:
       - pattern: lxml.etree.XMLParser(..., resolve_entities=True, ...)
       - pattern: XMLParser(..., resolve_entities=True, ...)
       - pattern: etree.XMLParser(..., no_network=False, ...)
+
+  # ===========================================================================
+  # CWE-943 : NoSQL Injection (MongoDB $where / $expr)
+  # ===========================================================================
+  # VI SAO THEM RULE NAY (G6.2)
+  # Do tren BenchProctor 18.300 case: 150 case co loi thuoc nhom nay va KHONG
+  # CONG CU NAO cua du an nhin thay chung - bo rule chi co sink SQL (execute,
+  # text, raw), khong co sink MongoDB. Mot repo dung Mongo thi tang SAST cua du
+  # an mu hoan toan voi A03, du README noi "dung duoc cho nhieu loai repo".
+  #
+  # $where va $expr nhan mot bieu thuc JavaScript chay TREN SERVER Mongo. Noi
+  # chuoi vao do la cho ke tan cong viet JavaScript tuy y - nang hon SQLi vi
+  # khong co lop tham so hoa nao chen giua.
+  #
+  # Dang AN TOAN la truy van theo truong, khong dung $where:
+  #       db.users.find({"username": ten})      <- gia tri, khong phai ma
+  #
+  # VI SAO DE MUC ERROR (co quyen chan): tieu chi cua du an la "hinh dang hiem
+  # va gan nhu luon la loi that", khong phai ti le bao nham tren corpus. $where
+  # cong voi noi chuoi la dang hiem trong ma that va gan nhu luon sai. DU DOAN
+  # TREN BENCHPROCTOR: se bao nham khoang 27% case sach cua nhom nay, vi 80/300
+  # case sach dung "kiem bang if roi return 400" - mot dang ma pattern-sanitizers
+  # cua Semgrep KHONG dien ta duoc (xem PHAT_HIEN_BENCHPROCTOR.md). Con so do
+  # la dac diem cua corpus (moi case sach la mot case loi duoc sua vua du),
+  # khong suy ra duoc cho ma that.
+  - id: dso-py-taint-nosqli
+    mode: taint
+    languages: [python]
+    severity: ERROR
+    message: >-
+      CWE-943: Du lieu tu request duoc noi vao bieu thuc $where / $expr cua
+      MongoDB. Hai toan tu nay chay JavaScript tren server nen input thanh ma
+      thuc thi - khong co tham so hoa nao chen giua. Dung truy van theo truong:
+      db.users.find({"username": gia_tri}).
+    metadata:
+      cwe: "CWE-943"
+      category: security
+      subcategory: [vuln]
+      confidence: HIGH
+      references:
+        - https://cwe.mitre.org/data/definitions/943.html
+        - https://www.mongodb.com/docs/manual/reference/operator/query/where/
+    pattern-sources:
+      - pattern: $R.args[...]
+      - pattern: $R.args.get(...)
+      - pattern: $R.args.getlist(...)
+      - pattern: $R.form[...]
+      - pattern: $R.form.get(...)
+      - pattern: $R.values[...]
+      - pattern: $R.values.get(...)
+      - pattern: $R.get_json(...)
+      - pattern: $R.cookies[...]
+      - pattern: $R.cookies.get(...)
+      - pattern: $R.headers[...]
+      - pattern: $R.headers.get(...)
+      - pattern: $R.GET[...]
+      - pattern: $R.GET.get(...)
+      - pattern: $R.POST[...]
+      - pattern: $R.POST.get(...)
+      - pattern: $R.query_params[...]
+      - pattern: $R.query_params.get(...)
+      - pattern: request.json
+      - pattern: request.data
+      # --- Mo rong nguon (G6.2) ---
+      # Do tren BenchProctor 18.300 case: cac nguon HTTP khai o tren cham toi
+      # 41.5% case; 10 hinh dang duoi day cham toi THEM 33.8% case ma truoc do
+      # khong rule nao nhin thay. So dem tep that, khong phai uoc luong.
+      - pattern: $R.body                      # Django/Starlette: than yc tho
+      - pattern: $R.META[...]                 # Django: header qua WSGI
+      - pattern: $R.META.get(...)
+      - pattern: $R.get_data(...)             # Flask: than yc tho
+      - pattern: $R.COOKIES[...]              # Django: cookie (chu HOA)
+      - pattern: $R.COOKIES.get(...)
+      - pattern: await $R.form()              # Starlette/FastAPI
+      - pattern: await $R.body()
+      - pattern: await $R.json()
+      # Nguon CUC BO, khong phai HTTP - giong "threat model local" cua CodeQL.
+      # Bien moi truong do nguoi trien khai dat, nhung trong container dung
+      # chung thi ke tan cong kiem soat duoc. Bo rule C# da mo rong y nhu vay
+      # o lan do #26 va cot bao nham giu nguyen 0.0%, nen them o day cung mot
+      # ly le. CAN THEO DOI: tren ma THAT, os.environ di vao shell=True la dang
+      # hop le cua ma trien khai - bang tach theo rule se cho biet ngay.
+      - pattern: os.environ[...]
+      - pattern: os.environ.get(...)
+      - pattern: os.getenv(...)
+    pattern-sanitizers:
+      - pattern: int(...)
+      - pattern: float(...)
+      - pattern: uuid.UUID(...)
+      - pattern: bson.ObjectId(...)
+      - pattern: ObjectId(...)
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: {..., "$where": $X, ...}
+              - pattern: {..., "$expr": $X, ...}
+              - pattern: {..., '$where': $X, ...}
+              - pattern: {..., '$expr': $X, ...}
+          - focus-metavariable: $X
+
+  # ===========================================================================
+  # CWE-1336 : Server-Side Template Injection (SSTI)
+  # ===========================================================================
+  # VI SAO TACH RA KHOI RULE XSS (G6.2)
+  # render_template_string da nam trong sink cua dso-py-taint-xss, nhung rule
+  # do khai metadata.cwe = CWE-79. Tang doi sanh va bo cham deu gom theo HO
+  # CWE: ho cua 79 la {79,80,81,...}, con SSTI duoc danh so CWE-1336 thuoc ho
+  # {94,95,96,1336}. Hai ho KHONG giao nhau, nen canh bao SSTI do rule XSS
+  # phat ra bi BO khi cham - do tren BenchProctor la 147 case co loi khong
+  # duoc tinh, du Semgrep CO bao. Day la loi GAN NHAN, khong phai loi phat
+  # hien, va no lam ti le bat thap hon thuc te ma khong co dau hieu gi.
+  #
+  # Tach thanh rule rieng voi cwe dung la cach sua. SSTI cung khac XSS ve ban
+  # chat: XSS chay ma trong trinh duyet nguoi dung, SSTI chay ma TREN SERVER
+  # (Jinja2 cho truy cap __class__ / __subclasses__ dan den doc tep va RCE).
+  # Giu render_template_string o ca rule XSS: mot dong co the vua la XSS vua
+  # la SSTI, va hai rule co metadata khac nhau nen khong tinh trung case.
+  - id: dso-py-taint-ssti
+    mode: taint
+    languages: [python]
+    severity: ERROR
+    message: >-
+      CWE-1336: Du lieu tu request di vao CHUOI MAU cua bo render (Jinja2
+      render_template_string / Template). Input tro thanh ma mau chay tren
+      server - qua __class__ / __subclasses__ co the doc tep va thuc thi lenh.
+      Truyen du lieu lam BIEN cua mau co san: render_template("t.html", x=val).
+    metadata:
+      cwe: "CWE-1336"
+      category: security
+      subcategory: [vuln]
+      confidence: HIGH
+      references:
+        - https://cwe.mitre.org/data/definitions/1336.html
+        - https://portswigger.net/web-security/server-side-template-injection
+    pattern-sources:
+      - pattern: $R.args[...]
+      - pattern: $R.args.get(...)
+      - pattern: $R.args.getlist(...)
+      - pattern: $R.form[...]
+      - pattern: $R.form.get(...)
+      - pattern: $R.values[...]
+      - pattern: $R.values.get(...)
+      - pattern: $R.get_json(...)
+      - pattern: $R.cookies[...]
+      - pattern: $R.cookies.get(...)
+      - pattern: $R.headers[...]
+      - pattern: $R.headers.get(...)
+      - pattern: $R.GET[...]
+      - pattern: $R.GET.get(...)
+      - pattern: $R.POST[...]
+      - pattern: $R.POST.get(...)
+      - pattern: $R.query_params[...]
+      - pattern: $R.query_params.get(...)
+      - pattern: request.json
+      - pattern: request.data
+      # --- Mo rong nguon (G6.2) ---
+      # Do tren BenchProctor 18.300 case: cac nguon HTTP khai o tren cham toi
+      # 41.5% case; 10 hinh dang duoi day cham toi THEM 33.8% case ma truoc do
+      # khong rule nao nhin thay. So dem tep that, khong phai uoc luong.
+      - pattern: $R.body                      # Django/Starlette: than yc tho
+      - pattern: $R.META[...]                 # Django: header qua WSGI
+      - pattern: $R.META.get(...)
+      - pattern: $R.get_data(...)             # Flask: than yc tho
+      - pattern: $R.COOKIES[...]              # Django: cookie (chu HOA)
+      - pattern: $R.COOKIES.get(...)
+      - pattern: await $R.form()              # Starlette/FastAPI
+      - pattern: await $R.body()
+      - pattern: await $R.json()
+      # Nguon CUC BO, khong phai HTTP - giong "threat model local" cua CodeQL.
+      # Bien moi truong do nguoi trien khai dat, nhung trong container dung
+      # chung thi ke tan cong kiem soat duoc. Bo rule C# da mo rong y nhu vay
+      # o lan do #26 va cot bao nham giu nguyen 0.0%, nen them o day cung mot
+      # ly le. CAN THEO DOI: tren ma THAT, os.environ di vao shell=True la dang
+      # hop le cua ma trien khai - bang tach theo rule se cho biet ngay.
+      - pattern: os.environ[...]
+      - pattern: os.environ.get(...)
+      - pattern: os.getenv(...)
+    pattern-sanitizers:
+      - pattern: int(...)
+      - pattern: float(...)
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: render_template_string($X, ...)
+              - pattern: flask.render_template_string($X, ...)
+              - pattern: jinja2.Template($X, ...)
+              # KHONG dat `Template($X, ...)` tran: string.Template cua stdlib
+              # cung ten do nhung chi thay the $bien, khong chay ma - bao no la
+              # bao nham, va rule nay co quyen chan nen cai gia la chan oan.
+              - pattern: jinja2.environment.Template($X, ...)
+              - pattern: $ENV.from_string($X, ...)
+          - focus-metavariable: $X
