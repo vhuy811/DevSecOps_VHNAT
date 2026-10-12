@@ -327,22 +327,39 @@ def doc_sarif(path: Path) -> list[dict]:
 
 
 def dieu_kien_chan(spec: str):
-    """'level=error' | 'sev>=7' | 'sev>=4&!cwe=643,91' -> ham kiem tra ket qua.
+    """'level=error' | 'sev>=7' | 'sev>=4&!cwe=643,91' | 'sev>=4&!id=a/b,c/d'
 
     Phan '&!cwe=...' loai cac CWE do khoi tap canh bao CO QUYEN CHAN (van hien
     trong bao cao, chi la khong chan merge). Dung cho truy van cua cong cu ngoai
     ma do duoc la bao nham cao tren mot loai cu the - giong cach do an da ha muc
     nhom rule hinh dang cua chinh no o G2.3b.
+
+    Phan '&!id=...' loai theo ID TRUY VAN. Can rieng khoi '&!cwe=' vi loai theo
+    ho CWE qua rong: bai hoc cua phong do Java (muc 2 KET_QUA_DO.md) la cung mot
+    CWE co the can quyet dinh nguoc nhau o hai ngon ngu, nen bo loc that cua
+    cong chan viet theo ID truy van. Bo do PHAI dung cung hinh dang bo loc voi
+    cong chan - neu khong thi cot `pipeline-hien-tai` cua bang do mot con so va
+    cong chan that cho mot con so khac, va bao cao se trich con so khong ton tai.
     """
     bo_cwe: set[int] = set()
+    bo_id: set[str] = set()
     if "&!cwe=" in spec:
         spec, _, ds = spec.partition("&!cwe=")
+        # '&!id=' co the dung sau '&!cwe=' trong cung mot spec
+        ds, _, con = ds.partition("&!id=")
         bo_cwe = {int(x) for x in ds.split(",") if x.strip()}
+        if con:
+            bo_id = {x.strip() for x in con.split(",") if x.strip()}
+    elif "&!id=" in spec:
+        spec, _, ds = spec.partition("&!id=")
+        bo_id = {x.strip() for x in ds.split(",") if x.strip()}
 
     def loc(f):
-        if not bo_cwe:
+        if not bo_cwe and not bo_id:
             return f
-        return lambda r: f(r) and not (r["cwes"] & bo_cwe)
+        return lambda r: (f(r)
+                          and not (r["cwes"] & bo_cwe)
+                          and r["rule"] not in bo_id)
 
     if spec.startswith("level="):
         want = spec.split("=", 1)[1]
@@ -652,6 +669,11 @@ def md_bang_bench(ten: str, bang: dict, cong_cu: list[str]) -> str:
 # 80 lua chon con lai. Youden cua mot to hop khong suy ra duoc tu Youden tung
 # cong cu, vi hai cong cu bat trung nhau o phan nao thi phan do khong cong don.
 # Phai do.
+# Hai truy van HINH DANG cua CodeQL Java, bi loai khoi cong chan o G6.6. Viet
+# thanh hang so vi no xuat hien o ca truc nguong va workflow phong do - lech
+# nhau mot ky tu thi bang do noi mot dieu khac cong chan that.
+TRUY_VAN_NOI_CHUOI = ("java/concatenated-sql-query", "java/concatenated-command-line")
+
 TRUC_NGUONG = {
     "semgrep-du-an":     [("-", []), ("E", ["level=error"]),
                           ("E+W", ["level=error", "level=warning"])],
@@ -662,10 +684,19 @@ TRUC_NGUONG = {
     # cua cong chan den tu day. Trong khi dso-taint-xpathi cua du an bat CWE-643
     # 49% voi 0% bao nham, nen bo quyen chan cua CodeQL o rieng loai nay mat rat
     # it do phu. Co mat trong bang de do, khong phai de mac dinh.
+    # Muc "med-noi": medium nhung bo HAI truy van hinh dang cua CodeQL Java ra
+    # khoi quyen chan. Phong do Java #10: java/concatenated-sql-query bat 0 case
+    # va bao nham 912 (16%); java/concatenated-command-line bat 0 va bao nham 204
+    # (4%). Cot "bat rieng" cua ca hai bang 0 - moi case chung bat deu da bi
+    # java/sql-injection va java/command-line-injection bat theo LUONG. Nen bo
+    # chung di la bo 20 diem bao nham lay 0 diem bat. Co mat trong bang de DO
+    # lai dieu do, khong phai de tin loi chu thich nay.
     "codeql":            [("-", []), ("high", ["sev>=7"]), ("medium", ["sev>=4"]),
-                          ("med-643", ["sev>=4&!cwe=643"])],
+                          ("med-643", ["sev>=4&!cwe=643"]),
+                          ("med-noi", [f"sev>=4&!id={','.join(TRUY_VAN_NOI_CHUOI)}"])],
     "codeql-local":      [("-", []), ("high", ["sev>=7"]), ("medium", ["sev>=4"]),
-                          ("med-643", ["sev>=4&!cwe=643"])],
+                          ("med-643", ["sev>=4&!cwe=643"]),
+                          ("med-noi", [f"sev>=4&!id={','.join(TRUY_VAN_NOI_CHUOI)}"])],
 }
 
 

@@ -221,9 +221,22 @@ jobs:
 
       # Nhom chan mo hinh DUNG cai pipeline that dang chay (xem
       # devsecops-reusable.yml): Semgrep muc ERROR + CodeQL-local medium, tru
-      # CWE-643. Bo loc CWE-643 o pipeline la query-filters theo tag nen ap cho
-      # MOI ngon ngu, khong rieng C#. --do-nguong se cho biet lua chon do co
-      # dung cho Java hay khong, hay Java can nguong khac.
+      # hai truy van hinh dang java/concatenated-*.
+      #
+      # BO LOC O DAY PHAI GIONG BO LOC THAT, khong duoc gan dung. Neu lech thi
+      # cot `pipeline-hien-tai` cua bang do mot con so va cong chan that cho mot
+      # con so khac, roi bao cao trich con so khong ton tai o dau ca - do la thu
+      # te nhat mot bo do co the lam. Nen:
+      #   - query-filters cua pipeline loai: cs/xml/xpath-injection (chi C#),
+      #     java/concatenated-sql-query, java/concatenated-command-line.
+      #   - o day chi loai hai cai Java; cs/... khong sinh canh bao tren corpus
+      #     Java nen khong can nhac.
+      # Danh sach ID lay tu hang so TRUY_VAN_NOI_CHUOI trong tools/cham_diem.py
+      # (truc nguong dung chung hang so do, muc `med-noi`), nen hai cho khong
+      # lech nhau duoc.
+      #
+      # --do-nguong van do CA muc `medium` (khong loai gi) de doc duoc dung cai
+      # gia cua quyet dinh loai: so sanh `med-noi` voi `medium` tren cung bang.
       - name: Cham diem
         run: |
           python tools/cham_diem.py juliet --goc bench/src/testcases \
@@ -233,7 +246,7 @@ jobs:
             --sarif codeql-local=ket-qua/codeql-local.sarif \
             --chan "chi-semgrep=semgrep-du-an:level=error" \
             --chan "pipeline-hien-tai=semgrep-du-an:level=error" \
-            --chan "pipeline-hien-tai=codeql-local:sev>=4" \
+            --chan "pipeline-hien-tai=codeql-local:sev>=4&!id=java/concatenated-sql-query,java/concatenated-command-line" \
             --do-nguong \
             --ten-bo-do "Juliet Java 1.3 (NIST, ban mirror ghim 8b5b9d6)" \
             --out ket-qua/juliet-java.json --md ket-qua/juliet-java.md

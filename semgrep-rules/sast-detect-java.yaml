@@ -444,54 +444,26 @@ rules:
           - focus-metavariable: $X
 
   # ===========================================================================
-  # CWE-643 : XPath Injection       ZAP ascan 90021
+  # CWE-643 (XPath Injection) - KHONG CO RULE JAVA. Co y.
+  # ---------------------------------------------------------------------------
+  # Tung co rule dso-java-taint-xpathi. Da BO o G6.6 sau khi phong do Java #10
+  # cho so cua no: bat 180 case (3%) va bao nham DUNG 180 case (3%). Tren rieng
+  # CWE-643 no bat 41% va bao nham 41% - tuc khong phan biet duoc gi ca, dung
+  # bang doan mo. Toan bo 3.1% bao nham cua bo rule Java den tu mot minh no; bo
+  # no ra thi bo rule Java con 36% bat / 0.0% bao nham, Youden khong doi (+0.36
+  # ca hai ben).
+  #
+  # KHONG mat do phu o cong chan: cot "bat rieng" cua no trong bang
+  # pipeline-hien-tai bang 0, vi java/xml/xpath-injection cua CodeQL bat 444
+  # case (8%) voi 12 case bao nham (0%) va bat rieng 264. CodeQL Java bat CWE-643
+  # 100% voi 3% bao nham - nen o Java, XPath injection la viec cua CodeQL.
+  #
+  # Khac han C#: o do CodeQL bat 76% va bao nham 76%, nen truy van
+  # cs/xml/xpath-injection bi loai va dso-taint-xpathi (ban C#, 49% bat / 0%
+  # bao nham) GIU QUYEN CHAN. Cung mot CWE, hai ngon ngu, hai ket luan nguoc
+  # nhau - va ca hai deu do duoc chu khong doan.
   # ===========================================================================
-  - id: dso-java-taint-xpathi
-    mode: taint
-    languages: [java]
-    severity: ERROR
-    message: >-
-      CWE-643: Du lieu tu request duoc noi vao bieu thuc XPath. Chen
-      " or '1'='1' " la lay duoc moi nut - y het SQL Injection nhung tren XML.
-      Dung bien XPath (XPathVariableResolver) thay vi noi chuoi.
-    metadata:
-      cwe: "CWE-643"
-      category: security
-      subcategory: [vuln]
-      confidence: HIGH
-      references:
-        - https://cwe.mitre.org/data/definitions/643.html
-    pattern-sources:
-      - pattern: $REQ.getParameter(...)
-      - pattern: $REQ.getHeader(...)
-      # --- Mo rong nguon (G6.3) ---
-      # Do tren Juliet Java 1.3 (CWE-89/78/81, 4920 tep): ca 8 rule taint chi
-      # khai nguon HTTP servlet, nhung nhan chinh thuc cua corpus cho thay HTTP
-      # chi la 777/2997 case (25.9%). Nguon khac HTTP la 2220 case (74.1%).
-      # Doi chieu voi tran cua Semgrep CE (taint chi lan trong MOT ham):
-      #     tran cu   = HTTP & luong-trong-ham   = 420/2997 = 14.0%
-      #     tran moi  = moi nguon & trong-ham    = 1620/2997 = 54.1%
-      # Lan do that o CI cho rule du an bat 11.8% - nam ngay duoi tran 14.0%,
-      # tuc chan doan "thieu nguon" la dung chu khong phai rule viet sai.
-      # Lan do do xong: xem khoi "NGUON CAU HINH" o dau tep.
-      #
-      # "Mo rong nguon la mo rong vung bat ma khong mo rong vung bao nham" -
-      # cau nay DUNG voi nguon doc du lieu, SAI voi nguon cau hinh. Corpus
-      # logic nghiep vu da chung minh dieu do; xem khoi o dau tep.
-      - pattern: $X.readLine()                # BufferedReader: TCP, URLConnection,
-                                              # console va doc tep deu qua day
-      # Doc tu CSDL roi noi vao cau lenh moi = tiem SQL BAC HAI. Juliet Java co
-      # 259 case dang nay. Tren ma that day la nguon de bao nham hon cac nguon
-      # khac (doc gia tri cua chinh CSDL minh roi dung lai la viec binh thuong),
-      # nen bang tach theo rule can duoc doc ky o lan do sau.
-      - pattern: $RS.getString(...)
-      - pattern: $RS.getObject(...)
-    pattern-sinks:
-      - patterns:
-          - pattern-either:
-              - pattern: $XP.evaluate($X, ...)
-              - pattern: $XP.compile($X)
-          - focus-metavariable: $X
+
 
   # ===========================================================================
   # CWE-90 : LDAP Injection         ZAP ascan 40015

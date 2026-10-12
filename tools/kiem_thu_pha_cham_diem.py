@@ -57,6 +57,20 @@ PHA: list[tuple[str, str, str]] = [
     ("bat_rieng tinh ca chinh no -> luon ra 0, ket luan 'bo rule nao cung mien phi'",
      'khac = set().union(*[w["tp"] for q, w in theo.items() if q != r]) if len(theo) > 1 else set()',
      'khac = set().union(*[w["tp"] for q, w in theo.items()])'),
+    # Ba cach pha bo loc theo ID truy van. Ca ba cho ra mot bo do van chay tron
+    # tru va van in ra bang, chi la cot pipeline-hien-tai khong con la cong chan
+    # that nua - dung loai sai im lang ma du an da an mot lan voi CWE-643.
+    ("&!id= bi lam ngo -> bo do do cong chan CU, khong phai cong dang chay",
+     'bo_id = {x.strip() for x in ds.split(",") if x.strip()}\n'
+     '\n    def loc(f):',
+     'bo_id = set()\n'
+     '\n    def loc(f):'),
+    ("&!id= loai theo tien to thay vi dung ID -> loai qua rong, bao thap hon su that",
+     'and r["rule"] not in bo_id)',
+     'and not any(r["rule"].startswith(x.split("/")[0]) for x in bo_id))'),
+    ("truc nguong va workflow lech danh sach ID -> nhan dong 'dang dung' ghi `?`",
+     'TRUY_VAN_NOI_CHUOI = ("java/concatenated-sql-query", "java/concatenated-command-line")',
+     'TRUY_VAN_NOI_CHUOI = ("java/concatenated-sql-query",)'),
 ]
 
 

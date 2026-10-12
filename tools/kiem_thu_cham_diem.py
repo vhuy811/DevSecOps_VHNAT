@@ -28,6 +28,9 @@ from pathlib import Path
 GOC = Path(__file__).resolve().parent
 CHAM = GOC / "cham_diem.py"
 
+sys.path.insert(0, str(GOC))
+from cham_diem import TRUC_NGUONG, dieu_kien_chan        # noqa: E402
+
 # ----------------------------------------------------------------- fixture
 # Tep Juliet that: chu ky co "throws Throwable", ham good la private, va
 # goodG2B GIU LAI sink doc (chi doi nguon thanh hang so). Giu dung dac diem
@@ -432,6 +435,62 @@ def main() -> int:
                      "trong khi bang chinh tach co_loi/sach -> hai bang canh "
                      "nhau trong CUNG mot bao cao lech nhau dung GAP DOI. Da "
                      "xay ra that o lan chay Phong do Python #2.")
+
+    # ---------------------------------------------------------------- 9
+    print("9. Bo loc --chan: &!id= phai loai theo ID truy van, &!cwe= theo ho CWE")
+    # VI SAO: cong chan that loai java/concatenated-sql-query theo ID TRUY VAN
+    # (G6.6). Neu bo do khong loai duoc y nhu vay thi cot pipeline-hien-tai cua
+    # bang do noi 25% bao nham trong khi cong that cho ~9% - bao cao se trich mot
+    # con so khong ton tai o dau ca. Bai hoc cua lan loai CWE-643 theo TAG: tag
+    # do co o moi ngon ngu nen quyet dinh cua C# bi ap cho ca Java.
+    def _r(rule, sev=6.1, cwes=frozenset({89}), level="error"):
+        return {"rule": rule, "sev": sev, "level": level, "cwes": set(cwes)}
+
+    f_id = dieu_kien_chan(
+        "sev>=4&!id=java/concatenated-sql-query,java/concatenated-command-line")
+    kiem(not f_id(_r("java/concatenated-sql-query")),
+         "&!id= loai dung truy van duoc liet ke",
+         "khong loai duoc thi bo do do cong chan CU, khong phai cong dang chay")
+    kiem(f_id(_r("java/sql-injection")),
+         "&!id= KHONG loai truy van khac cung ho CWE",
+         "loai qua rong thi bo do bao thap hon su that - vua dung cai bay cua "
+         "lan loai theo tag cwe-643")
+    kiem(not f_id(_r("java/concatenated-command-line", sev=9.8, cwes={78})),
+         "&!id= loai duoc ca hai ID trong danh sach",
+         "chi loai cai dau thi 4 diem bao nham con lai khong ai thay")
+
+    f_cwe = dieu_kien_chan("sev>=4&!cwe=643")
+    kiem(not f_cwe(_r("bat-ky", cwes={643})) and f_cwe(_r("bat-ky", cwes={89})),
+         "&!cwe= cu van hoat dong nguyen ven",
+         "them &!id= ma lam hong &!cwe= thi phong do C# doi so trong im lang")
+
+    f_ca = dieu_kien_chan("sev>=4&!cwe=643&!id=java/concatenated-sql-query")
+    kiem(not f_ca(_r("x", cwes={643})) and not f_ca(_r("java/concatenated-sql-query"))
+         and f_ca(_r("java/sql-injection")),
+         "dung duoc ca &!cwe= va &!id= trong mot spec",
+         "neu khong ket hop duoc thi khong mo hinh hoa duoc cong chan that, "
+         "cong do loai CA cs/xml/xpath-injection VA hai truy van java/concatenated-*")
+
+    kiem(dieu_kien_chan("sev>=4")( _r("java/concatenated-sql-query")),
+         "khong co bo loc thi khong loai gi (muc `medium` giu nguyen y nghia)",
+         "muc `medium` cua truc nguong phai la muc KHONG loai, de so sanh duoc "
+         "voi `med-noi` tren cung mot bang")
+
+    # ---------------------------------------------------------------- 10
+    print("10. Truc nguong va workflow phai dung CUNG danh sach ID")
+    import re as _re
+    wf = (Path(__file__).resolve().parent.parent
+          / ".github" / "workflows" / "phong-do-java.yml").read_text(encoding="utf-8")
+    m_wf = _re.search(r"pipeline-hien-tai=codeql-local:([^\"\\]+)", wf)
+    muc_noi = dict(TRUC_NGUONG["codeql-local"]).get("med-noi")
+    kiem(bool(m_wf), "doc duoc dieu kien codeql-local tu phong-do-java.yml",
+         "khong doc duoc thi khong doi chieu duoc hai cho")
+    if m_wf and muc_noi:
+        kiem(m_wf.group(1).strip() == muc_noi[0],
+             f"workflow va truc nguong khop nhau ({muc_noi[0]})",
+             f"workflow dung `{m_wf.group(1).strip()}` con truc nguong dung "
+             f"`{muc_noi[0]}` -> nhan_dang_chay() se ghi `?` va bang xep hang "
+             f"khong danh dau duoc dong dang chay")
 
     print()
     if LOI:

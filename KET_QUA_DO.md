@@ -118,7 +118,15 @@ engine SAST cạnh nhau, và cũng là trần thật của mọi cải tiến ru
 bắt 180 case (3%) và báo nhầm **đúng 180 case (3%)** — trên CWE-643 nó bắt 41% và
 báo nhầm 41%, tức **không phân biệt được gì cả**. Bỏ nó: rule đồ án còn
 **36% bắt / 0.0% báo nhầm**. Youden gần như không đổi (+0.36 cả hai bên), nhưng
-một bên không chặn oan lần nào. Quyết định nên lấy là bỏ hoặc viết lại rule này.
+một bên không chặn oan lần nào.
+
+**Đã bỏ rule này (G6.6).** Cột "bắt riêng" của nó trong bảng `pipeline-hien-tai`
+bằng 0, nên cổng chặn không mất điểm nào: `java/xml/xpath-injection` của CodeQL
+bắt 444 case (8%) với 12 báo nhầm (0%) và bắt riêng 264. Đáng ghi lại là **cùng
+CWE-643 nhưng hai ngôn ngữ cho hai kết luận ngược nhau**: ở C# thì CodeQL bắt 76%
+/ báo nhầm 76% nên truy vấn `cs/xml/xpath-injection` bị loại và rule tự viết
+`dso-taint-xpathi` (49% / 0%) giữ quyền chặn; ở Java thì đúng ngược lại. Không
+có quy tắc chung nào suy ra được điều đó — chỉ có phòng đo từng ngôn ngữ.
 
 **(c) Hai truy vấn CodeQL đóng góp 0 điểm bắt và 1116 cảnh báo sai cho cổng.**
 

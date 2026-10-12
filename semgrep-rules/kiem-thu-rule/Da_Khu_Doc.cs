@@ -206,10 +206,20 @@ namespace KiemThuRule
         //
         // Ham nay la PHEP KIEM CHAP HANH: them lai Environment.GetEnvironmentVariable
         // vao nguon cua rule duong dan thi dieu kien 2 do ngay o dong nay.
+        //
+        // KHONG duoc noi chuoi o day. Ban dau toi viet
+        //     File.ReadAllText("/var/bao-cao/" + duong)
+        // va vong CI #35 do: dso-pathtraversal-file-api-concat bat ngay. Rule do
+        // khop HINH DANG (`<... $A + $B ...>` trong loi goi File API), khong lien
+        // quan nguon taint, nen no bat du nguon la gi - dung nhu chu thich cua no
+        // noi: tren Juliet no bat 100% case loi va bao nham 100% case an toan,
+        // nen quyen chan da chuyen cho dso-taint-path-traversal tu G2.3.
+        // Truyen bien tran de case nay do dung MOT thu: nguon cau hinh co con
+        // chay vao dich duong dan cua rule TAINT hay khong.
         public string NguonBienMoiTruong_VaoDuongDan_KhongChan()
         {
             var duong = Environment.GetEnvironmentVariable("BAO_CAO");
-            return File.ReadAllText("/var/bao-cao/" + duong);
+            return File.ReadAllText(duong);
         }
 
         // nguon: CSDL -> tach doi so, khong ghep vao dong lenh

@@ -910,9 +910,23 @@ jobs:
               # 100% voi chi 3% bao nham, nen loai no mat 4 diem bat ma khong duoc
               # gi. Con CodeQL C# thi bat 76% va bao nham 76% - o do loai la dung.
               # Nen phai loai dung truy van C#, khong loai ca ho.
+              #
+              # HAI TRUY VAN JAVA BI LOAI (G6.6) - do duoc o phong do Java #10:
+              #     java/concatenated-sql-query     0 bat / 912 bao nham (16%)
+              #     java/concatenated-command-line  0 bat / 204 bao nham (4%)
+              # Cot "bat rieng" cua CA HAI bang 0: moi case chung bat deu da bi
+              # java/sql-injection va java/command-line-injection bat theo LUONG.
+              # Chung la truy van HINH DANG (khop chuoi SQL/lenh duoc noi), nen
+              # tren Juliet chung khop ca ham bad lan ham good.
+              # Loai hai cai nay: bao nham cua cong 25.0% -> ~9%, MAT 0 DIEM BAT.
+              # Day la cai tien lon nhat tim duoc ma khong phai viet thanh rule nao.
               f.write("query-filters:\n")
               f.write("  - exclude:\n")
               f.write("      id: cs/xml/xpath-injection\n")
+              f.write("  - exclude:\n")
+              f.write("      id: java/concatenated-sql-query\n")
+              f.write("  - exclude:\n")
+              f.write("      id: java/concatenated-command-line\n")
           PY
           cat .devsecops-codeql.yml
 
@@ -980,6 +994,30 @@ jobs:
           # Chi doi chieu khi quet C#: bo loc gio la theo ID truy van C#, nen
           # canh bao CWE-643 cua Java/Python la DUNG, khong phai chot hong.
           con = [r for r in res if "cwe-643" in tag_cua(r)] if nn == "csharp" else []
+          # Cung mot ly le cho hai truy van Java bi loai o G6.6: neu ID viet sai
+          # mot ky tu thi chung van chay, va nguoi doc bao cao se tin cong chan
+          # co ~9% bao nham trong khi that ra van 25.0%. Doi chieu theo ID, truc
+          # tiep tren ket qua - khong tin vao khoa cau hinh.
+          JAVA_PHAI_LOAI = ("java/concatenated-sql-query", "java/concatenated-command-line")
+          con_java = ([r for r in res if rid(r) in JAVA_PHAI_LOAI]
+                      if nn == "java" else [])
+          if con_java:
+              dem_java = Counter(rid(r) for r in con_java)
+              print(f"::error::query-filters KHONG loai duoc {len(dem_java)} truy van Java: "
+                    + "; ".join(f"{k} con {v} canh bao" for k, v in dem_java.items())
+                    + ". Nguong ~9% bao nham do tren phong do khong con dung cho pipeline nay.",
+                    file=sys.stderr)
+              print("> **Hai truy vấn Java chưa bị loại** — "
+                    + ", ".join(f"`{k}` còn {v} cảnh báo" for k, v in dem_java.items())
+                    + ". Báo nhầm thật của cổng vẫn là 25.0%, không phải ~9%.\n")
+          elif nn == "java":
+              print("> Đã loại `java/concatenated-sql-query` và "
+                    "`java/concatenated-command-line` khỏi tầng CodeQL — đo được báo nhầm "
+                    "25.0% → ~9% mà **không mất điểm bắt nào** (phòng đo Java #10: cả hai "
+                    "truy vấn có cột *bắt riêng* = 0).\n")
+              print("> Giới hạn của phép kiểm này: *không có* cảnh báo cũng có thể chỉ vì "
+                    "repo không có mã Java nối chuỗi SQL. Chỗ xác nhận thật là bảng tách "
+                    "theo rule của phòng đo Java.\n")
           if con:
               print(f"::error::query-filters KHONG loai duoc CWE-643: con {len(con)} canh bao. "
                     "Nguong 1.0% bao nham do tren phong do khong con dung cho pipeline nay.",
@@ -987,6 +1025,8 @@ jobs:
               print(f"> **CWE-643 chưa bị loại** — còn {len(con)} cảnh báo. Chuỗi tag trong "
                     "`query-filters` có thể đã sai; báo nhầm thật của cổng vẫn là 5.2%, "
                     "không phải 1.0%.\n")
+          elif nn != "csharp":
+              pass
           else:
               print("> CWE-643 đã loại khỏi tầng CodeQL — đo được báo nhầm 5.2% → 1.0% "
                     "(phòng đo #27). XPath injection vẫn do `dso-taint-xpathi` bắt "

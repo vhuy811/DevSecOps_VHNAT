@@ -83,7 +83,12 @@ public class Co_Loi {
 
     // -----------------------------------------------------------------------
     // CWE-643 : XPath Injection
-    // rule: dso-java-taint-xpathi
+    // KHONG co rule nao cua du an bat case nay, va do la CO Y - xem khoi CWE-643
+    // o semgrep-rules/sast-detect-java.yaml. O Java, XPath injection la viec cua
+    // java/xml/xpath-injection (CodeQL): 100% bat voi 3% bao nham, trong khi rule
+    // tu viet cua du an bat 41% va bao nham 41%.
+    // GIU case nay lai, khong xoa: no la vat lieu kiem thu san neu sau nay co ai
+    // viet duoc mot rule Java phan biet duoc that gia cho CWE-643.
     // -----------------------------------------------------------------------
     public Object xpathInjection(HttpServletRequest request, XPath xpath, Document doc) throws Exception {
         String ten = request.getParameter("ten");
