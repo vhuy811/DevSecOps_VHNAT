@@ -1,0 +1,103 @@
+name: Phong do logic nghiep vu
+
+# G6.4 - DO "KHONG LOI VAN BI CHAN" TREN MA NGHIEP VU THAT
+#
+# VI SAO CAN TEP NAY
+# Hai bo do hien co (Juliet, BenchProctor) deu la ma SINH RA DE DO: moi case
+# sach la mot case loi duoc sua vua du. Ti le bao nham do tren do noi ve corpus
+# do, KHONG noi ve ma ung dung that. Hai cho trong do an dang bi chan lai vi
+# thieu dung con so nay:
+#
+#   1. dso-weak-hash va dso-weak-random bat 100% voi 0% bao nham tren Juliet
+#      nhung van de muc WARNING nen KHONG chan duoc A02. Ly do da ghi trong
+#      PHU_OWASP.md: Juliet khong co lan nao dung MD5 HOP LE (checksum, cache
+#      key, ETag), nen 0% bao nham o do khong noi gi ve ma that. Job nay dung
+#      de co bang chung do.
+#   2. Cac rule vua mo rong nguon o G6.2/G6.3 (os.environ, $RS.getString,
+#      $X.readLine) deu co mot dang dung HOP LE rat pho bien ma corpus sinh tu
+#      dong khong chua. Rieng "doc mot dong tu tep manifest roi mo tep do" la
+#      cho ma sast-detect-java.yaml da ghi la CAN THEO DOI.
+#
+# DAP AN: 0 canh bao o muc CO QUYEN CHAN. Moi canh bao muc chan la mot lan
+# CHAN OAN. Job nay THOAT MA 1 khi co chan oan - no la mot phep kiem, khong
+# phai mot bao cao.
+#
+# CORPUS nam trong semgrep-rules/kiem-thu-rule/logic-nghiep-vu/ de THUA huong
+# bo loai tru cua pipeline that (devsecops-reusable.yml loai tru theo TEN THU
+# MUC "kiem-thu-rule" nen moi thu muc con cung duoc loai). Neu de o cho khac
+# thi chinh pipeline cua toolkit se quet corpus nay va chan merge - corpus
+# "trong nhu loi" nam trong repo la mot cai bay neu khong loai tru. Bo cham co
+# mot chot khang dinh dieu nay, vi sai o day la mot cai bay im lang: job van
+# DAT trong khi PR that bat dau do.
+# O job nay thi nguoc lai: truyen thang duong dan corpus de CO Y quet no.
+#
+# HAN CHE, phai ghi khi dung so nay:
+#   1. Day la ma TU VIET, khong phai ma lay tu mot du an that dang chay. No
+#      phan anh hieu biet ve dang dung hop le pho bien, va so case nho (3 tep,
+#      38 ham). Nen doc ket qua la "CO CHAN OAN HAY KHONG", chu khong phai mot
+#      ti le bao nham co mau so dang tin.
+#   2. Chi chay RULE CUA DU AN (Semgrep), chua chay CodeQL. Cau hoi dang bi
+#      chan lai la ve rule cua du an (dso-weak-hash / dso-weak-random), nen do
+#      dung phan do truoc. Bao nham cua CodeQL da do tren Juliet (muc 1-2 cua
+#      KET_QUA_DO.md). Them CodeQL vao day la viec tiep theo.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'semgrep-rules/sast-detect.yaml'
+      - 'semgrep-rules/sast-detect-python.yaml'
+      - 'semgrep-rules/sast-detect-java.yaml'
+      - 'semgrep-rules/kiem-thu-rule/logic-nghiep-vu/**'
+      - 'tools/kiem_thu_logic_nghiepvu.py'
+      - '.github/workflows/phong-do-logic-nghiepvu.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  logic-nghiep-vu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false   # khong de GITHUB_TOKEN lai trong .git/config
+
+      # Hong o day thi dung luon: rule dang loi thi so bao nham khong co nghia.
+      - name: Kiem thu rule tren fixture (Co_Loi / Da_Khu_Doc)
+        run: python semgrep-rules/kiem-thu-rule/chay_kiem_thu.py
+
+      - name: Semgrep - rule du an tren corpus logic nghiep vu
+        run: |
+          mkdir -p ket-qua
+          # --no-git-ignore + duong dan tuong minh: corpus nam trong thu muc
+          # von bi loai tru o pipeline that, o day phai CO Y quet no.
+          # --disable-nosem: khong cho chu thich nosem lam im canh bao, neu
+          # khong thi mot case co the "sach" vi bi bit mieng chu khong vi an toan.
+          docker run --rm -v "$PWD:/src" -w /src semgrep/semgrep \
+            semgrep scan \
+              --config semgrep-rules/sast-detect.yaml \
+              --config semgrep-rules/sast-detect-python.yaml \
+              --config semgrep-rules/sast-detect-java.yaml \
+              --no-git-ignore --disable-nosem --metrics=off \
+              --sarif --output ket-qua/semgrep-du-an.sarif \
+              semgrep-rules/kiem-thu-rule/logic-nghiep-vu
+
+      - name: Cham - co chan oan khong
+        run: |
+          set -o pipefail
+          python tools/kiem_thu_logic_nghiepvu.py \
+            --goc semgrep-rules/kiem-thu-rule/logic-nghiep-vu \
+            --sarif semgrep-du-an=ket-qua/semgrep-du-an.sarif \
+            --chan "semgrep-du-an:level=error" \
+            --md ket-qua/logic-nghiep-vu.md \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Luu ket qua
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: phong-do-logic-nghiep-vu
+          path: ket-qua/
+          retention-days: 30
