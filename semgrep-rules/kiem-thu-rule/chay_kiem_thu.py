@@ -138,7 +138,12 @@ def chay_semgrep(out: Path) -> None:
         cau_hinh.append(f"--config={RULES / TEN_TEP_SANITIZER}")
         lenh = ["semgrep", "scan", *cau_hinh, str(THU_MUC),
                 "--json", "--output", str(out), "--metrics=off", "--quiet"]
-        subprocess.run(lenh, check=False, encoding="utf-8", errors="replace")
+        kq = subprocess.run(lenh, capture_output=True, text=True,
+                            encoding="utf-8", errors="replace")
+        if kq.returncode >= 2 or not out.is_file():
+            raise SystemExit(
+                f"Semgrep khong chay duoc (ma thoat {kq.returncode}).\n"
+                f"{(kq.stderr or kq.stdout or '').strip()[:1200]}")
         return
 
     if not shutil.which("docker"):
@@ -209,6 +214,43 @@ def main() -> int:
         out = Path(tmp) / "kq.json"
         chay_semgrep(out)
         data = json.loads(out.read_text(encoding="utf-8"))
+
+    # ---------------------------------------------------------------- CHOT
+    # "Khong co ket qua" KHAC HOAN TOAN "da quet va sach". Du an da ap nguyen
+    # tac nay cho Gitleaks trong devsecops-reusable.yml, nhung o day thi quen -
+    # va cai gia phai tra la mot vong CI:
+    #
+    #   Lan chay "Phong do logic nghiep vu" #2: Semgrep tu choi mot tep rule,
+    #   van ghi ra JSON hop le voi "errors" day va "results": [], roi bo kiem
+    #   nay doc thay 0 ket qua va bao CA 64 rule phat hien + 9 rule sanitizer
+    #   deu "mu". Nghiem trong hon: DIEU KIEN 2 (khong duoc bao nham ma da khu
+    #   doc) bao **DAT** - vi khong co canh bao nao thi dung la khong bao nham.
+    #   Tuc mot rule sai cu phap lam MU TOAN BO cong chan, ma bo kiem van co
+    #   mot dong mau xanh.
+    #
+    # Hai chot duoi day bien ca hai truong hop do thanh loi dung ten cua no.
+    loi_semgrep = data.get("errors") or []
+    if loi_semgrep:
+        print("  HONG    Semgrep bao loi khi nap/chay rule - KHONG phai rule mu:")
+        for e in loi_semgrep[:8]:
+            if isinstance(e, dict):
+                mo_ta = (e.get("long_msg") or e.get("message")
+                         or e.get("short_msg") or str(e))
+                cho = ((e.get("path") or "")
+                       or ((e.get("spans") or [{}])[0].get("file", "")))
+                print(f"            - {cho}: {str(mo_ta)[:300]}")
+            else:
+                print(f"            - {str(e)[:300]}")
+        if len(loi_semgrep) > 8:
+            print(f"            ... con {len(loi_semgrep) - 8} loi nua")
+        print("\n  Mot tep rule hong lam Semgrep tra ve 0 ket qua cho MOI rule,")
+        print("  ke ca cac rule van dung. Sua loi tren truoc, dung doc tiep bang.")
+        return 2
+    if not data.get("results"):
+        print("  HONG    Semgrep chay xong nhung khong co MOT ket qua nao tren")
+        print("          fixture - trong khi Co_Loi.* co y chua lo hong cho moi")
+        print("          rule. Day la dau hieu quet HONG, khong phai rule mu.")
+        return 2
 
     # Gom ket qua theo (id rule -> tap tep da bat), kem so dong.
     # So dong la bat buoc: mot bao nham chi ghi "bat nham Da_Khu_Doc.cs" thi

@@ -650,10 +650,14 @@ rules:
     pattern-sinks:
       - patterns:
           - pattern-either:
-              - pattern: {..., "$where": $X, ...}
-              - pattern: {..., "$expr": $X, ...}
-              - pattern: {..., '$where': $X, ...}
-              - pattern: {..., '$expr': $X, ...}
+              # Dang `{..., "k": $X, ...}` voi dau ... o CA HAI phia tung
+              # lam Semgrep tu choi ca tep rule (xem ghi chu trong
+              # chay_kiem_thu.py). Chi de ... o dau - do la dang Semgrep
+              # ghi trong tai lieu cho dict cua Python.
+              - pattern: {..., "$where": $X}
+              - pattern: {..., "$expr": $X}
+              - pattern: {..., '$where': $X}
+              - pattern: {..., '$expr': $X}
           - focus-metavariable: $X
 
   # ===========================================================================
