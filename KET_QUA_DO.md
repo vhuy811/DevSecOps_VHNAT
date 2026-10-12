@@ -48,15 +48,20 @@ nằm ngoài tầm của Semgrep và chỉ CodeQL với tới (42%).
 
 ## 2. Cổng chặn trên Java — Juliet Java 1.3 (bản mirror ghim `8b5b9d6`)
 
-5772 test case, 9 CWE. Đo lần đầu, không có mốc trước để so.
+5772 test case, 9 CWE. Đã đo hai lần.
 
-| Công cụ | Bắt | Báo nhầm | Youden |
+| Công cụ | Lần #1 — bắt / nhầm | Lần #10 — bắt / nhầm | Youden #10 |
 |---|---|---|---|
-| Rule đồ án (Semgrep) | 11.8% | **0.3%** | +0.12 |
-| Semgrep cộng đồng | 21.3% | 11.0% | +0.10 |
-| CodeQL | 73.1% | 21.3% | +0.52 |
-| CodeQL (threat model local) | **94.2%** | 21.9% | +0.72 |
-| **Cổng chặn** | **86.9%** | **22.0%** | +0.65 |
+| Rule đồ án (Semgrep) | 11.8% / **0.3%** | **39.0%** / 3.1% | +0.36 |
+| Semgrep cộng đồng | 21.3% / 11.0% | 21.3% / 11.0% | +0.10 |
+| CodeQL | 73.1% / 21.3% | 73.1% / 21.3% | +0.52 |
+| CodeQL (threat model local) | **94.2%** / 21.9% | **94.2%** / 21.9% | +0.72 |
+| **Cổng chặn** | 86.9% / 22.0% | **94.2%** / 25.0% | +0.69 |
+
+Lần #10 là lần đo **sau khi mở rộng nguồn** (G6.3) và **trước khi** bỏ nguồn cấu
+hình (G6.5). Nên con số 39.0% ở trên là con số **được thổi lên** — xem mục 6; nó
+được giữ lại ở đây đúng để làm vế "trước" của cặp so sánh. Dự đoán khi mở rộng là
+~46%, thực tế 39.0%, vẫn dưới trần cấu trúc 54.1%.
 
 **Dự đoán trước khi đo là ~15%** (27% case có nguồn HTTP × 54% case luồng trong
 một hàm), thực tế 11.8%. Nguyên nhân đúng như xác định: cả 8 rule taint Java chỉ
@@ -86,6 +91,48 @@ báo nhầm **44%**; CWE-78 (444 case) bắt 100% báo nhầm **49%**. Các CWE 
 1–5%. Hai truy vấn này báo oan hàm `good` khoảng một nửa số lần. **Chưa rõ vì
 sao, nên chưa sửa gì** — cần đọc hàm `goodB2G` của Juliet Java trước khi kết
 luận. CWE-81 (333 case) thì 0% cho mọi công cụ.
+
+### Bảng tách theo rule của lần #10 trả lời thêm ba câu
+
+**(a) Giới hạn trong-một-hàm của Semgrep CE đo được chính xác.** Bảng "theo
+đường đi của dữ liệu" là bằng chứng sạch nhất mà đồ án có về việc vì sao cần
+*hai* công cụ SAST chứ không phải một:
+
+| Đường đi của dữ liệu | Case | Rule đồ án (Semgrep CE) | CodeQL-local |
+|---|---|---|---|
+| 01 · cơ bản | 156 | **80%** | 94% |
+| 02–22 · qua rẽ nhánh / vòng lặp | 2808 | **71%** | 94% |
+| 31 · qua biến trung gian | 156 | **80%** | 94% |
+| 41–45 · qua hàm khác | 468 | **0%** | 94% |
+| 51–54 · qua tệp khác | 624 | **0%** | 94% |
+| 61–68 · qua giá trị trả về / mảng / trường | 624 | **0%** | 94% |
+| 71–75 · qua collection | 780 | **0%** | 94% |
+| 81 · qua lớp con (kế thừa) | 156 | **0%** | 94% |
+
+Không phải "kém hơn một chút" mà là **đúng 0%** ở mọi biến thể vượt khỏi một hàm
+— tức 2652/5772 case (46%) nằm ngoài tầm của Semgrep bản cộng đồng *về nguyên
+tắc*, không phải vì rule viết thiếu. Đây là lý do định lượng cho việc xếp hai
+engine SAST cạnh nhau, và cũng là trần thật của mọi cải tiến rule Semgrep.
+
+**(b) Một rule của đồ án gây ra toàn bộ tỉ lệ báo nhầm.** `dso-java-taint-xpathi`
+bắt 180 case (3%) và báo nhầm **đúng 180 case (3%)** — trên CWE-643 nó bắt 41% và
+báo nhầm 41%, tức **không phân biệt được gì cả**. Bỏ nó: rule đồ án còn
+**36% bắt / 0.0% báo nhầm**. Youden gần như không đổi (+0.36 cả hai bên), nhưng
+một bên không chặn oan lần nào. Quyết định nên lấy là bỏ hoặc viết lại rule này.
+
+**(c) Hai truy vấn CodeQL đóng góp 0 điểm bắt và 1116 cảnh báo sai cho cổng.**
+
+| Truy vấn | Bắt | Báo nhầm | Bắt riêng | Bỏ thì cổng còn |
+|---|---|---|---|---|
+| `java/concatenated-sql-query` | **0** (0%) | 912 (16%) | 0 | 94% bắt / **9%** nhầm |
+| `java/concatenated-command-line` | **0** (0%) | 204 (4%) | 0 | 94% bắt / 21% nhầm |
+
+Cả hai là truy vấn *hình dạng* (bắt chuỗi SQL/lệnh được nối, không theo luồng),
+nên mọi case chúng bắt đều đã bị `java/sql-injection` và
+`java/command-line-injection` bắt theo luồng — cột "bắt riêng" = 0 nói đúng điều
+đó. Loại hai truy vấn này khỏi cổng đưa báo nhầm từ **25.0% xuống ~9%** mà **không
+mất một điểm bắt nào**. Đây là cải tiến lớn nhất còn lại chưa làm, và nó không
+cần viết thêm một rule nào — chỉ cần `query-filters` trong cấu hình CodeQL.
 
 ---
 
@@ -117,24 +164,41 @@ của cả hai tỉ lệ là toàn bộ case; BenchProctor mỗi case là một 
 *hoặc* sạch, nên tỉ lệ bắt tính trên 9.150 case có lỗi và tỉ lệ báo nhầm trên 9.150
 case sạch.
 
-| Công cụ | Bắt | Báo nhầm | Youden |
+| Công cụ | Lần #2 — bắt / nhầm | Lần #9 — bắt / nhầm | Youden #9 |
 |---|---|---|---|
-| Rule đồ án (Semgrep) | 7,2% | 4,4% | +0,03 |
-| Semgrep cộng đồng | 21,2% | 10,3% | +0,11 |
-| CodeQL | 13,3% | 3,3% | +0,10 |
-| CodeQL (threat model local) | 14,1% | 4,0% | +0,10 |
-| **Cổng chặn** | **18,2%** | **7,4%** | **+0,11** |
+| Rule đồ án (Semgrep) | 7,2% / 4,4% | **14,5%** / **10,5%** | **+0,04** |
+| Semgrep cộng đồng | 21,2% / 10,3% | 21,2% / 10,3% | +0,11 |
+| CodeQL | 13,3% / 3,3% | 13,3% / 3,3% | +0,10 |
+| CodeQL (threat model local) | 14,1% / 4,0% | 14,1% / 4,0% | +0,10 |
+| **Cổng chặn** | 18,2% / 7,4% | **24,2%** / **12,8%** | +0,11 |
 
-Theo khung web, rule đồ án: flask 10%/7%, fastapi 7%/4%, django 4%/2%.
+Theo khung web, rule đồ án lần #2: flask 10%/7%, fastapi 7%/4%, django 4%/2%.
 
-**7,2% phải đọc kèm trần của nó.** Bộ rule Python chỉ nhắm tới 8 họ CWE trong 61
+**Lần #9 là lần đo sau khi mở rộng nguồn + 3 đích (G6.2), và nó nói một điều khó
+nghe: mở rộng đó gần như chỉ thêm tiếng ồn.** Bắt tăng gấp đôi (7,2% → 14,5%)
+nhưng báo nhầm cũng tăng gấp hơn hai (4,4% → 10,5%), nên Youden chỉ nhích từ
++0,03 lên **+0,04** — tức bộ rule Python của đồ án vẫn **chỉ hơn đoán mò một
+chút**, và kém bộ rule cộng đồng (+0,11) rõ rệt trên bộ đo này.
+
+Quan trọng hơn: dự đoán là 33,6% → **78,2%** sau khi mở rộng. Thực tế **14,5%**.
+Lệch quá xa để còn giải thích bằng "thiếu nguồn, thiếu đích" được nữa. Nguyên nhân
+thật đã được đo sạch ở phòng đo Java (mục 2, bảng theo đường đi của dữ liệu):
+**taint của Semgrep bản cộng đồng đi được 71–80% khi luồng nằm trong một hàm và
+đúng 0% khi luồng vượt ra khỏi hàm.** Trần 78,2% được tính từ *nguồn và đích*, mà
+yếu tố chặn thật là *độ dài của luồng* — tức trần đó tính sai cơ sở.
+
+Hệ quả cho báo cáo: đường cải tiến "thêm nguồn, thêm đích" đã hết tác dụng đối
+với Semgrep CE. Phần còn lại của 85,5% chưa bắt được **không** nằm trong tầm của
+rule Semgrep, mà là việc của CodeQL.
+
+**Cả 7,2% lẫn 14,5% phải đọc kèm trần của chúng.** Bộ rule Python chỉ nhắm tới 8 họ CWE trong 61
 category của bộ đo — tức **2.250/9.150 case có lỗi (24,6%)**. 6.900 case còn lại
 thuộc các loại đồ án **cố ý không phủ** (`authzfailure`, `hardcodedcreds`,
 `loginjection`, `sessionfixation`…), vì quyền chặn chỉ dành cho CWE mà ZAP có
-active scan tương ứng. Nên đặt 7,2% cạnh "61,6% trên Juliet C#" là so sánh sai:
-Juliet C# chỉ chứa đúng những CWE mà rule nhắm tới.
+active scan tương ứng. Nên đặt con số này cạnh "61,6% trên Juliet C#" là so
+sánh sai: Juliet C# chỉ chứa đúng những CWE mà rule nhắm tới.
 
-**Ba điều lần đo này xác nhận, và cả ba đều đã có bản sửa đang chờ đẩy:**
+**Ba điều lần #2 xác nhận, cả ba đã sửa và đã đo lại ở lần #9:**
 
 | Phát hiện | Số liệu | Bản sửa |
 |---|---|---|
@@ -142,7 +206,7 @@ Juliet C# chỉ chứa đúng những CWE mà rule nhắm tới.
 | SSTI bị bỏ khi chấm do gán nhãn sai họ CWE | CWE-1336: rule đồ án **0%**, cộng đồng 35% | rule `dso-py-taint-ssti` với `cwe: CWE-1336` (G6.2) |
 | Nguồn quá hẹp | bắt 7,2% so với trần cấu trúc 33,6% | mở 10 hình dạng nguồn (G6.2) |
 
-**Báo nhầm 4,4% là con số gộp, và nó che mất vấn đề thật.** Trên toàn bộ 9.150 case
+**Báo nhầm 4,4% (lần #2) là con số gộp, và nó che mất vấn đề thật.** Trên toàn bộ 9.150 case
 sạch thì thấp, nhưng báo nhầm **dồn hết vào đúng các CWE mà rule nhắm tới**:
 CWE-22 36%, CWE-95 33%, CWE-78 32%, CWE-88 30%, CWE-918 26%. Hai nhóm thậm chí
 **báo nhầm nhiều hơn bắt được**: CWE-918 (22% bắt / 26% nhầm) và CWE-601 (13% / 17%).
