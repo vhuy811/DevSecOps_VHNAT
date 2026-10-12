@@ -17,9 +17,13 @@ của cả hai tỉ lệ là toàn bộ case.
 | #23 | nguồn chỉ HTTP | 47.3% | 5.2% | +0.42 |
 | #26 | mở rộng nguồn ra ngoài HTTP | 63.6% | 5.2% | +0.58 |
 | #28 | bỏ CWE-643 khỏi tầng CodeQL | 61.6% | 1.0% | +0.61 |
-| #43 | bỏ họ nguồn cấu hình khỏi rule taint | **60.8%** | **1.0%** | **+0.60** |
+| #43 | bỏ họ nguồn cấu hình khỏi rule taint | 60.8% | 1.0% | +0.60 |
+| #47 | thêm `dso-sqli-tham-so-ham-noi-chuoi` (rule chặn được SQLi tầng dữ liệu) | **62.3%** | **4.3%** | **+0.58** |
 
-Tách theo công cụ ở lần #43:
+**Lần #47 là lần đo có thẩm quyền** — chạy trên `main` tại commit `daf589e`,
+tức bộ rule đang dùng thật. Mọi con số C# trong báo cáo lấy từ lần này.
+
+Tách theo công cụ ở lần #47:
 
 | Công cụ | Bắt | Báo nhầm | Youden |
 |---|---|---|---|
@@ -27,8 +31,38 @@ Tách theo công cụ ở lần #43:
 | Rule cộng đồng của Semgrep | 11.0% | 10.2% | +0.01 |
 | CodeQL (bộ truy vấn mặc định) | 27.5% | 3.3% | +0.24 |
 | CodeQL (threat model local) | 40.2% | 5.2% | +0.35 |
-| Rule đồ án, chỉ mức có quyền chặn | 32.7% | **0.0%** | +0.33 |
-| **Hợp lại = cổng chặn** | **60.8%** | **1.0%** | **+0.60** |
+| Rule đồ án, chỉ mức có quyền chặn | 35.9% | 3.3% | +0.33 |
+| **Hợp lại = cổng chặn** | **62.3%** | **4.3%** | **+0.58** |
+
+### Rule mới làm cổng TỐT HƠN hay TỆ HƠN? — phải nói thẳng
+
+Lần #47 thêm `dso-sqli-tham-so-ham-noi-chuoi`. Bảng tách theo rule của chính
+lần đó cho biết cái giá của nó:
+
+| | Bắt | Báo nhầm | Youden |
+|---|---|---|---|
+| Cổng **không có** rule này | 61.0% | 1.0% | **+0.60** |
+| Cổng **có** rule này (đang dùng) | 62.3% | 4.3% | **+0.58** |
+
+Đổi **+1.3 điểm bắt** lấy **+3.3 điểm báo nhầm**. Theo Youden thì rule này làm
+cổng **tệ đi 0.02**. Giữ nó lại là một quyết định có chủ đích, và đây là ba căn
+cứ — đọc xong vẫn có thể không đồng ý, nhưng không phải là giấu số:
+
+1. **216 báo nhầm trên Juliet bị ép ra bởi thiết kế của chính Juliet.** Mỗi case
+   có `badSink` và `goodG2BSink` với **thân hàm giống hệt nhau**; chỗ khác nhau
+   nằm ở hàm gọi. Một rule taint trong-một-hàm lấy nguồn là tham số của hàm thì
+   **bắt buộc** phải gắn cờ cả hai. Đây là hạn chế của bộ đo gặp hạn chế của
+   Semgrep CE, không phải rule viết ẩu.
+2. **104 case chỉ rule này bắt được** (cột "bắt riêng" của bảng
+   `pipeline-hien-tai`). Bỏ nó đi là mất hẳn 104 case, không công cụ nào khác
+   trong cổng đỡ được.
+3. **Trên mã nghiệp vụ thật thì khác hẳn.** Corpus logic nghiệp vụ — mã đúng
+   nhưng trông như lỗi — đo được **0 cảnh báo mức chặn**. Xem mục 3b; đó mới là
+   con số nói về chặn oan trên mã người ta viết thật.
+
+Và căn cứ quyết định nhất: rule này là **thứ duy nhất chặn được SQLi thật của
+VulnShop tại dòng PR sửa**. CodeQL bỏ sót hoàn toàn, rule cộng đồng bắt được
+nhưng neo ở dòng không đổi nên GitHub không chặn. Xem mục 3c.
 
 **Điều đã học ở lần #43.** Bỏ họ nguồn cấu hình - biến môi trường và thuộc
 tính cấu hình - khỏi mọi rule taint trừ rule command injection: cổng C# mất
@@ -182,7 +216,92 @@ cần viết thêm một rule nào — chỉ cần `query-filters` trong cấu h
 error-based riêng cho `Microsoft.Data.Sqlite` làm tốt hơn cả hai.
 
 **Hạn chế:** 6 case là phép kiểm chức năng, không phải một tỉ lệ. Đặt "100%"
-cạnh "60.8% trên 6611 case" là so sánh hai thứ khác loại.
+cạnh "62.3% trên 6611 case" là so sánh hai thứ khác loại.
+
+### Độ phủ — tầng DAST với tới bao nhiêu phần ứng dụng
+
+Bắt được 6/6 lỗ hổng đã gài **không** có nghĩa là quét hết ứng dụng. Trên
+VulnShop (15 endpoint), bản đồ route cho biết DAST với tới đâu:
+
+| | Trước lớp POST | Sau lớp POST |
+|---|---|---|
+| GET có tham số | 4 | 4 |
+| POST có tham số | 0 | 4 |
+| **Tổng dò được** | **4/15 = 27%** | **8/15 = 53%** |
+
+7 endpoint còn lại là GET không tham số (6) và POST không tham số (1) — không
+có chỗ nào để chèn payload, nên không phải là thiếu sót của công cụ.
+
+Nguyên nhân của 27% ban đầu **không phải đăng nhập** (`needs_auth = 0`) mà là
+**phương thức**: 5 endpoint POST mang 8 tham số, gồm `/Account/Login`
+(username, password) và `/Order/PlaceOrder` (customerName, address) — đúng các
+vị trí SQLi hay nằm nhất — chưa bao giờ được dò.
+
+### Hạn chế lớn nhất của tầng DAST: phụ thuộc chế độ chạy
+
+Cả lớp GET lẫn lớp POST đều là **error-based**: chúng kết luận có SQLi khi phản
+hồi lộ thông báo lỗi của `Microsoft.Data.Sqlite`. `Program.cs` chỉ bật trang
+lỗi chi tiết khi `ASPNETCORE_ENVIRONMENT=Development`, và pipeline khởi động app
+bằng `dotnet run` nên lấy profile `http` có đặt biến đó.
+
+**Ở chế độ Production, lỗi bị nuốt và cả hai lớp mù hoàn toàn.** Đây không phải
+lỗi để sửa — đó là bản chất của kỹ thuật error-based — nhưng mọi con số bắt
+được của tầng DAST chỉ đúng cho ứng dụng chạy ở chế độ hiện lỗi.
+
+---
+
+## 3b. Chặn oan trên mã nghiệp vụ thật — corpus logic nghiệp vụ
+
+Juliet và BenchProctor đều là **mã sinh ra để đo**: mỗi case sạch là một case
+lỗi được sửa vừa đủ. Tỉ lệ báo nhầm đo trên đó nói về corpus đó, không nói về
+mã ứng dụng thật. Corpus này lấp đúng chỗ đó: 3 tệp, **40 hàm mã nghiệp vụ
+đúng nhưng trông như lỗi** — MD5 dùng làm ETag và khoá cache, `Random` dùng
+phát hiện tệp trùng, mệnh đề `IN` ghép từ danh sách Id, `ORDER BY` lấy tên cột
+từ bảng trắng.
+
+**Kết quả: 0 cảnh báo ở mức có quyền chặn.** 7 cảnh báo ở mức chỉ báo — không
+tính là sai, vì đó là lựa chọn có chủ đích: báo cho người review đọc, không
+chặn merge.
+
+**Hạn chế phải ghi:** lần đo này chạy ở commit `4f964df`, **trước** khi thêm
+`dso-sqli-tham-so-ham-noi-chuoi`. Rule đó ở mức chặn và lấy nguồn là tham số
+chuỗi của bất kỳ hàm nào, nên nó *có khả năng* chạm vào `DemDonHang(string
+cotSapXep)` — hàm dùng tham số làm khoá tra bảng trắng. Đọc rule thì nó không
+khớp (thứ đi vào SQL là giá trị đã lọc, không phải tham số), nhưng **đọc không
+thay được chạy**. Con số 0-chặn-oan chỉ được trích cho bộ rule hiện tại sau khi
+chạy lại phép đo này.
+
+---
+
+## 3c. Ba công cụ cùng thấy một lỗ hổng — chỉ một chặn được
+
+Đây là phát hiện trung tâm của đồ án, đo trên PR #18 của VulnShop-App
+(nhánh `demo/vuln-feature`, SQLi ở `Data/Db.cs`).
+
+| Công cụ | Thấy lỗ hổng? | Neo cảnh báo ở dòng | Chặn được merge? |
+|---|---|---|---|
+| **Semgrep rule đồ án** | có — 2 cảnh báo | **94** và 97 | **CÓ** |
+| Semgrep rule cộng đồng (`p/csharp`) | có — 1 cảnh báo | 97 | không |
+| OWASP-ZAP (khai thác động) | có — High | `ProductController.cs:10` | qua cổng xác nhận |
+| **CodeQL csharp** | **không — 0 cảnh báo** | — | không |
+
+**Vì sao dòng neo quyết định tất cả.** GitHub chỉ chặn cảnh báo nằm trên dòng
+mà PR **đã sửa**. Trong `Db.cs`, dòng 94 là chỗ nối chuỗi (`sql += ...`, PR sửa
+dòng này) còn dòng 97 là chỗ thực thi (`cmd.CommandText = sql;`, PR không đụng
+tới). Mặc định Semgrep taint neo cảnh báo ở **sink**, tức dòng 97 — và cảnh báo
+đó bị GitHub xếp là "không mới", nên PR **merge được dù có lỗ hổng High**.
+
+Rule cộng đồng bắt đúng lỗ hổng đó và cũng neo ở dòng 97, nên nó **cũng không
+chặn được**. Nghĩa là: dùng bộ rule cộng đồng mặc định thì lỗ hổng này lọt.
+
+Cách sửa là thêm một sink thứ hai ngay tại điểm nối chuỗi, với
+`focus-metavariable` trỏ vào biểu thức được nối, để cảnh báo rơi đúng dòng PR
+sửa. Sau khi sửa, PR #18 chuyển từ *"All checks have passed"* sang
+**"Merging is blocked"**.
+
+**Đây là lý do đồ án không dừng ở việc cài công cụ.** Cả ba công cụ đều "chạy
+thành công" và đều hiện cảnh báo trong tab Code scanning. Người đọc bảng điều
+khiển sẽ kết luận pipeline đang bảo vệ. Thực tế là merge vẫn đi qua.
 
 ---
 
@@ -366,14 +485,44 @@ BenchProctor, lần mở rộng nguồn đó đã được ghi vào báo cáo nh
 
 ---
 
-## 7. Chưa có bộ đo
+## 7. Bảng đối soát — mỗi tầng chứng minh bằng gì
 
-| Tầng | Trạng thái |
+Câu hỏi "làm sao đảm bảo SAST hoạt động, DAST hoạt động" chỉ có một cách trả
+lời không gian dối: với **từng tầng**, chỉ ra phép đo nào chạy, kết quả bao
+nhiêu, bắt được lỗi thật nào, và ảnh nào chứng minh. Dòng nào không điền được
+hết thì ghi là chưa có, không viết chữ "đạt".
+
+### 7a. Tầng có phép đo chạy tự động
+
+| Tầng | Công cụ | Phép đo | Kết quả | Đột biến |
+|---|---|---|---|---|
+| 0 · Secret | Gitleaks | `kiem_thu_secret.py` (fixture 14 tệp, 7 dạng secret + 4 mồi) | 7/7 bắt, 0 báo nhầm | — |
+| 1 · Thư viện | Trivy fs | `kiem_thu_sca.py` (4 hệ sinh thái, phiên bản dính CVE biết trước) | 9/9 bắt, 0/6 mồi báo nhầm | — |
+| 1b · JS nhúng | retire.js | job `retire` (jquery 1.8.1) | 7 CVE | — |
+| 2 · SAST C# | Semgrep + CodeQL | Juliet C# 1.3, 6611 case, lần #47 | 62.3% bắt / 4.3% nhầm | — |
+| 2 · SAST — chặn oan | Semgrep | Corpus logic nghiệp vụ, 40 hàm mã đúng | **0 chặn oan**, 7 mức chỉ báo | — |
+| 3 · Bản đồ route | `gen_routes_map.py` | `kiem_thu_banto.py`, 6 endpoint đáp án gài sẵn | 6/6 phân loại đúng | có |
+| 4 · Hạ tầng | Trivy config | `kiem_thu_hatang.py` (Dockerfile có lỗi + bản đã sửa) | bắt DS002, im trên bản sửa | có |
+| 5 · DAST — lớp URL | error-based SQLite | `kiem_thu_dast_sqlite.py` | bắt `/Product/Filter`, `/Product/Search` | — |
+| 5 · DAST — lớp POST | error-based qua form | `kiem_thu_dast_post.py` | 8/8 ca | **3/3** |
+| 5 · DAST — runtime | rule header/cookie | `kiem_thu_runtime.py` | 5 phát hiện | — |
+| 5 · DAST — IDOR | `idor.py` | `kiem_thu_idor.py` | 2 phát hiện, 0 báo nhầm | — |
+| Cổng | `gate.py` | `kiem_thu_gate.py` | 10 phép kiểm | — |
+| Chống lách cổng | — | `kiem_bypass.py` + `kiem_thu_bypass.py` | 16 chốt | **16/16** |
+| Bước quyết định bỏ tầng | — | `kiem_thu_phamvi.py` | 10/10 ca | **3/3** |
+| Canh giữ ruleset | `kiem_ruleset.py` | `kiem_thu_ruleset.py` | 19/19 ca | — |
+
+"Đột biến" = phép đo tự phá chính thứ nó đo để chứng minh nó có đo thật. Dòng
+để trống là phép đo chức năng chưa có bước tự phá — đó là việc còn thiếu, ghi
+ra chứ không lấp liếm.
+
+### 7b. Vẫn chưa có bộ đo
+
+| Chỗ | Vì sao chưa có |
 |---|---|
-| ~~Python (SAST)~~ | **đã có số — xem mục 4** |
-| SCA — thư viện đã có | đáp án đã dựng (15 gói, 4 hệ sinh thái), chưa chạy xong |
-| Secret (Gitleaks) | đáp án đã dựng (14 tệp, 7 dạng secret + 4 mồi, fixture sinh lúc chạy), chưa chạy xong |
-| Hạ tầng (Trivy config) | **chưa có đáp án** |
+| ZAP active scan (ngoài lớp error-based) | Chưa có corpus nào đo riêng phần ZAP gốc đóng góp; con số 3/6 ở mục 3 là của một lần chạy, không phải tỉ lệ |
+| Tầng ký image / SBOM | Có workflow, chưa có phép đo nào kiểm chữ ký bị giả thì có bị phát hiện không |
+| Corpus logic nghiệp vụ sau khi thêm Sink 2 | Lần đo gần nhất là commit `4f964df`, **trước** khi thêm `dso-sqli-tham-so-ham-noi-chuoi`. Phải chạy lại mới được trích số 0-chặn-oan cho rule hiện tại |
 
 ---
 
@@ -388,6 +537,6 @@ Muốn một con số cho cả năm tầng thì phải có một bộ đo mà c�
 để tìm, kèm đáp án cho cả năm. Bộ đó không tồn tại công khai: Juliet và OWASP
 Benchmark đều chỉ phủ SAST.
 
-Nên con số **60.8% / 1.0%** là con số của **hai tầng phân tích tĩnh trên Juliet
+Nên con số **62.3% / 4.3%** là con số của **hai tầng phân tích tĩnh trên Juliet
 C#** — không phải của cả pipeline, và không phải tỉ lệ trên mọi loại lỗi ngoài
 thực tế.
