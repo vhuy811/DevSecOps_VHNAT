@@ -16,15 +16,26 @@ của cả hai tỉ lệ là toàn bộ case.
 |---|---|---|---|---|
 | #23 | nguồn chỉ HTTP | 47.3% | 5.2% | +0.42 |
 | #26 | mở rộng nguồn ra ngoài HTTP | 63.6% | 5.2% | +0.58 |
-| #28 | bỏ CWE-643 khỏi tầng CodeQL | **61.6%** | **1.0%** | **+0.61** |
+| #28 | bỏ CWE-643 khỏi tầng CodeQL | 61.6% | 1.0% | +0.61 |
+| #43 | bỏ họ nguồn cấu hình khỏi rule taint | **60.8%** | **1.0%** | **+0.60** |
 
-Tách theo công cụ ở lần #28:
+Tách theo công cụ ở lần #43:
 
-| Công cụ | Bắt | Báo nhầm |
-|---|---|---|
-| Rule đồ án, chỉ mức có quyền chặn | 33.8% | **0.0%** |
-| CodeQL (threat model local) | 40.2% | 5.2% |
-| **Hợp lại = cổng chặn** | **61.6%** | **1.0%** |
+| Công cụ | Bắt | Báo nhầm | Youden |
+|---|---|---|---|
+| Rule đồ án, tính cả mức chỉ báo | 50.4% | 31.9% | +0.18 |
+| Rule cộng đồng của Semgrep | 11.0% | 10.2% | +0.01 |
+| CodeQL (bộ truy vấn mặc định) | 27.5% | 3.3% | +0.24 |
+| CodeQL (threat model local) | 40.2% | 5.2% | +0.35 |
+| Rule đồ án, chỉ mức có quyền chặn | 32.7% | **0.0%** | +0.33 |
+| **Hợp lại = cổng chặn** | **60.8%** | **1.0%** | **+0.60** |
+
+**Điều đã học ở lần #43.** Bỏ họ nguồn cấu hình - biến môi trường và thuộc
+tính cấu hình - khỏi mọi rule taint trừ rule command injection: cổng C# mất
+**0.8 điểm bắt** (61.6% -> 60.8%) và bộ rule C# mất
+**1.1 điểm** (33.8% -> 32.7%). Cùng thay đổi đó làm Juliet Java mất 11.2 điểm.
+Chênh lệch giữa hai ngôn ngữ chính là thước đo mức độ corpus phụ thuộc vào họ
+nguồn đó, chứ không phải thước đo chất lượng rule - xem PHAT_HIEN_BENCHPROCTOR.md.
 
 **Điều đã học ở lần #26.** Phòng đo chia theo loại nguồn dữ liệu cho thấy rule
 taint chỉ khai nguồn HTTP, nên 4218/6611 case có nguồn mạng, CSDL hoặc cục bộ
@@ -171,7 +182,7 @@ cần viết thêm một rule nào — chỉ cần `query-filters` trong cấu h
 error-based riêng cho `Microsoft.Data.Sqlite` làm tốt hơn cả hai.
 
 **Hạn chế:** 6 case là phép kiểm chức năng, không phải một tỉ lệ. Đặt "100%"
-cạnh "61.6% trên 6611 case" là so sánh hai thứ khác loại.
+cạnh "60.8% trên 6611 case" là so sánh hai thứ khác loại.
 
 ---
 
@@ -216,7 +227,7 @@ rule Semgrep, mà là việc của CodeQL.
 category của bộ đo — tức **2.250/9.150 case có lỗi (24,6%)**. 6.900 case còn lại
 thuộc các loại đồ án **cố ý không phủ** (`authzfailure`, `hardcodedcreds`,
 `loginjection`, `sessionfixation`…), vì quyền chặn chỉ dành cho CWE mà ZAP có
-active scan tương ứng. Nên đặt con số này cạnh "61,6% trên Juliet C#" là so
+active scan tương ứng. Nên đặt con số này cạnh "60,8% trên Juliet C#" là so
 sánh sai: Juliet C# chỉ chứa đúng những CWE mà rule nhắm tới.
 
 **Ba điều lần #2 xác nhận, cả ba đã sửa và đã đo lại ở lần #9:**
@@ -377,6 +388,6 @@ Muốn một con số cho cả năm tầng thì phải có một bộ đo mà c�
 để tìm, kèm đáp án cho cả năm. Bộ đó không tồn tại công khai: Juliet và OWASP
 Benchmark đều chỉ phủ SAST.
 
-Nên con số **61.6% / 1.0%** là con số của **hai tầng phân tích tĩnh trên Juliet
+Nên con số **60.8% / 1.0%** là con số của **hai tầng phân tích tĩnh trên Juliet
 C#** — không phải của cả pipeline, và không phải tỉ lệ trên mọi loại lỗi ngoài
 thực tế.
