@@ -255,4 +255,67 @@ namespace DoAn.LogicNghiepVu
             return maChuDon == maNguoiDangNhap;
         }
     }
+
+    public class TangTruyCapDuLieu
+    {
+        // Viec nghiep vu: tim san pham theo danh muc va tu khoa, dung dan cau SQL
+        //   theo nhung bo loc ma nguoi dung thuc su chon.
+        // Vi sao an toan: moi thu duoc noi vao chuoi SQL deu la HANG CHUOI do lap
+        //   trinh vien viet; hai gia tri cua nguoi dung di qua AddWithValue nen
+        //   chung di vao CSDL duoi dang tham so, khong phai duoi dang cau lenh.
+        //   Day la ban sao ham Db.GetProducts dang chay that tren nhanh main cua
+        //   VulnShop-App, dua vao day lam moc: neu mot ban sua rule nao do lam
+        //   ham nay bi bao o muc chan, nghia la rule do se chan merge cua chinh
+        //   tang truy cap du lieu viet dung chuan.
+        // Rule co the bao oan: dso-sqli-tham-so-ham-noi-chuoi,
+        //   dso-sqli-commandtext-concat, dso-sqli-query-string-concat,
+        //   csharp.lang.security.sqli.csharp-sqli.
+        public static List<string> TimSanPham(string danhMuc, string tuKhoa)
+        {
+            var ketQua = new List<string>();
+            using var conn = new SqlConnection("Server=.;Database=cuahang;");
+            conn.Open();
+            var cmd = conn.CreateCommand();
+            var sql = "SELECT Id, Ten FROM SanPham WHERE 1=1";
+            if (!string.IsNullOrWhiteSpace(danhMuc))
+            {
+                sql += " AND DanhMuc = @danhMuc";
+                cmd.Parameters.AddWithValue("@danhMuc", danhMuc);
+            }
+            if (!string.IsNullOrWhiteSpace(tuKhoa))
+            {
+                sql += " AND Ten LIKE @tuKhoa";
+                cmd.Parameters.AddWithValue("@tuKhoa", "%" + tuKhoa + "%");
+            }
+            sql += " ORDER BY Id";
+            cmd.CommandText = sql;
+            using var rd = cmd.ExecuteReader();
+            while (rd.Read()) ketQua.Add(rd.GetString(1));
+            return ketQua;
+        }
+
+        // Viec nghiep vu: dem don hang theo trang thai, ten cot sap xep do CHINH
+        //   chuong trinh chon tu mot danh sach trang, khong phai do nguoi dung go.
+        // Vi sao an toan: tham so cua ham khong bao gio di vao cau SQL - no chi
+        //   duoc dung de TRA BANG, va thu di vao SQL la gia tri lay tu bang do.
+        //   Day la cach duy nhat dung de "sap xep theo cot nguoi dung chon".
+        // Rule co the bao oan: dso-sqli-tham-so-ham-noi-chuoi (tham so chuoi cua
+        //   ham co mat trong cung ham voi mot sink SQL).
+        public static int DemDonHang(string cotSapXep)
+        {
+            var cotHopLe = new Dictionary<string, string>
+            {
+                ["ngay"] = "NgayTao",
+                ["tien"] = "TongTien",
+                ["ma"]   = "Id",
+            };
+            if (!cotHopLe.TryGetValue(cotSapXep, out var cot)) cot = "Id";
+            using var conn = new SqlConnection("Server=.;Database=cuahang;");
+            conn.Open();
+            var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT COUNT(*) FROM DonHang ORDER BY " + cot;
+            return (int)cmd.ExecuteScalar();
+        }
+    }
+
 }

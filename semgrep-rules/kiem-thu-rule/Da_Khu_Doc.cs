@@ -292,6 +292,42 @@ namespace KiemThuRule
         }
 
         // ------------------------------------------------------------------
+        // CWE-89 : cung hinh dang, nhung noi HANG CHUOI - khong duoc bat
+        // ------------------------------------------------------------------
+        // Doi trong cua TangDuLieu_NoiThamSoVaoSql. Day la ban sao gan nhu
+        // nguyen van ham Db.GetProducts tren nhanh main cua VulnShop-App - tuc
+        // la MA THAT DANG CHAY, khong phai vi du dung ra cho dep.
+        //
+        // No cung dung += bon lan de dung dan cau SQL, cung nhan hai tham so
+        // chuoi tu ham goi. Khac biet duy nhat: moi thu duoc += vao deu la hang
+        // chuoi, con hai gia tri nguoi dung di qua AddWithValue. Mot rule khop
+        // theo HINH DANG ("co += vao bien SQL") se chan oan ngay ham nay; rule
+        // theo luong du lieu thi im lang, vi chuoi khong bao gio nhiem.
+        //
+        // Case nay o day de neu ai do sau nay noi long rule cho "bat duoc nhieu
+        // hon", dieu kien 2 cua bo kiem se do ngay.
+        public void TangDuLieu_NoiHangChuoi_ThamSoHoa(string danhMuc, string tuKhoa)
+        {
+            using var conn = new SqlConnection("Server=.;Database=cuahang;");
+            conn.Open();
+            var cmd = conn.CreateCommand();
+            var sql = "SELECT Id, Ten, DanhMuc, Gia FROM SanPham WHERE 1=1";
+            if (!string.IsNullOrWhiteSpace(danhMuc))
+            {
+                sql += " AND DanhMuc = @danhMuc";
+                cmd.Parameters.AddWithValue("@danhMuc", danhMuc);
+            }
+            if (!string.IsNullOrWhiteSpace(tuKhoa))
+            {
+                sql += " AND Ten LIKE @tuKhoa";
+                cmd.Parameters.AddWithValue("@tuKhoa", "%" + tuKhoa + "%");
+            }
+            sql += " ORDER BY Id";
+            cmd.CommandText = sql;
+            cmd.ExecuteReader();
+        }
+
+        // ------------------------------------------------------------------
         // CWE-319 : bat ma hoa duong truyen
         // ------------------------------------------------------------------
         public void KetNoiCsdl_BatMaHoa()

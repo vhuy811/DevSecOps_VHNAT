@@ -1174,6 +1174,80 @@ rules:
   # (threat model local) bat.
   # ===========================================================================
 
+  # ------------------------------------------------------------------
+  # CWE-89 O TANG TRUY CAP DU LIEU - vi sao can mot rule rieng
+  # ------------------------------------------------------------------
+  # dso-taint-sqli chi khai nguon la doi tuong request HTTP va tham so cua
+  # action trong lop ke thua Controller/ControllerBase/PageModel. Ung dung that
+  # KHONG viet SQL trong controller: controller goi mot lop Db/Repository, va
+  # cau SQL duoc dung o DO. Luc ay nguon (tham so HTTP) nam o mot ham, sink
+  # (CommandText) nam o ham khac va tep khac, nen taint cua Semgrep CE -
+  # von chi di trong mot ham - khong noi hai dau lai duoc.
+  #
+  # DAY KHONG PHAI GIA DINH. Do duoc tren hai PR that cua VulnShop-App:
+  #   PR #19 dat SQLi ngay trong controller  -> bi CHAN (dso-taint-sqli bat)
+  #   PR #18 dat SQLi trong Data/Db.cs       -> LOT QUA CONG, khong rule nao bat
+  # Cung mot lo hong, hai ket qua trai nguoc, khac nhau duy nhat o chuyen no
+  # nam trong tep nao.
+  #
+  # Rule nay dich DIEM DO xuong dung cho lo hong nam: coi THAM SO CHUOI CUA
+  # CHINH HAM la nguon, va chi tinh khi no chay toi mot sink SQL TRONG CUNG
+  # HAM. Phep do van la trong-mot-ham, nhung gio no do dung ham can do.
+  #
+  # Vi sao khong chan oan ma dung: ham dung noi HANG CHUOI vao cau SQL roi
+  # truyen gia tri qua Parameters.AddWithValue. Chuoi chi gom hang chuoi thi
+  # khong bao gio nhiem, nen rule im lang. Ham GetProducts ban sach cua
+  # VulnShop la vi du dung: no += bon lan, ca bon deu la hang chuoi, con hai
+  # gia tri nguoi dung thi di qua AddWithValue. Case do nam trong
+  # Da_Khu_Doc.cs lam doi chung thuong truc.
+  - id: dso-sqli-tham-so-ham-noi-chuoi
+    mode: taint
+    languages: [csharp]
+    severity: ERROR
+    message: >-
+      CWE-89: Tham so chuoi cua ham nay duoc noi thang vao cau lenh SQL trong
+      cung ham. Ham dung o tang truy cap du lieu chi duoc noi hang chuoi vao
+      cau SQL; moi gia tri phai di qua tham so hoa (@ten + Parameters.Add /
+      AddWithValue) hoac ban ...Interpolated cua EF Core.
+    metadata:
+      cwe: "CWE-89"
+      category: security
+      subcategory: [vuln]
+      confidence: HIGH
+      references:
+        - https://cwe.mitre.org/data/definitions/89.html
+    pattern-sources:
+      - patterns:
+          # Tham so kieu string / string? cua BAT KY ham nao - khong gioi han o
+          # lop Controller nhu dso-taint-sqli. Dung focus-metavariable de chi
+          # lay dung tham so lam nguon, khong lay ca than ham.
+          - pattern-inside: |
+              $RET $M(..., $T $P, ...) { ... }
+          - metavariable-regex:
+              metavariable: $T
+              regex: ^string\??$
+          - focus-metavariable: $P
+    pattern-sanitizers:
+      - pattern: int.Parse(...)
+      - pattern: long.Parse(...)
+      - pattern: Guid.Parse(...)
+      - pattern: Convert.ToInt32(...)
+      - pattern: Convert.ToInt64(...)
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: $CMD.CommandText = $X
+              - pattern: $CMD.CommandText += $X
+              - pattern: new SqlCommand($X, ...)
+              - pattern: new OleDbCommand($X, ...)
+              - pattern: new MySqlCommand($X, ...)
+              - pattern: new NpgsqlCommand($X, ...)
+              - pattern: new SqliteCommand($X, ...)
+              - pattern: new SqlDataAdapter($X, ...)
+              - pattern: $CTX.$T2.FromSqlRaw($X, ...)
+              - pattern: $CTX.Database.ExecuteSqlRaw($X, ...)
+          - focus-metavariable: $X
+
   - id: dso-taint-sqli
     mode: taint
     languages: [csharp]

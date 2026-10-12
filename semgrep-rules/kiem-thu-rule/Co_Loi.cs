@@ -443,6 +443,31 @@ namespace KiemThuRule
         }
 
         // ------------------------------------------------------------------
+        // CWE-89 : tham so cua ham tu noi thang vao cau SQL (tang truy cap CSDL)
+        // ------------------------------------------------------------------
+        // rule: dso-sqli-tham-so-ham-noi-chuoi
+        //
+        // Dung lai y nguyen mau da LOT QUA CONG CHAN o PR #18 cua VulnShop-App.
+        // Khac voi cac case SQLi khac trong tep nay, o day KHONG co doi tuong
+        // request nao: ham chi nhan mot tham so chuoi tu ham goi no. Do dung la
+        // cach tang truy cap du lieu cua moi ung dung that duoc viet, va cung
+        // dung la khoang ma rule chi khai nguon HTTP khong voi toi.
+        public void TangDuLieu_NoiThamSoVaoSql(string tuKhoa)
+        {
+            using var conn = new SqlConnection("Server=.;Database=cuahang;");
+            conn.Open();
+            var sql = "SELECT Id, Ten FROM SanPham WHERE 1=1";
+            if (!string.IsNullOrWhiteSpace(tuKhoa))
+            {
+                sql += " AND Ten LIKE '%" + tuKhoa + "%'";
+            }
+            sql += " ORDER BY Id";
+            var cmd = conn.CreateCommand();
+            cmd.CommandText = sql;
+            cmd.ExecuteReader();
+        }
+
+        // ------------------------------------------------------------------
         // CWE-319 : truyen tin khong ma hoa (kiem tra cau hinh)
         // ------------------------------------------------------------------
         // Hai case nay la cua rule muc WARNING - xem ghi chu CWE-319 trong
