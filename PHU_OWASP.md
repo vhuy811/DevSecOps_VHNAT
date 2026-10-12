@@ -27,7 +27,7 @@ Cột *đã đo* chỉ điền khi có số từ một phòng đo chạy đượ
 |---|---|---|---|
 | **A01** Kiểm soát truy cập hỏng | 8 rule đường dẫn (CWE-22/23/36) + chuyển hướng mở (601) của đồ án; CodeQL; **DAST-idor** kiểm IDOR/BOLA có xác thực (CWE-639) | CHẶN | CWE-23 49%/0%, CWE-36 49%/0%, CWE-601 74%/2% (Juliet #28). IDOR: 2/2 trên bộ kiểm chức năng, chưa có corpus |
 | **A02** Thất bại mật mã | `dso-weak-hash`, `dso-weak-random`, `dso-hardcoded-crypto-key`; CodeQL mật mã yếu; 2 rule CWE-319 | **hỗn hợp** | CWE-327 100%/0%; CWE-321 49%/0%; **CWE-328 và CWE-338 bắt 100%/0% nhưng chỉ ở mức WARNING nên KHÔNG chặn**; CWE-319 **0%/0% — không công cụ nào bắt** |
-| **A03** Chèn mã | 26 rule chặn + 11 rule chỉ báo của đồ án (SQLi, cmdi, XSS, XPath, LDAP, XXE, chèn mã, CRLF); CodeQL; **OWASP-ZAP** xác nhận động | CHẶN | CWE-89 72%/1%, CWE-78 85%/2%, CWE-90 85%/2%, CWE-643 49%/0%, CWE-80 74%/2%, CWE-113 49%/0%, CWE-470 49%/0% (Juliet #28). ZAP: 6/6 lỗ hổng gài trước, 0 báo nhầm (phòng đo DAST) |
+| **A03** Chèn mã | 26 rule chặn + 11 rule chỉ báo của đồ án (SQLi, cmdi, XSS, XPath, LDAP, XXE, chèn mã, CRLF) + **2 rule mới**: NoSQL `$where` (CWE-943) và SSTI (CWE-1336); CodeQL; **OWASP-ZAP** xác nhận động | CHẶN | CWE-89 72%/1%, CWE-78 85%/2%, CWE-90 85%/2%, CWE-643 49%/0%, CWE-80 74%/2%, CWE-113 49%/0%, CWE-470 49%/0% (Juliet #28). ZAP: 6/6 lỗ hổng gài trước, 0 báo nhầm (phòng đo DAST). **NoSQL và SSTI: chưa đo** — BenchProctor có 150 case NoSQL và 147 case SSTI, trước G6.2 không công cụ nào của đồ án thấy chúng |
 | **A04** Thiết kế không an toàn | — | **chưa phủ** | — |
 | **A05** Cấu hình sai | 5 rule XXE/DTD của đồ án; **Trivy** quét cấu hình hạ tầng; **DAST-runtime** kiểm header và cờ cookie | CHẶN | CWE-614 100%/0% (Juliet #28). DAST-runtime: 5/5 rule trên bộ kiểm chức năng. Trivy: **chưa có bộ đo** |
 | **A06** Thành phần lỗi thời | **SCA** — `sca.py` (chỉ NuGet), `retire.js` (chỉ JS nhúng sẵn), `dependency-review` (chỉ thư viện **mới** trong PR), **Trivy fs** (mọi hệ sinh thái, thư viện **đã có**) | CHẶN | có bộ đo từ G5.2: fixture sinh lúc chạy, 9 gói dính lỗ hổng + 6 gói sạch trên npm/pip/maven/nuget |
@@ -48,7 +48,11 @@ người, không phải của pipeline. Ghi "chưa phủ" là trung thực hơn 
 báo nhầm** trên Juliet nhưng đang ở mức WARNING nên không chặn. Chưa nâng vì Juliet
 không có lần nào dùng MD5 hợp lệ (checksum, cache key, ETag), nên 0% báo nhầm ở đó
 **không nói gì** về mã nguồn thật — nâng lên mà không có bằng chứng về mã thật thì
-đúng vào vế "không lỗi vẫn block". Còn CWE-319 thì 0% cho mọi công cụ: đã đọc hàm
+đúng vào vế "không lỗi vẫn block". **Bộ đo cho đúng câu này đã dựng** (G6.4):
+`semgrep-rules/kiem-thu-rule/logic-nghiep-vu/` — 38 hàm mã nghiệp vụ an toàn mà
+trông như lỗi, trong đó có MD5 dùng làm ETag / khoá cache / dấu vết trùng lặp và
+`Random` dùng cho jitter / lấy mẫu log / xáo trộn gợi ý. Đáp án là 0 cảnh báo mức
+chặn. Có số rồi thì quyết được, còn bây giờ **vẫn chưa có số**. Còn CWE-319 thì 0% cho mọi công cụ: đã đọc hàm
 Bad của Juliet và biết dạng thật là *đọc bí mật qua `http://` không mã hoá rồi dùng
 làm thông tin đăng nhập*, nhưng chưa viết rule vì cần đọc cả hàm goodB2G trước.
 
@@ -65,6 +69,14 @@ tầng nào quét — một repo kéo về với `log4j-core 2.14.1` có sẵn t
 nào. Đây là lỗ của chính câu "dùng được cho nhiều loại repo". Bản bịt không cần công
 cụ mới: Trivy đã quét filesystem để sinh SBOM, chỉ là chưa được hỏi lỗ hổng.
 
+**Một lỗ A03 đã tìm ra và đã bịt: NoSQL injection.** Trước G6.2, bộ rule chỉ có
+đích SQL (`execute`, `text`, `raw`) — không có đích MongoDB. Đo trên BenchProctor:
+150 case `$where` nối chuỗi mà **không công cụ nào của đồ án nhìn thấy**. Một repo
+dùng Mongo thì tầng SAST mù hoàn toàn với A03, đúng vào câu "dùng được cho nhiều
+loại repo". Cùng lần đo đó tìm ra 147 case SSTI mà Semgrep **có** báo nhưng điểm
+không được tính, vì rule khai `cwe: CWE-79` trong khi SSTI thuộc họ CWE-1336 — lỗi
+gán nhãn, không phải lỗi phát hiện.
+
 **Hai tầng vẫn chưa có bộ đo: secret và hạ tầng.** Nên con số "bắt 61.6%" của đồ án
 là con số của **hai tầng phân tích tĩnh trên Juliet C#**, không phải của cả pipeline.
 Không thể cộng tỉ lệ của năm tầng lại vì chúng không cùng mẫu số: Juliet đếm lỗi
@@ -78,8 +90,10 @@ commit, Trivy đếm cấu hình sai. Muốn một con số cho cả năm tầng
    lúc chạy, 15 gói trên bốn hệ sinh thái. Việc này đồng thời tìm ra và bịt lỗ
    "thư viện đã có không tầng nào quét". Còn **Gitleaks** thì chưa có đáp án.
 2. **CWE-319** — đọc hàm goodB2G rồi viết rule. 148 case đang 0%.
-3. **CWE-328/338** — đo báo nhầm trên mã nguồn thật (không phải Juliet) rồi quyết
-   có nâng lên mức chặn hay không.
+3. **CWE-328/338** — ~~đo báo nhầm trên mã nguồn thật~~ **bộ đo đã dựng (G6.4)**,
+   chờ chạy: `phong-do-logic-nghiepvu.yml`. Có kết quả rồi mới quyết có nâng lên mức
+   chặn hay không. Hạn chế đã ghi: đây là mã tự viết, số case nhỏ, nên đọc là "có
+   chặn oan hay không" chứ không phải một tỉ lệ có mẫu số đáng tin.
 4. **A08** — xét có nên cho CWE-502 quyền chặn dù ZAP không xác nhận được, hay giữ
    nguyên nguyên tắc. Đây là quyết định về nguyên tắc, cần số liệu báo nhầm trước.
 5. **A04** — không bịt bằng công cụ. Cách trung thực là ghi rõ trong tài liệu rằng

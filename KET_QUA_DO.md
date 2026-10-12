@@ -116,6 +116,7 @@ phải đã cải thiện.
 |---|---|
 | **Python: mở nguồn + 3 đích mới** (G6.2) | Trần cấu trúc 33.6% → **78.2%** của 2.250 case thuộc phạm vi rule. Báo nhầm **sẽ không gần 0**: sàn ≈ 22.6% vì bản sạch của BenchProctor khử độc bằng `if … return 400`, thứ `pattern-sanitizers` không diễn tả được. Chi tiết: `PHAT_HIEN_BENCHPROCTOR.md` |
 | **Java: mở nguồn ra ngoài HTTP** (G6.3) | Trần của Semgrep CE 14.0% → **54.1%**; dự đoán tỉ lệ bắt 11.8% → **~46%**. Căn cứ: nhãn của corpus cho thấy HTTP chỉ là 777/2997 case (25.9%), và lần đo #1 ra 11.8% nằm ngay dưới trần cũ 14.0% |
+| **Corpus logic nghiệp vụ** (G6.4) | Bộ đo mới cho câu "mã đúng có bị chặn không": 3 tệp, 38 hàm mã nghiệp vụ an toàn nhưng trông như lỗi. Đáp án **0 cảnh báo mức chặn**. Đây là bộ đo còn thiếu để quyết `dso-weak-hash` / `dso-weak-random` có nâng lên mức chặn được hay không |
 
 Hai dự đoán này là **phép kiểm cho chẩn đoán**, không phải lời hứa. Nếu Java ra
 thấp hơn ~46% nhiều thì nguyên nhân không còn là thiếu nguồn và phải đọc lại đích.
