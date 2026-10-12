@@ -103,14 +103,24 @@ public class Da_Khu_Doc {
         new ProcessBuilder("rsync", "-a", "/var/data", data).start();
     }
 
-    // Nguon System.getProperty nhung cat bo thu muc truoc khi ghep.
-    // Dung DUNG ham sanitizer ma rule khai (FilenameUtils.getName): ban dau
-    // toi viet `new File(...).getName()` - nhin thi tuong duong, nhung
-    // `new File($X, ...)` CHINH LA mot sink cua rule nay nen nguon se chay
-    // thang vao sink, va `getName()` khong phai `$P.getFileName()` da khai.
-    // Tuc la case "sach" do lai la mot lo hong that theo dinh nghia cua rule.
-    public void thuocTinhVaoDuongDanDaCat() throws Exception {
-        String data = FilenameUtils.getName(System.getProperty("user.home"));
+    // NGUON CAU HINH VAO DICH DUONG DAN - KHONG CO SANITIZER, VA PHAI KHONG BI BAT.
+    //
+    // Day la ham DUY NHAT trong tep nay khong he "khu doc" gi ca: gia tri tu
+    // System.getProperty di THANG vao sink. No van thuoc tep nay vi theo mo
+    // hinh moi de doa cua du an, cau hinh trien khai KHONG phai du lieu ke tan
+    // cong dieu khien - ai dat duoc system property cho tien trinh JVM thi da
+    // chay duoc ma trong tien trinh do roi.
+    //
+    // Truoc day day la case "da cat thu muc" dung de kiem sanitizer
+    // FilenameUtils.getName. Sanitizer do van duoc kiem - boi
+    // thamSoVaoDuongDanDaCat() o tren, voi nguon HTTP.
+    //
+    // Ham nay la PHEP KIEM CHAP HANH cua quyet dinh bo nguon cau hinh: neu co
+    // ai them lai $P.getProperty vao nguon cua rule duong dan, dieu kien 2 cua
+    // bo kiem (khong duoc bao nham tren Da_Khu_Doc) se do ngay o dong nay -
+    // khong phai doi den luc corpus logic nghiep vu chan oan mot PR that.
+    public void thuocTinhVaoDuongDan_nguonCauHinh() throws Exception {
+        String data = System.getProperty("user.home");
         new FileInputStream(new File("/du_lieu", data));
     }
 }

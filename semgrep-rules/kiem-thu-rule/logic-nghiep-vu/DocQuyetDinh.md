@@ -25,6 +25,35 @@ một lần **chặn oan** — tức một lần pipeline sẽ chặn merge củ
 Cảnh báo mức WARNING được in ra nhưng không tính là sai: đó là lựa chọn có chủ
 đích (báo cho người review đọc, không chặn).
 
+## Lần đo đầu tiên — bộ đo này đã bắt được một lỗi thật ngay lần chạy đầu
+
+Lần chạy **Phòng đo logic nghiệp vụ #7**: `dso-java-taint-path-traversal`
+**chặn oan** `tepTamBaoCao()` — một hàm chỉ làm
+
+```java
+new File(System.getProperty("java.io.tmpdir"), "bao_cao_tam.csv")
+```
+
+Nguyên nhân: `$P.getProperty(...)` vừa được thêm làm nguồn taint, vì trong
+Juliet Java nó là nguồn của **761 tệp** (và `System.getenv` thêm 222 tệp) — họ
+nguồn ngoài-HTTP lớn nhất của corpus. Mở rộng sang nó làm tỉ lệ bắt trên Juliet
+tăng mạnh.
+
+Nhưng Juliet dùng `getProperty` vì cần một giá trị mà trình biên dịch không gấp
+lại được, **không** vì nó mô hình hoá kẻ tấn công. Mã thật dùng đúng hai hàm này
+để đọc **cấu hình triển khai** — giá trị do người vận hành đặt. Bằng chứng độc
+lập: trong `semgrep/semgrep-rules`, **0/21** rule taint Java dùng chúng làm
+nguồn; bên Python chỉ **2/59** tệp có, và cả hai đều **chỉ** đặt nguồn này cho
+đích *thực thi lệnh*.
+
+Đã bỏ nguồn cấu hình khỏi mọi rule taint trừ `*-cmdi`, ở cả ba bộ rule (C#,
+Java, Python). Hệ quả phải ghi thẳng vào báo cáo: **tỉ lệ bắt trên Juliet giảm**,
+và đó là con số *đúng hơn*, không phải con số tệ hơn.
+
+Đây chính là câu mà bộ đo này được dựng để trả lời, và nó trả lời ngay lần chạy
+đầu. Nếu chỉ có Juliet và BenchProctor, lần mở rộng nguồn đó sẽ được ghi vào báo
+cáo như một **cải tiến**.
+
 ## Vì sao không lấy mã của VulnShop-App làm bộ đo này
 
 VulnShop-App là ứng dụng **cố ý có lỗ hổng**, nên nó không trả lời được câu hỏi

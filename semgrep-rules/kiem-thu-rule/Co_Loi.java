@@ -129,11 +129,8 @@ public class Co_Loi {
         Runtime.getRuntime().exec("rsync -a /var/data " + data);
     }
 
-    // Nguon: System.getProperty / Properties doc tu tep cau hinh
-    public void nguonThuocTinhVaoDuongDan() throws Exception {
-        String data = System.getProperty("user.home");
-        new FileInputStream("/du_lieu/" + data);
-    }
+    // DA CHUYEN SANG Da_Khu_Doc.java: System.getProperty khong con la nguon
+    // cua rule duong dan. Xem khoi "NGUON CAU HINH" o dau sast-detect-java.yaml.
 
     // Nguon: doc tu CSDL roi noi vao cau lenh moi = tiem SQL BAC HAI
     public void nguonCsdlVaoSql(ResultSet rs, Statement st) throws Exception {

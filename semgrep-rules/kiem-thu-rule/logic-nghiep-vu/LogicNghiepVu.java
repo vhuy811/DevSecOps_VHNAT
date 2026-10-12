@@ -83,8 +83,13 @@ public class LogicNghiepVu {
     // Viec nghiep vu: ghi tep tam vao thu muc tam cua he thong.
     // Vi sao an toan: java.io.tmpdir la thuoc tinh do JVM dat, va ten tep la
     //   hang so trong ma nguon - khong co phan nao do nguoi dung dieu khien.
-    // Rule co the bao oan: dso-java-taint-path-traversal - $P.getProperty la
-    //   nguon moi va new File(...) la sink.
+    // DA BAO OAN THAT, o lan chay Phong do logic nghiep vu #7:
+    //   dso-java-taint-path-traversal chan ham nay, vi $P.getProperty vua duoc
+    //   them lam nguon va new File(...) la sink.
+    // Ket qua: da BO nguon cau hinh khoi rule duong dan (va moi rule taint tru
+    //   *-cmdi) o ca ba bo rule. Doc khoi "NGUON CAU HINH" o dau
+    //   semgrep-rules/sast-detect-java.yaml.
+    // Ham nay GIU NGUYEN de lan sau co ai them lai thi no chan oan lan nua.
     public static File tepTamBaoCao() {
         return new File(System.getProperty("java.io.tmpdir"), "bao_cao_tam.csv");
     }

@@ -43,6 +43,37 @@ name: Phong do Java
 # Neu lan do nay ra thap hon nhieu thi nguyen nhan KHONG con la thieu nguon,
 # va phai doc lai dich chu khong mo rong nguon tiep.
 #
+# -----------------------------------------------------------------------------
+# DA DAO NGUOC MOT PHAN VIEC MO RONG TREN - va day la ket luan dang ke nhat cua
+# ca qua trinh do:
+#
+# Hai trong bon ho nguon duoc them la CAU HINH, khong phai du lieu: System.getenv
+# (222 tep) va System.getProperty (761 tep) - cong 983 tep, ho ngoai-HTTP LON
+# NHAT cua corpus. Nhan chung la nhiem doc lam ti le bat Juliet tang rat manh.
+#
+# Nhung chung chi la nguon TRONG JULIET. Juliet dung getProperty vi can mot gia
+# tri ma trinh bien dich khong gap lai duoc, KHONG vi no mo hinh hoa ke tan cong.
+# Ma that dung dung hai ham nay de doc CAU HINH TRIEN KHAI. Bang chung doc lap:
+# trong bo rule chinh thuc semgrep/semgrep-rules, 0/21 rule taint Java dung
+# chung lam nguon, va 2/59 tep Python co dung thi CHI cho dich thuc thi lenh.
+#
+# Gia phai tra do duoc o "Phong do logic nghiep vu" #7: rule
+# dso-java-taint-path-traversal CHAN OAN mot ham chi lam
+#     new File(System.getProperty("java.io.tmpdir"), "bao_cao_tam.csv")
+#
+# Da bo ca hai khoi moi rule taint tru dso-java-taint-cmdi (dich la thuc thi
+# lenh - cho duy nhat bo rule chinh thuc chap nhan). Giu lai: $X.readLine() va
+# $RS.getString/getObject - do la nguon DOC DU LIEU that.
+#
+# Nen ti le bat o lan do sau se THAP HON ~46%, va day la so dung hon chu khong
+# phai so te hon: "mo rong nguon la mo rong vung bat ma khong mo rong vung bao
+# nham" chi dung voi nguon doc du lieu. Voi nguon cau hinh no sai, va cai gia
+# khong hien ra tren Juliet - chi hien ra tren ma that.
+#
+# Chot kiem de khong ai (ke ca tac gia, dang di tim diem bat) them lai trong im
+# lang: nguon_cauhinh_sai_cho() trong semgrep-rules/kiem-thu-rule/chay_kiem_thu.py
+# -----------------------------------------------------------------------------
+#
 # LUU Y khi doc ket qua: lan do #1 cho thay tren Java rule cua du an KHONG
 # them gi cho cong chan, vi CodeQL-local mot minh da dat 94.2%. Gia tri cua bo
 # rule tu viet o Java nam o cho CodeQL khong co san (runner self-hosted, repo

@@ -372,13 +372,9 @@ namespace KiemThuRule
             cmd.ExecuteNonQuery();
         }
 
-        // nguon: Environment.GetEnvironmentVariable (ho Environment)
-        // rule: dso-taint-path-traversal
-        public string NguonBienMoiTruong_VaoDuongDan()
-        {
-            string duong = Environment.GetEnvironmentVariable("BAO_CAO");
-            return File.ReadAllText("/var/bao-cao/" + duong);
-        }
+        // DA CHUYEN SANG Da_Khu_Doc.cs: Environment.GetEnvironmentVariable khong
+        // con la nguon cua rule duong dan. Xem khoi "NGUON CAU HINH" o dau tep
+        // sast-detect.yaml.
 
         // nguon: SqlDataReader.GetString(i) (ho Database) - injection BAC HAI:
         // du lieu da luu trong CSDL di vao lenh he dieu hanh

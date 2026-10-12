@@ -28,6 +28,38 @@
 #
 # GIOI HAN THAT: Semgrep ban cong dong lan theo luong trong MOT ham. Lien ham /
 # lien tep la phan cua CodeQL (threat-models: local).
+#
+# NGUON CAU HINH (bien moi truong / system property) - DA BO KHOI RULE CHAN
+# -----------------------------------------------------------------------------
+# Tung co trong MOI rule taint cua tep nay, voi ly le "trong container dung
+# chung thi ke tan cong kiem soat duoc bien moi truong". Da BO, chi con
+# dso-java-taint-cmdi giu System.getenv, vi dich la thuc thi lenh.
+#
+# BON SO DAN TOI QUYET DINH DO:
+#  1. Trong bo rule chinh thuc semgrep/semgrep-rules: 0 / 21 rule taint Java
+#     dung System.getenv hoac getProperty lam nguon - khong xuat hien mot lan
+#     nao. Ben Python chi 2 / 59 tep co, va ca hai deu CHI dat nguon nay cho
+#     DICH THUC THI LENH (dangerous-subprocess-use-tainted-env-args,
+#     dangerous-os-exec-tainted-env-args).
+#  2. Trong Juliet Java (4920 tep / 2997 case): getProperty la nguon cua 761
+#     tep, getenv 222 tep - 983 tep, ho nguon ngoai-HTTP LON NHAT. Nhan nguon
+#     nay lam "nhiem doc" nang ti le bat cua corpus len rat nhieu.
+#  3. Juliet dung getProperty vi can mot gia tri ma trinh bien dich khong gap
+#     lai duoc, KHONG vi no mo hinh hoa ke tan cong. Ma that dung dung hai ham
+#     nay de doc CAU HINH TRIEN KHAI - gia tri do nguoi van hanh dat.
+#  4. Corpus logic nghiep vu (3 tep, 38 ham ma dung) do duoc hau qua that:
+#     dso-java-taint-path-traversal CHAN OAN tepTamBaoCao(), mot ham chi lam
+#     new File(System.getProperty("java.io.tmpdir"), "bao_cao_tam.csv").
+#
+# KET LUAN GHI VAO BAO CAO: "mo rong nguon la mo rong vung bat ma khong mo rong
+# vung bao nham" chi dung voi nguon DOC DU LIEU (readLine, ResultSet). Voi
+# nguon CAU HINH no sai, va cai gia phai tra khong hien ra tren Juliet - chi
+# hien ra tren corpus ma dung. Diem bat tren corpus tong hop tang len nho mot
+# ho nguon khong mang quyen dieu khien cua ke tan cong tren ma that KHONG phai
+# la diem tang that.
+#
+# NEU MUON DO LAI: git revert commit nay roi doc lai ca hai phong do - so Juliet
+# se tang, so chan oan tren corpus logic nghiep vu se tu 0 len 1.
 # =============================================================================
 
 rules:
@@ -69,16 +101,13 @@ rules:
       #     tran moi  = moi nguon & trong-ham    = 1620/2997 = 54.1%
       # Lan do that o CI cho rule du an bat 11.8% - nam ngay duoi tran 14.0%,
       # tuc chan doan "thieu nguon" la dung chu khong phai rule viet sai.
-      # DU DOAN sau khi mo rong: khoang 46%.
+      # Lan do do xong: xem khoi "NGUON CAU HINH" o dau tep.
       #
-      # Day la cung mot buoc da lam cho bo rule C# o lan do #26 (47.3% -> 63.6%
-      # bat, cot bao nham giu nguyen 0.0%): mo rong nguon la mo rong vung bat
-      # ma khong mo rong vung bao nham, vi dich van la dich cu.
+      # "Mo rong nguon la mo rong vung bat ma khong mo rong vung bao nham" -
+      # cau nay DUNG voi nguon doc du lieu, SAI voi nguon cau hinh. Corpus
+      # logic nghiep vu da chung minh dieu do; xem khoi o dau tep.
       - pattern: $X.readLine()                # BufferedReader: TCP, URLConnection,
                                               # console va doc tep deu qua day
-      - pattern: System.getenv(...)           # bien moi truong
-      - pattern: $P.getProperty(...)          # System.getProperty va Properties
-                                              # doc tu tep cau hinh
       # Doc tu CSDL roi noi vao cau lenh moi = tiem SQL BAC HAI. Juliet Java co
       # 259 case dang nay. Tren ma that day la nguon de bao nham hon cac nguon
       # khac (doc gia tri cua chinh CSDL minh roi dung lai la viec binh thuong),
@@ -141,16 +170,14 @@ rules:
       #     tran moi  = moi nguon & trong-ham    = 1620/2997 = 54.1%
       # Lan do that o CI cho rule du an bat 11.8% - nam ngay duoi tran 14.0%,
       # tuc chan doan "thieu nguon" la dung chu khong phai rule viet sai.
-      # DU DOAN sau khi mo rong: khoang 46%.
+      # Lan do do xong: xem khoi "NGUON CAU HINH" o dau tep.
       #
-      # Day la cung mot buoc da lam cho bo rule C# o lan do #26 (47.3% -> 63.6%
-      # bat, cot bao nham giu nguyen 0.0%): mo rong nguon la mo rong vung bat
-      # ma khong mo rong vung bao nham, vi dich van la dich cu.
+      # "Mo rong nguon la mo rong vung bat ma khong mo rong vung bao nham" -
+      # cau nay DUNG voi nguon doc du lieu, SAI voi nguon cau hinh. Corpus
+      # logic nghiep vu da chung minh dieu do; xem khoi o dau tep.
       - pattern: $X.readLine()                # BufferedReader: TCP, URLConnection,
                                               # console va doc tep deu qua day
       - pattern: System.getenv(...)           # bien moi truong
-      - pattern: $P.getProperty(...)          # System.getProperty va Properties
-                                              # doc tu tep cau hinh
       # Doc tu CSDL roi noi vao cau lenh moi = tiem SQL BAC HAI. Juliet Java co
       # 259 case dang nay. Tren ma that day la nguon de bao nham hon cac nguon
       # khac (doc gia tri cua chinh CSDL minh roi dung lai la viec binh thuong),
@@ -212,16 +239,13 @@ rules:
       #     tran moi  = moi nguon & trong-ham    = 1620/2997 = 54.1%
       # Lan do that o CI cho rule du an bat 11.8% - nam ngay duoi tran 14.0%,
       # tuc chan doan "thieu nguon" la dung chu khong phai rule viet sai.
-      # DU DOAN sau khi mo rong: khoang 46%.
+      # Lan do do xong: xem khoi "NGUON CAU HINH" o dau tep.
       #
-      # Day la cung mot buoc da lam cho bo rule C# o lan do #26 (47.3% -> 63.6%
-      # bat, cot bao nham giu nguyen 0.0%): mo rong nguon la mo rong vung bat
-      # ma khong mo rong vung bao nham, vi dich van la dich cu.
+      # "Mo rong nguon la mo rong vung bat ma khong mo rong vung bao nham" -
+      # cau nay DUNG voi nguon doc du lieu, SAI voi nguon cau hinh. Corpus
+      # logic nghiep vu da chung minh dieu do; xem khoi o dau tep.
       - pattern: $X.readLine()                # BufferedReader: TCP, URLConnection,
                                               # console va doc tep deu qua day
-      - pattern: System.getenv(...)           # bien moi truong
-      - pattern: $P.getProperty(...)          # System.getProperty va Properties
-                                              # doc tu tep cau hinh
       # Doc tu CSDL roi noi vao cau lenh moi = tiem SQL BAC HAI. Juliet Java co
       # 259 case dang nay. Tren ma that day la nguon de bao nham hon cac nguon
       # khac (doc gia tri cua chinh CSDL minh roi dung lai la viec binh thuong),
@@ -281,16 +305,13 @@ rules:
       #     tran moi  = moi nguon & trong-ham    = 1620/2997 = 54.1%
       # Lan do that o CI cho rule du an bat 11.8% - nam ngay duoi tran 14.0%,
       # tuc chan doan "thieu nguon" la dung chu khong phai rule viet sai.
-      # DU DOAN sau khi mo rong: khoang 46%.
+      # Lan do do xong: xem khoi "NGUON CAU HINH" o dau tep.
       #
-      # Day la cung mot buoc da lam cho bo rule C# o lan do #26 (47.3% -> 63.6%
-      # bat, cot bao nham giu nguyen 0.0%): mo rong nguon la mo rong vung bat
-      # ma khong mo rong vung bao nham, vi dich van la dich cu.
+      # "Mo rong nguon la mo rong vung bat ma khong mo rong vung bao nham" -
+      # cau nay DUNG voi nguon doc du lieu, SAI voi nguon cau hinh. Corpus
+      # logic nghiep vu da chung minh dieu do; xem khoi o dau tep.
       - pattern: $X.readLine()                # BufferedReader: TCP, URLConnection,
                                               # console va doc tep deu qua day
-      - pattern: System.getenv(...)           # bien moi truong
-      - pattern: $P.getProperty(...)          # System.getProperty va Properties
-                                              # doc tu tep cau hinh
       # Doc tu CSDL roi noi vao cau lenh moi = tiem SQL BAC HAI. Juliet Java co
       # 259 case dang nay. Tren ma that day la nguon de bao nham hon cac nguon
       # khac (doc gia tri cua chinh CSDL minh roi dung lai la viec binh thuong),
@@ -347,16 +368,13 @@ rules:
       #     tran moi  = moi nguon & trong-ham    = 1620/2997 = 54.1%
       # Lan do that o CI cho rule du an bat 11.8% - nam ngay duoi tran 14.0%,
       # tuc chan doan "thieu nguon" la dung chu khong phai rule viet sai.
-      # DU DOAN sau khi mo rong: khoang 46%.
+      # Lan do do xong: xem khoi "NGUON CAU HINH" o dau tep.
       #
-      # Day la cung mot buoc da lam cho bo rule C# o lan do #26 (47.3% -> 63.6%
-      # bat, cot bao nham giu nguyen 0.0%): mo rong nguon la mo rong vung bat
-      # ma khong mo rong vung bao nham, vi dich van la dich cu.
+      # "Mo rong nguon la mo rong vung bat ma khong mo rong vung bao nham" -
+      # cau nay DUNG voi nguon doc du lieu, SAI voi nguon cau hinh. Corpus
+      # logic nghiep vu da chung minh dieu do; xem khoi o dau tep.
       - pattern: $X.readLine()                # BufferedReader: TCP, URLConnection,
                                               # console va doc tep deu qua day
-      - pattern: System.getenv(...)           # bien moi truong
-      - pattern: $P.getProperty(...)          # System.getProperty va Properties
-                                              # doc tu tep cau hinh
       # Doc tu CSDL roi noi vao cau lenh moi = tiem SQL BAC HAI. Juliet Java co
       # 259 case dang nay. Tren ma that day la nguon de bao nham hon cac nguon
       # khac (doc gia tri cua chinh CSDL minh roi dung lai la viec binh thuong),
@@ -401,16 +419,13 @@ rules:
       #     tran moi  = moi nguon & trong-ham    = 1620/2997 = 54.1%
       # Lan do that o CI cho rule du an bat 11.8% - nam ngay duoi tran 14.0%,
       # tuc chan doan "thieu nguon" la dung chu khong phai rule viet sai.
-      # DU DOAN sau khi mo rong: khoang 46%.
+      # Lan do do xong: xem khoi "NGUON CAU HINH" o dau tep.
       #
-      # Day la cung mot buoc da lam cho bo rule C# o lan do #26 (47.3% -> 63.6%
-      # bat, cot bao nham giu nguyen 0.0%): mo rong nguon la mo rong vung bat
-      # ma khong mo rong vung bao nham, vi dich van la dich cu.
+      # "Mo rong nguon la mo rong vung bat ma khong mo rong vung bao nham" -
+      # cau nay DUNG voi nguon doc du lieu, SAI voi nguon cau hinh. Corpus
+      # logic nghiep vu da chung minh dieu do; xem khoi o dau tep.
       - pattern: $X.readLine()                # BufferedReader: TCP, URLConnection,
                                               # console va doc tep deu qua day
-      - pattern: System.getenv(...)           # bien moi truong
-      - pattern: $P.getProperty(...)          # System.getProperty va Properties
-                                              # doc tu tep cau hinh
       # Doc tu CSDL roi noi vao cau lenh moi = tiem SQL BAC HAI. Juliet Java co
       # 259 case dang nay. Tren ma that day la nguon de bao nham hon cac nguon
       # khac (doc gia tri cua chinh CSDL minh roi dung lai la viec binh thuong),
@@ -458,16 +473,13 @@ rules:
       #     tran moi  = moi nguon & trong-ham    = 1620/2997 = 54.1%
       # Lan do that o CI cho rule du an bat 11.8% - nam ngay duoi tran 14.0%,
       # tuc chan doan "thieu nguon" la dung chu khong phai rule viet sai.
-      # DU DOAN sau khi mo rong: khoang 46%.
+      # Lan do do xong: xem khoi "NGUON CAU HINH" o dau tep.
       #
-      # Day la cung mot buoc da lam cho bo rule C# o lan do #26 (47.3% -> 63.6%
-      # bat, cot bao nham giu nguyen 0.0%): mo rong nguon la mo rong vung bat
-      # ma khong mo rong vung bao nham, vi dich van la dich cu.
+      # "Mo rong nguon la mo rong vung bat ma khong mo rong vung bao nham" -
+      # cau nay DUNG voi nguon doc du lieu, SAI voi nguon cau hinh. Corpus
+      # logic nghiep vu da chung minh dieu do; xem khoi o dau tep.
       - pattern: $X.readLine()                # BufferedReader: TCP, URLConnection,
                                               # console va doc tep deu qua day
-      - pattern: System.getenv(...)           # bien moi truong
-      - pattern: $P.getProperty(...)          # System.getProperty va Properties
-                                              # doc tu tep cau hinh
       # Doc tu CSDL roi noi vao cau lenh moi = tiem SQL BAC HAI. Juliet Java co
       # 259 case dang nay. Tren ma that day la nguon de bao nham hon cac nguon
       # khac (doc gia tri cua chinh CSDL minh roi dung lai la viec binh thuong),
@@ -511,16 +523,13 @@ rules:
       #     tran moi  = moi nguon & trong-ham    = 1620/2997 = 54.1%
       # Lan do that o CI cho rule du an bat 11.8% - nam ngay duoi tran 14.0%,
       # tuc chan doan "thieu nguon" la dung chu khong phai rule viet sai.
-      # DU DOAN sau khi mo rong: khoang 46%.
+      # Lan do do xong: xem khoi "NGUON CAU HINH" o dau tep.
       #
-      # Day la cung mot buoc da lam cho bo rule C# o lan do #26 (47.3% -> 63.6%
-      # bat, cot bao nham giu nguyen 0.0%): mo rong nguon la mo rong vung bat
-      # ma khong mo rong vung bao nham, vi dich van la dich cu.
+      # "Mo rong nguon la mo rong vung bat ma khong mo rong vung bao nham" -
+      # cau nay DUNG voi nguon doc du lieu, SAI voi nguon cau hinh. Corpus
+      # logic nghiep vu da chung minh dieu do; xem khoi o dau tep.
       - pattern: $X.readLine()                # BufferedReader: TCP, URLConnection,
                                               # console va doc tep deu qua day
-      - pattern: System.getenv(...)           # bien moi truong
-      - pattern: $P.getProperty(...)          # System.getProperty va Properties
-                                              # doc tu tep cau hinh
       # Doc tu CSDL roi noi vao cau lenh moi = tiem SQL BAC HAI. Juliet Java co
       # 259 case dang nay. Tren ma that day la nguon de bao nham hon cac nguon
       # khac (doc gia tri cua chinh CSDL minh roi dung lai la viec binh thuong),

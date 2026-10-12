@@ -165,6 +165,53 @@ def nguon_sink_trung(tep: Path) -> list[str]:
     return van_de
 
 
+NGUON_CAUHINH_RE = re.compile(
+    r"^\s*- pattern:\s*(os\.environ\[\.\.\.\]|os\.environ\.get\(\.\.\.\)"
+    r"|os\.getenv\(\.\.\.\)|System\.getenv\(\.\.\.\)"
+    r"|\$P\.getProperty\(\.\.\.\)"
+    r"|Environment\.GetEnvironmentVariable\(\.\.\.\))\s*(#.*)?$")
+
+
+def nguon_cauhinh_sai_cho(tep: Path) -> list[str]:
+    """Nguon CAU HINH chi duoc lam nguon cho rule tiem LENH, khong cho rule khac.
+
+    Nguon cau hinh = bien moi truong va system property: os.environ, os.getenv,
+    System.getenv, $P.getProperty.
+
+    VI SAO CHOT NAY TON TAI - no la ket luan cua mot lan do, khong phai so thich:
+      - Bo rule chinh thuc semgrep/semgrep-rules: 0/21 rule taint Java dung
+        getenv hoac getProperty lam nguon. Ben Python chi 2/59 tep co, va ca
+        hai deu CHI dat nguon nay cho dich THUC THI LENH.
+      - Juliet Java dung getProperty lam nguon o 761 tep va getenv o 222 tep -
+        ho nguon ngoai-HTTP lon nhat cua corpus. Nhan chung la nhiem doc lam ti
+        le bat tren Juliet tang manh.
+      - Nhung ma THAT dung hai ham nay de doc CAU HINH TRIEN KHAI. Corpus logic
+        nghiep vu do duoc hau qua: dso-java-taint-path-traversal chan oan
+        new File(System.getProperty("java.io.tmpdir"), "bao_cao_tam.csv").
+
+    Tuc la: mo rong sang nguon cau hinh lam dep so tren corpus tong hop va lam
+    xau hanh vi tren ma that. Chot nay o day de lan sau co ai (ke ca chinh tac
+    gia, dang di tim diem bat) them lai thi CI noi ra ngay, thay vi de bang do
+    Juliet tu khen minh. Chu thich trong tep rule khong phai mot phep kiem.
+    """
+    van_de: list[str] = []
+    rule, trong_nguon = None, False
+    for i, dong in enumerate(tep.read_text(encoding="utf-8").splitlines(), 1):
+        m = KHOI_RULE_RE.match(dong)
+        if m:
+            rule, trong_nguon = m.group(1), False
+        if re.match(r"^\s*pattern-sources:", dong):
+            trong_nguon = True
+        elif re.match(r"^\s*pattern-(sinks|sanitizers|propagators):", dong):
+            trong_nguon = False
+        mn = NGUON_CAUHINH_RE.match(dong)
+        if trong_nguon and mn and not (rule or "").endswith("-cmdi"):
+            van_de.append(
+                f"{tep.name}:{i}: rule `{rule}` lay `{mn.group(1)}` lam nguon. "
+                f"Nguon cau hinh chi duoc dung o rule `-cmdi`.")
+    return van_de
+
+
 def chay_semgrep(out: Path) -> None:
     """Chay Semgrep tren thu muc fixture, xuat JSON ra `out`.
 
@@ -261,6 +308,17 @@ def main() -> int:
             print(f"            {x}")
         print("    Rule nhu vay tu bao chinh no o moi loi goi, khong lien quan")
         print("    luong du lieu. Bo pattern do khoi nguon cua dung rule do.")
+        return 1
+
+    # Tien kiem khong can Semgrep: nguon cau hinh dat sai cho.
+    sai_cho = [x for pth in ds_phat_hien for x in nguon_cauhinh_sai_cho(pth)]
+    if sai_cho:
+        print(f"  HONG    {len(sai_cho)} rule lay nguon CAU HINH ngoai rule -cmdi:")
+        for x in sai_cho:
+            print(f"            {x}")
+        print("    Bien moi truong / system property la cau hinh TRIEN KHAI, do")
+        print("    nguoi van hanh dat - khong phai du lieu ke tan cong dieu khien.")
+        print("    Doc khoi 'NGUON CAU HINH' o dau tep rule de biet ly do day du.")
         return 1
 
     print("[*] Dang chay Semgrep tren fixture ...\n")

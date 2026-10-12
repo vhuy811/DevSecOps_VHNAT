@@ -134,3 +134,19 @@ def cookies_vao_duong_dan_da_cat():
     phien = secure_filename(request.COOKIES.get("session"))
     with open(os.path.join("/du_lieu", phien)) as fh:
         return fh.read()
+
+
+# NGUON CAU HINH VAO DICH DUONG DAN - KHONG SANITIZER, VA PHAI KHONG BI BAT.
+#
+# Ham duy nhat trong tep nay khong khu doc gi: os.environ di thang vao open().
+# Theo mo hinh de doa cua du an, cau hinh trien khai khong phai du lieu ke tan
+# cong dieu khien. os.environ CHI con la nguon cua dso-py-taint-cmdi, va sink
+# o day khong phai thuc thi lenh.
+#
+# La PHEP KIEM CHAP HANH cua quyet dinh ghi o khoi "NGUON CAU HINH" dau tep
+# sast-detect-python.yaml: them lai os.environ vao nguon cua rule duong dan thi
+# dieu kien 2 do ngay o dong nay.
+def moi_truong_vao_duong_dan_khong_chan():
+    thu_muc = os.environ.get("THU_MUC_BAO_CAO", "/var/bao-cao")
+    with open(os.path.join(thu_muc, "bao_cao.csv")) as fh:
+        return fh.read()

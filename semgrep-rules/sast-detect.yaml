@@ -120,6 +120,24 @@
 #
 # CO Y KHONG dua vao: toan tu lay chi so tran ($X[$I]) va .Read(...) chung
 # chung - hai cai do khop gan nhu moi bieu thuc va se lam no ty le bao nham.
+#
+# NGUON CAU HINH (Environment.GetEnvironmentVariable) - DA BO KHOI RULE CHAN
+# -----------------------------------------------------------------------------
+# Them o lan do #26 voi ket qua 47.3% -> 63.6% bat tren Juliet C#, cot bao nham
+# giu nguyen 0.0%. Lan do do that, nhung no do thieu MOT thu: corpus Juliet
+# khong co ma doc cau hinh trien khai, nen khong the hien gia phai tra.
+# Da BO, chi dso-taint-cmdi con giu (dich la thuc thi lenh - cho duy nhat bo
+# rule chinh thuc semgrep/semgrep-rules chap nhan nguon nay).
+#
+# Ly do day du, cung bon so da do, ghi o dau sast-detect-java.yaml. Tom lai:
+# Juliet lay getenv/getProperty lam nguon vi can mot gia tri trinh bien dich
+# khong gap lai duoc, KHONG vi no mo hinh hoa ke tan cong; ma that dung chung
+# de doc cau hinh. Corpus logic nghiep vu do duoc mot lan chan oan that su.
+#
+# Chot kiem: nguon_cauhinh_sai_cho() trong kiem-thu-rule/chay_kiem_thu.py.
+# GIU NGUYEN o pattern-sanitizers cua rule CWE-259/798: o do "gia tri den tu
+# bien moi truong" dung la bang chung mat khau KHONG bi viet cung - nguoc dau
+# hoan toan voi viec dung no lam nguon.
 # -----------------------------------------------------------------------------
 
 rules:
@@ -893,7 +911,6 @@ rules:
       # Nguon NGOAI HTTP - threat model "local". Xem khoi NGUON DU LIEU o dau tep.
       - pattern: Console.ReadLine(...)
       - pattern: Console.In.ReadLine(...)
-      - pattern: Environment.GetEnvironmentVariable(...)
       # KHONG dua File.ReadAll* vao nguon CUA RIENG RULE NAY. Sink o duoi la
       # `File.$F($X, ...)` voi $F la metavariable, nen File.ReadAllText khop CA
       # nguon LAN sink -> rule tu bao chinh no.
@@ -975,7 +992,6 @@ rules:
       # Nguon NGOAI HTTP - threat model "local". Xem khoi NGUON DU LIEU o dau tep.
       - pattern: Console.ReadLine(...)
       - pattern: Console.In.ReadLine(...)
-      - pattern: Environment.GetEnvironmentVariable(...)
       - pattern: File.ReadAllText(...)
       - pattern: File.ReadAllLines(...)
       - pattern: File.ReadAllBytes(...)
@@ -1044,7 +1060,6 @@ rules:
       # Nguon NGOAI HTTP - threat model "local". Xem khoi NGUON DU LIEU o dau tep.
       - pattern: Console.ReadLine(...)
       - pattern: Console.In.ReadLine(...)
-      - pattern: Environment.GetEnvironmentVariable(...)
       - pattern: File.ReadAllText(...)
       - pattern: File.ReadAllLines(...)
       - pattern: File.ReadAllBytes(...)
@@ -1109,7 +1124,6 @@ rules:
       # Nguon NGOAI HTTP - threat model "local". Xem khoi NGUON DU LIEU o dau tep.
       - pattern: Console.ReadLine(...)
       - pattern: Console.In.ReadLine(...)
-      - pattern: Environment.GetEnvironmentVariable(...)
       - pattern: File.ReadAllText(...)
       - pattern: File.ReadAllLines(...)
       - pattern: File.ReadAllBytes(...)
@@ -1189,7 +1203,6 @@ rules:
       # Nguon NGOAI HTTP - threat model "local". Xem khoi NGUON DU LIEU o dau tep.
       - pattern: Console.ReadLine(...)
       - pattern: Console.In.ReadLine(...)
-      - pattern: Environment.GetEnvironmentVariable(...)
       - pattern: File.ReadAllText(...)
       - pattern: File.ReadAllLines(...)
       - pattern: File.ReadAllBytes(...)
@@ -1336,7 +1349,6 @@ rules:
       # Nguon NGOAI HTTP - threat model "local". Xem khoi NGUON DU LIEU o dau tep.
       - pattern: Console.ReadLine(...)
       - pattern: Console.In.ReadLine(...)
-      - pattern: Environment.GetEnvironmentVariable(...)
       - pattern: File.ReadAllText(...)
       - pattern: File.ReadAllLines(...)
       - pattern: File.ReadAllBytes(...)
@@ -1401,7 +1413,6 @@ rules:
       # Nguon NGOAI HTTP - threat model "local". Xem khoi NGUON DU LIEU o dau tep.
       - pattern: Console.ReadLine(...)
       - pattern: Console.In.ReadLine(...)
-      - pattern: Environment.GetEnvironmentVariable(...)
       - pattern: File.ReadAllText(...)
       - pattern: File.ReadAllLines(...)
       - pattern: File.ReadAllBytes(...)

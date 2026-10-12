@@ -193,17 +193,23 @@ namespace KiemThuRule
         }
 
         // nguon: bien moi truong -> cat bo thanh phan thu muc
-        // Viet dung hinh dang hai buoc nhu Path_ChiTenTep o tren (gan Path.Combine
-        // vao mot bien roi moi dua vao sink). Ban long ghep
-        // File.ReadAllText(Path.Combine(...)) bi dso-taint-path-traversal bao nham
-        // trong lan chay CI #19 - sanitizer khong duoc tinh khi loi goi nam long
-        // ngay trong doi so cua sink.
-        public string NguonBienMoiTruong_ChiTenTep()
+        // NGUON CAU HINH VAO DICH DUONG DAN - KHONG SANITIZER, VA PHAI KHONG BI BAT.
+        //
+        // Gia tri tu bien moi truong di THANG vao File.ReadAllText. Khong co
+        // buoc lam sach nao, va dung nhu vay moi la y cua case: theo mo hinh de
+        // doa cua du an, cau hinh trien khai khong phai du lieu ke tan cong dieu
+        // khien.
+        //
+        // Truoc day day la case "chi lay ten tep" dung de kiem sanitizer
+        // Path.GetFileName. Sanitizer do van duoc kiem boi Path_ChiTenTep() o
+        // tren, voi nguon HTTP.
+        //
+        // Ham nay la PHEP KIEM CHAP HANH: them lai Environment.GetEnvironmentVariable
+        // vao nguon cua rule duong dan thi dieu kien 2 do ngay o dong nay.
+        public string NguonBienMoiTruong_VaoDuongDan_KhongChan()
         {
             var duong = Environment.GetEnvironmentVariable("BAO_CAO");
-            var an = Path.GetFileName(duong);
-            var day = Path.Combine("/var/bao-cao", an);
-            return File.ReadAllText(day);
+            return File.ReadAllText("/var/bao-cao/" + duong);
         }
 
         // nguon: CSDL -> tach doi so, khong ghep vao dong lenh
