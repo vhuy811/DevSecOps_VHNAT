@@ -50,13 +50,26 @@ nằm ngoài tầm của Semgrep và chỉ CodeQL với tới (42%).
 
 5772 test case, 9 CWE. Đã đo hai lần.
 
-| Công cụ | Lần #1 — bắt / nhầm | Lần #10 — bắt / nhầm | Youden #10 |
-|---|---|---|---|
-| Rule đồ án (Semgrep) | 11.8% / **0.3%** | **39.0%** / 3.1% | +0.36 |
-| Semgrep cộng đồng | 21.3% / 11.0% | 21.3% / 11.0% | +0.10 |
-| CodeQL | 73.1% / 21.3% | 73.1% / 21.3% | +0.52 |
-| CodeQL (threat model local) | **94.2%** / 21.9% | **94.2%** / 21.9% | +0.72 |
-| **Cổng chặn** | 86.9% / 22.0% | **94.2%** / 25.0% | +0.69 |
+| Công cụ | Lần #1 | Lần #10 (có nguồn cấu hình) | **Lần #12 (cuối)** | Youden #12 |
+|---|---|---|---|---|
+| Rule đồ án (Semgrep) | 11.8% / 0.3% | 39.0% / 3.1% | **27.8% / 0.0%** | +0.28 |
+| Semgrep cộng đồng | 21.3% / 11.0% | 21.3% / 11.0% | 21.3% / 11.0% | +0.10 |
+| CodeQL | 73.1% / 21.3% | 73.1% / 21.3% | 73.1% / 21.3% | +0.52 |
+| CodeQL (threat model local) | 94.2% / 21.9% | 94.2% / 21.9% | 94.2% / 21.9% | +0.72 |
+| **Cổng chặn** | 86.9% / 22.0% | 94.2% / 25.0% | **94.2% / 2.5%** | **+0.92** |
+
+**Lần #12 là lần đo sau cả ba thay đổi** (bỏ nguồn cấu hình, bỏ
+`dso-java-taint-xpathi`, loại hai truy vấn `java/concatenated-*` khỏi quyền
+chặn). Hai điều đáng đọc:
+
+1. **Cổng giữ nguyên 94.2% bắt nhưng báo nhầm tụt từ 25.0% xuống 2.5%** —
+   Youden +0.69 → **+0.92**. Dự đoán trước khi làm là ~9%; thực tế 2.5%, tốt hơn
+   dự đoán vì `dso-java-taint-xpathi` đóng góp thêm 180 cảnh báo sai nữa.
+2. **Bộ rule tự viết về 0.0% báo nhầm** trên 5772 ca, đổi bằng 11.2 điểm bắt.
+
+Bảng dò ngưỡng 224 tổ hợp xếp cấu hình đang chạy ở **hạng 3**, cùng +0.917 với
+năm tổ hợp đứng trên (chúng chỉ khác nhau ở chỗ có cho Semgrep quyền chặn hay
+không — mà Semgrep ở Java không thêm độ phủ, xem dưới).
 
 Lần #10 là lần đo **sau khi mở rộng nguồn** (G6.3) và **trước khi** bỏ nguồn cấu
 hình (G6.5). Nên con số 39.0% ở trên là con số **được thổi lên** — xem mục 6; nó
@@ -172,23 +185,23 @@ của cả hai tỉ lệ là toàn bộ case; BenchProctor mỗi case là một 
 *hoặc* sạch, nên tỉ lệ bắt tính trên 9.150 case có lỗi và tỉ lệ báo nhầm trên 9.150
 case sạch.
 
-| Công cụ | Lần #2 — bắt / nhầm | Lần #9 — bắt / nhầm | Youden #9 |
+| Công cụ | Lần #2 — bắt / nhầm | Lần #9 — bắt / nhầm | Youden #11 |
 |---|---|---|---|
-| Rule đồ án (Semgrep) | 7,2% / 4,4% | **14,5%** / **10,5%** | **+0,04** |
+| Rule đồ án (Semgrep) | 7,2% / 4,4% | **13,7%** / **9,9%** | **+0,04** |
 | Semgrep cộng đồng | 21,2% / 10,3% | 21,2% / 10,3% | +0,11 |
 | CodeQL | 13,3% / 3,3% | 13,3% / 3,3% | +0,10 |
 | CodeQL (threat model local) | 14,1% / 4,0% | 14,1% / 4,0% | +0,10 |
-| **Cổng chặn** | 18,2% / 7,4% | **24,2%** / **12,8%** | +0,11 |
+| **Cổng chặn** | 18,2% / 7,4% | **23,7%** / **12,4%** | +0,11 |
 
 Theo khung web, rule đồ án lần #2: flask 10%/7%, fastapi 7%/4%, django 4%/2%.
 
 **Lần #9 là lần đo sau khi mở rộng nguồn + 3 đích (G6.2), và nó nói một điều khó
-nghe: mở rộng đó gần như chỉ thêm tiếng ồn.** Bắt tăng gấp đôi (7,2% → 14,5%)
+nghe: mở rộng đó gần như chỉ thêm tiếng ồn.** Bắt gần gấp đôi (7,2% → 13,7%)
 nhưng báo nhầm cũng tăng gấp hơn hai (4,4% → 10,5%), nên Youden chỉ nhích từ
 +0,03 lên **+0,04** — tức bộ rule Python của đồ án vẫn **chỉ hơn đoán mò một
 chút**, và kém bộ rule cộng đồng (+0,11) rõ rệt trên bộ đo này.
 
-Quan trọng hơn: dự đoán là 33,6% → **78,2%** sau khi mở rộng. Thực tế **14,5%**.
+Quan trọng hơn: dự đoán là 33,6% → **78,2%** sau khi mở rộng. Thực tế **13,7%**.
 Lệch quá xa để còn giải thích bằng "thiếu nguồn, thiếu đích" được nữa. Nguyên nhân
 thật đã được đo sạch ở phòng đo Java (mục 2, bảng theo đường đi của dữ liệu):
 **taint của Semgrep bản cộng đồng đi được 71–80% khi luồng nằm trong một hàm và
@@ -199,7 +212,7 @@ Hệ quả cho báo cáo: đường cải tiến "thêm nguồn, thêm đích" �
 với Semgrep CE. Phần còn lại của 85,5% chưa bắt được **không** nằm trong tầm của
 rule Semgrep, mà là việc của CodeQL.
 
-**Cả 7,2% lẫn 14,5% phải đọc kèm trần của chúng.** Bộ rule Python chỉ nhắm tới 8 họ CWE trong 61
+**Cả 7,2% lẫn 13,7% phải đọc kèm trần của chúng.** Bộ rule Python chỉ nhắm tới 8 họ CWE trong 61
 category của bộ đo — tức **2.250/9.150 case có lỗi (24,6%)**. 6.900 case còn lại
 thuộc các loại đồ án **cố ý không phủ** (`authzfailure`, `hardcodedcreds`,
 `loginjection`, `sessionfixation`…), vì quyền chặn chỉ dành cho CWE mà ZAP có
