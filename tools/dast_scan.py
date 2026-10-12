@@ -172,6 +172,186 @@ def quet_loi_sqlite(routes: list[dict], base: str, moi_timeout: float = 8.0) -> 
     return ra
 
 
+# ---------------------------------------------------------------------------
+# LOP POST (G6.8): do tham so cua FORM, khong chi tham so tren URL
+# ---------------------------------------------------------------------------
+# VI SAO CAN LOP NAY
+# Do do phu tren VulnShop: 4/15 endpoint (27%). Phan tich ban do route cho thay
+# nguyen nhan KHONG phai dang nhap (needs_auth = 0) ma la PHUONG THUC:
+#     4  testable   GET co tham so       <- lop cu chi do nhung endpoint nay
+#     5  non_get    POST co tham so      <- khong he duoc do
+#     6  no_param   GET khong tham so    <- khong co gi de chen
+# Nam endpoint POST do mang 8 tham so, trong do co /Account/Login
+# (username, password) va /Order/PlaceOrder (customerName, address) - dung cac
+# vi tri ma SQLi hay nam nhat trong mot ung dung that. Bo qua POST nghia la
+# tang DAST bao "khong thay gi" o dung cho nhieu kha nang co nhat.
+#
+# VI SAO PHAI THU THAP FORM THAY VI DOAN URL
+# Moi POST cua app deu co [ValidateAntiForgeryToken]. Gui POST tran bi 400 va
+# tang DAST se im lang - bao "khong thay gi" trong khi that ra chua kiem duoc
+# gi (dung loi ma tang IDOR da tung mac phai). Nen lop nay lam giong trinh
+# duyet: mo cac trang GET doc duoc, DOC FORM THAT trong HTML, lay nguyen
+# action + token an + ten truong + cookie, roi moi gui. Khong doan duong dan,
+# khong bat ung dung tu bo chong CSRF cho vua cong cu.
+from html.parser import HTMLParser
+from urllib.parse import urljoin
+
+try:
+    from idor import _DocInputAn, _gom_cookie, _header_token, TEN_TOKEN
+except ImportError:                                    # chay ngoai thu muc tools
+    import sys as _sys
+    _sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from idor import _DocInputAn, _gom_cookie, _header_token, TEN_TOKEN
+
+# Kieu input KHONG dang chen payload: nut bam, tep, token an...
+KIEU_BO_QUA = {"submit", "button", "reset", "image", "file", "hidden"}
+# Form KHONG duoc gui: dang xuat se huy phien, lam cac probe sau mat cookie.
+DUONG_BO_QUA = re.compile(r"/(logout|signout|dang-xuat)\b", re.IGNORECASE)
+
+
+class _DocForm(HTMLParser):
+    """Rut moi <form> cua mot trang: action, method, va cac truong ben trong."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.forms: list[dict] = []
+        self._cur: dict | None = None
+
+    def handle_starttag(self, tag, attrs):
+        t = tag.lower()
+        a = {k.lower(): (v or "") for k, v in attrs}
+        if t == "form":
+            self._cur = {"action": a.get("action", ""),
+                         "method": a.get("method", "get").lower(),
+                         "an": {}, "chen": []}
+            return
+        if self._cur is None:
+            return
+        ten = a.get("name")
+        if not ten:
+            return
+        if t == "input":
+            kieu = a.get("type", "text").lower()
+            if kieu == "hidden":
+                self._cur["an"][ten] = a.get("value", "")
+            elif kieu not in KIEU_BO_QUA:
+                self._cur["chen"].append(ten)
+        elif t in ("textarea", "select"):
+            self._cur["chen"].append(ten)
+
+    def handle_endtag(self, tag):
+        if tag.lower() == "form" and self._cur is not None:
+            self.forms.append(self._cur)
+            self._cur = None
+
+    def close(self):
+        super().close()
+        if self._cur is not None:          # form khong dong the - van giu lai
+            self.forms.append(self._cur)
+            self._cur = None
+
+
+def _gui_post(url: str, base: str, truong: dict, cookie: str,
+              header_them: dict, timeout: float) -> tuple[int | None, str]:
+    """POST form-urlencoded (chi khi cung goc voi base). Doc ca body loi 4xx/5xx."""
+    if not _cung_goc(url, base):
+        return None, ""
+    du_lieu = urlencode(truong).encode()
+    h = {"User-Agent": "dast-kich-ban-sqlite",
+         "Content-Type": "application/x-www-form-urlencoded"}
+    if cookie:
+        h["Cookie"] = cookie
+    h.update(header_them or {})
+    req = urllib.request.Request(url, data=du_lieu, headers=h, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.getcode(), r.read().decode("utf-8", "replace")
+    except HTTPError as e:
+        try:
+            return e.code, e.read().decode("utf-8", "replace")
+        except Exception:
+            return e.code, ""
+    except (URLError, OSError):
+        return None, ""
+
+
+def thu_thap_form(base: str, urls: list[str], timeout: float = 8.0) -> list[dict]:
+    """Mo tung trang GET, doc moi form POST trong HTML.
+
+    Tra ve danh sach {action, an, chen, cookie}: action da chuyen sang tuyet
+    doi, `an` la cac input an (gom ca token chong CSRF), `chen` la cac truong
+    dang chen payload, `cookie` la cookie cua chinh trang chua form.
+    """
+    ra: list[dict] = []
+    da_thay: set[tuple] = set()
+    for u in urls:
+        if not _cung_goc(u, base):
+            continue
+        ma, html, meta = _tai_trang(u, base, timeout)
+        if not html:
+            continue
+        cookie = _gom_cookie(meta.get("cookie") or [])
+        bo_doc = _DocForm()
+        try:
+            bo_doc.feed(html)
+            bo_doc.close()
+        except Exception:
+            continue
+        for f in bo_doc.forms:
+            if f["method"] != "post" or not f["chen"]:
+                continue
+            action = urljoin(u, f["action"]) if f["action"] else u
+            if not _cung_goc(action, base) or DUONG_BO_QUA.search(urlsplit(action).path):
+                continue
+            khoa = (action, tuple(sorted(f["chen"])))
+            if khoa in da_thay:
+                continue
+            da_thay.add(khoa)
+            ra.append({"action": action, "an": f["an"], "chen": f["chen"],
+                       "cookie": cookie, "tu_trang": u})
+    return ra
+
+
+def quet_loi_sqlite_post(base: str, urls: list[str], seed: str = "a",
+                         moi_timeout: float = 8.0) -> list[dict]:
+    """Lop error-based tren FORM POST. Cung logic hai buoc nhu lop GET:
+
+      1. Dau vao lanh KHONG duoc gay loi CSDL - neu co san thi moc so sanh
+         hong, bo qua truong do (tranh bao nham).
+      2. Chen them mot dau nháy ('): phan hoi xuat hien loi CSDL -> gia tri
+         dang duoc noi thang vao cau SQL -> SQL injection (CWE-89).
+    """
+    ra: list[dict] = []
+    for f in thu_thap_form(base, urls, moi_timeout):
+        hd = _header_token(f["an"], f["cookie"], None)
+        for p in f["chen"]:
+            goc = dict(f["an"])
+            for k in f["chen"]:
+                goc[k] = seed
+            _, body_lanh = _gui_post(f["action"], base, goc, f["cookie"], hd, moi_timeout)
+            if co_loi_sqlite(body_lanh):
+                continue
+            payload = seed + "'"
+            danh = dict(goc, **{p: payload})
+            _, body = _gui_post(f["action"], base, danh, f["cookie"], hd, moi_timeout)
+            m = CHU_KY_SQLITE.search(body or "")
+            if not m:
+                continue
+            ra.append({
+                "alert": "SQL Injection qua form POST (loi Microsoft.Data.Sqlite)",
+                "risk": "High",
+                "confidence": "High",
+                "cweid": "89",
+                "plugin": "kich-ban-loi-sqlite-post",
+                "url": f["action"],
+                "param": p,
+                "attack": payload,
+                "evidence": (body[m.start():m.start() + 120]).strip(),
+                "nguon": "kich-ban",
+            })
+    return ra
+
+
 # Chinh sach DAST phien ban hoa - doc tu tep co dinh canh script (khong lay
 # duong dan tu dong lenh, tranh dua dau vao ngoai vao bieu thuc duong dan).
 DUONG_CHINH_SACH = Path(__file__).resolve().parent / "chinh-sach-zap.json"
@@ -433,6 +613,21 @@ def main() -> int:
                 uniq.append(a)
                 them += 1
         print(f"[*] Kich ban loi SQLite: {them} alert error-based")
+
+        # Lop POST (G6.8): thu thap form that tren cac trang GET doc duoc roi
+        # do tung truong. Dung cung co --kich-ban-loi-sqlite vi cung mot ky
+        # thuat (error-based), chi khac phuong thuc. Tren VulnShop, lop nay mo
+        # them 5 endpoint POST / 8 tham so ma lop GET khong voi toi duoc.
+        kich_ban_post = quet_loi_sqlite_post(base, diem)
+        them_post = 0
+        for a in kich_ban_post:
+            k = (a["plugin"], a["url"].split("?")[0], a["param"])
+            if k not in seen:
+                seen.add(k)
+                uniq.append(a)
+                them_post += 1
+        kich_ban += kich_ban_post
+        print(f"[*] Kich ban loi SQLite (form POST): {them_post} alert error-based")
 
     # 4c) Rule runtime (G3.3): header bao mat + co cookie. Ghi RIENG o
     #     'rule_runtime' (report-only), KHONG tron vao 'alerts'/SARIF cua ZAP.

@@ -445,3 +445,30 @@ jobs:
         run: |
           set -o pipefail
           python tools/kiem_thu_ruleset.py | tee -a "$GITHUB_STEP_SUMMARY"
+
+  dast-post:
+    # G6.8: DO LOP POST CUA TANG DAST.
+    # Do do phu DAST tren VulnShop ra 4/15 endpoint (27%). Nguyen nhan KHONG
+    # phai dang nhap (needs_auth = 0) ma la PHUONG THUC: 5 endpoint POST mang
+    # 8 tham so chua bao gio duoc do - trong do co /Account/Login
+    # (username, password) va /Order/PlaceOrder (customerName, address), dung
+    # cac vi tri SQLi hay nam nhat trong mot ung dung that.
+    #
+    # Lop POST phai vuot ba cua, moi cua la mot cach no co the IM LANG hong:
+    #   1. doc duoc form that trong HTML (action + ten truong)
+    #   2. mang theo token chong CSRF + cookie - thieu thi app tra 400 va lop
+    #      bao "khong thay gi" trong khi chua he kiem duoc gi
+    #   3. so sanh voi dau vao lanh - thieu thi endpoint nao luon loi cung bi
+    #      ke la SQLi
+    # Job nay do ca ba cua tren mot app gia, va tu dot bien de chung minh no
+    # thuc su do: bo token / bo so sanh dau vao lanh / nhan ca form GET.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false   # khong de GITHUB_TOKEN lai trong .git/config
+      - name: Do lop POST + dot bien
+        run: |
+          set -o pipefail
+          python tools/kiem_thu_dast_post.py | tee -a "$GITHUB_STEP_SUMMARY"

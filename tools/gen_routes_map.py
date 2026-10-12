@@ -164,7 +164,14 @@ def classify(r: dict) -> str:
     if r["needs_auth"]:
         return "needs_auth"
     if r["http_method"] != "GET":
-        return "non_get"
+        # G6.8: POST CO THAM SO khong con la "khong voi toi duoc". Lop POST cua
+        # dast_scan.py thu thap form that trong HTML (lay nguyen action, token
+        # chong CSRF va ten truong) roi do tung truong, nen nhung endpoint nay
+        # ZAP/DAST do duoc. Tach rieng de con so do phu noi dung su that:
+        # truoc G6.8 chung bi gop vao non_get va bao cao ngam hieu la "khong
+        # kiem duoc", trong khi do la noi SQLi hay nam nhat (form dang nhap,
+        # form dat hang).
+        return "post_param" if r["params"] else "non_get"
     if r["has_path_placeholder"]:
         return "path_param"
     if not r["params"]:
@@ -405,23 +412,36 @@ def main() -> None:
     print(f"  controller: {by_kind['controller']}   razor page: {by_kind['razor_page']}\n")
 
     labels = {
-        "testable":   "DAST kiem thu duoc ngay",
+        "testable":   "DAST kiem thu duoc ngay (tham so tren URL)",
+        "post_param": "DAST kiem thu duoc qua form POST",
         "path_param": "Tham so nam tren duong dan",
         "needs_auth": "Yeu cau dang nhap",
         "non_get":    "Khong phai GET",
         "no_param":   "Khong co tham so kieu don gian",
     }
-    for k in ("testable", "path_param", "needs_auth", "non_get", "no_param"):
+    for k in ("testable", "post_param", "path_param", "needs_auth", "non_get",
+              "no_param"):
         if tally[k]:
             print(f"  {tally[k]:>3}  {k:<12} {labels[k]}")
 
-    pct = len(testable) / len(routes) * 100 if routes else 0
-    print(f"\nTi le kiem thu duoc bang DAST: {len(testable)}/{len(routes)} = {pct:.0f}%")
+    # Do phu = hai lop cong lai: lop tham so tren URL + lop form POST (G6.8).
+    # Truoc G6.8 chi dem `testable`, nen con so bao cao thap hon su that va -
+    # nguy hiem hon - khong ai thay la phan thieu nam o dung cho SQLi hay nam
+    # nhat (form dang nhap, form dat hang).
+    post = [r for r in routes if r["status"] == "post_param"]
+    phu = len(testable) + len(post)
+    pct = phu / len(routes) * 100 if routes else 0
+    print(f"\nTi le kiem thu duoc bang DAST: {phu}/{len(routes)} = {pct:.0f}%"
+          f"  ({len(testable)} qua URL + {len(post)} qua form POST)")
     if testable:
-        print("\nCac endpoint kiem thu duoc:")
+        print("\nCac endpoint kiem thu duoc (tham so tren URL):")
         for r in testable:
             p = r["params"][0]
             print(f"  {r['url_path']:<42} {p}={r['test_seed']:<4} ({r['kind']})")
+    if post:
+        print("\nCac endpoint kiem thu duoc (form POST):")
+        for r in post:
+            print(f"  {r['url_path']:<42} {','.join(r['params'])}  ({r['kind']})")
     print(f"\nDa ghi {args.out}")
 
 
