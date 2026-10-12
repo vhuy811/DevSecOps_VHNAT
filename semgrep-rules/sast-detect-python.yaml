@@ -462,8 +462,13 @@ rules:
               - pattern: urlopen($X, ...)
               # Do tren BenchProctor: 72/300 case SSRF co loi dung socket
               # tho, khong qua requests/urllib - truoc khong sink nao thay.
-              - pattern: socket.create_connection(($X, ...), ...)
-              - pattern: create_connection(($X, ...), ...)
+              # Viet tuple tuong minh ($X, $CONG) thay vi ($X, ...): dang
+              # co dau ... LONG trong tuple khong thay trong bo rule chinh thuc
+              # nao cua Semgrep, nen khong co bang chung la Semgrep phan tich
+              # duoc. Dang tuong minh thi chac chan phan tich duoc, va van bat
+              # dung create_connection((host, port)).
+              - pattern: socket.create_connection(($X, $CONG), ...)
+              - pattern: create_connection(($X, $CONG), ...)
           - focus-metavariable: $X
 
   # ===========================================================================
@@ -654,15 +659,23 @@ rules:
               # lam Semgrep tu choi ca tep rule (xem ghi chu trong
               # chay_kiem_thu.py). Chi de ... o dau - do la dang Semgrep
               # ghi trong tai lieu cho dict cua Python.
-              # PHAI boc nhay: `{...}` trong YAML la cu phap DICT, nen
-              # `pattern: {..., "$where": $X}` bi YAML doc thanh mapping
-              # {'...': None, '$where': '$X'} - mot gia tri null ma Semgrep
-              # tu choi, lam HONG CA TEP RULE. yaml.safe_load van chay tron
-              # tru nen kiem YAML o may khong bat duoc; da mat mot vong CI.
-              - pattern: '{..., "$where": $X}'
-              - pattern: "{..., '$where': $X}"
-              - pattern: '{..., "$expr": $X}'
-              - pattern: "{..., '$expr': $X}"
+              # Viet trong KHOI LITERAL (`pattern: |`), khong viet thang.
+              # `{` la cu phap DICT cua YAML: `pattern: {..., "$where": $X}`
+              # bi doc thanh mapping {'...': None, '$where': '$X'} - mot gia
+              # tri null ma Semgrep tu choi, va no tu choi CA TEP RULE. Dieu
+              # nguy hiem la yaml.safe_load van chay tron tru, nen kiem "YAML
+              # co hop le khong" o may KHONG bat duoc. Da mat mot vong CI.
+              # Khoi literal la cach cac rule chinh thuc cua Semgrep viet dict
+              # pattern, vi du trong semgrep-rules/python:
+              #     {..., 'BACKEND': ..., 'OPTIONS': {..., 'autoescape': $F, ...}, ...}
+              - pattern: |
+                  {..., "$where": $X, ...}
+              - pattern: |
+                  {..., '$where': $X, ...}
+              - pattern: |
+                  {..., "$expr": $X, ...}
+              - pattern: |
+                  {..., '$expr': $X, ...}
           - focus-metavariable: $X
 
   # ===========================================================================
