@@ -232,15 +232,6 @@ def cac_ham(src: str) -> list[tuple[str, int, int]]:
     return ham
 
 
-def ham_chua(ds: list[tuple[str, int, int]], line: int) -> str | None:
-    """Ham trong cung chua dong nay (ham long nhau: lay ham ngan nhat)."""
-    tot = None
-    for ten, a, b in ds:
-        if a <= line <= b and (tot is None or (b - a) < (tot[2] - tot[1])):
-            tot = (ten, a, b)
-    return tot[0] if tot else None
-
-
 def vai_tro_tep(duoi: str | None) -> str | None:
     """Duoi ten tep bien the 81: 'bad' | 'goodG2B' | 'goodB2G' | 'base'."""
     if not duoi or duoi == "base":
@@ -257,6 +248,29 @@ def vai_tro(ten: str | None) -> str | None:
     if "good" in t:
         return "good"
     return None
+
+
+def vai_tro_tai(hams: list[tuple[str, int, int]], line: int,
+                vt_tep: str | None) -> str | None:
+    """Vai tro bad/good cua MOT DONG: di tu ham trong cung ra ngoai, lay ham dau
+    tien co vai tro trong ten; het moi ham thi theo vai tro cua ten tep.
+
+    Vi sao khong chi lay ham trong cung: neu dong canh bao nam trong mot ham
+    KHONG co vai tro long trong mot ham CO vai tro - vi du mot sink dat trong
+    `new Runnable(){ public void run(){...} }` ben trong goodB2G - thi ham trong
+    cung la "run", vai_tro("run") = None, va canh bao bi BO: khong tinh bat,
+    cung khong tinh bao nham. Mot bao nham bien mat khoi bao cao la kieu sai
+    nguy hiem nhat o day. Do tren Juliet Java CWE-89/78/81 hien khong co hinh
+    dang nay (0/4920 tep), nhung bo cham khong duoc dua vao viec corpus sau nay
+    cung khong co.
+    """
+    bao = sorted((h for h in hams if h[1] <= line <= h[2]),
+                 key=lambda h: h[2] - h[1])
+    for ten, _, _ in bao:
+        v = vai_tro(ten)
+        if v:
+            return v
+    return vt_tep
 
 
 # ------------------------------------------------------------------ Juliet
@@ -353,7 +367,7 @@ def cham(cases: dict, tep: dict, ket_qua: dict[str, list[dict]]) -> dict:
                 continue
             cid, hams, vt_tep = t
             # ham ten bad*/good* quyet dinh truoc; khong co thi theo ten tep (bien the 81)
-            vt = vai_tro(ham_chua(hams, r["line"])) or vt_tep
+            vt = vai_tro_tai(hams, r["line"], vt_tep)
             if vt is None:
                 continue
             if not (r["cwes"] and ho_cua(cases[cid]["cwe"]) & set().union(*(ho_cua(c) for c in r["cwes"]))):
@@ -394,6 +408,71 @@ def md_bang(ten: str, bang: dict, cong_cu: list[str]) -> str:
             o.append(f"{tpr:.0%} / {fpr:.0%}")
         dong.append(f"| {k} | {n} | " + " | ".join(o) + " |")
     return "\n".join(dong) + "\n"
+
+
+# ------------------------------------------------ tach bao nham theo RULE
+# VI SAO CAN PHAN NAY
+# Truoc day bo cham do moi cong cu nhu mot hop den: "CodeQL bat 94%, bao nham
+# 22%". Voi mot con so nhu the, lua chon duy nhat con lai la GIU CA CONG CU hay
+# BO CA CONG CU - va chinh vi the da tung co mot quyet dinh sai trong du an nay:
+# thay CodeQL bao nham nhieu o CWE-643 tren C# nen loai CWE-643 bang query-filter
+# theo TAG, lam mat luon 4 diem bat cua CodeQL Java (noi CWE-643 bat 100% voi 3%
+# nham). Sai o cho khong biet CAI GI trong CodeQL gay ra bao nham.
+#
+# Bang nay tra loi dung cau do: tung truy van bat bao nhieu, nham bao nhieu, va
+# - quan trong nhat - BO NO DI THI CONG CON LAI BAO NHIEU. Mot truy van nham
+# nhieu ma "bat rieng" = 0 thi bo di khong mat gi; bo dung thu do la bit lo bao
+# nham ma khong ha do phu. Khong con phai doan.
+
+def cham_theo_rule(cases: dict, tep: dict, ds: list[dict]) -> dict:
+    """rule -> {'tp': set(case_id), 'fp': set(case_id)} cho MOT tap canh bao.
+
+    Dung chinh quy tac gan vai tro cua cham(): ham chua dong canh bao quyet dinh
+    bad/good, va ho CWE phai khop - neu khac se ra mot bang khong so sanh duoc
+    voi bang tong.
+    """
+    theo = defaultdict(lambda: {"tp": set(), "fp": set()})
+    for r in ds:
+        t = tep.get(r["file"])
+        if not t:
+            continue
+        cid, hams, vt_tep = t
+        vt = vai_tro_tai(hams, r["line"], vt_tep)
+        if vt is None:
+            continue
+        if not (r["cwes"] and ho_cua(cases[cid]["cwe"]) & set().union(*(ho_cua(c) for c in r["cwes"]))):
+            continue
+        theo[r["rule"]]["tp" if vt == "bad" else "fp"].add(cid)
+    return theo
+
+
+def md_bang_rule(ten: str, theo: dict, so_case: int, toi_da: int = 25) -> str:
+    """Bang tung rule, sap theo so case bao nham giam dan."""
+    if not theo:
+        return ""
+    tat_ca_tp = set().union(*(v["tp"] for v in theo.values())) if theo else set()
+    tat_ca_fp = set().union(*(v["fp"] for v in theo.values())) if theo else set()
+    dong = [f"#### {ten}", "",
+            "| Truy vấn / rule | Bắt | Báo nhầm | Bắt riêng | Bỏ rule này thì cổng còn |",
+            "|---|---|---|---|---|"]
+    xep = sorted(theo.items(), key=lambda kv: (-len(kv[1]["fp"]), -len(kv[1]["tp"])))
+    for r, v in xep[:toi_da]:
+        khac_tp = set().union(*[w["tp"] for q, w in theo.items() if q != r]) if len(theo) > 1 else set()
+        khac_fp = set().union(*[w["fp"] for q, w in theo.items() if q != r]) if len(theo) > 1 else set()
+        rieng = v["tp"] - khac_tp
+        dong.append(
+            f"| `{r}` | {len(v['tp'])} ({len(v['tp'])/so_case:.0%}) "
+            f"| {len(v['fp'])} ({len(v['fp'])/so_case:.0%}) "
+            f"| **{len(rieng)}** "
+            f"| {len(khac_tp)/so_case:.0%} bắt / {len(khac_fp)/so_case:.0%} nhầm |")
+    if len(xep) > toi_da:
+        dong.append(f"| _(còn {len(xep)-toi_da} rule nữa, xem tệp JSON)_ | | | | |")
+    dong += ["",
+             f"> Mẫu số là toàn bộ {so_case} case. **Bắt riêng** = số case chỉ rule này bắt "
+             "được, không rule nào khác trong cùng tập chặn bắt — bằng 0 nghĩa là bỏ rule đó "
+             "không mất độ phủ. Cột cuối là tỉ lệ của cổng **sau khi bỏ** rule đó, nên đọc "
+             "được ngay cái giá của việc bịt.", ""]
+    return "\n".join(dong)
 
 
 # ------------------------------------------------- bo do BenchProctor (CSV)
@@ -477,16 +556,10 @@ def cham_bench(cases: dict, tep: dict, ket_qua: dict[str, list[dict]]) -> dict:
         khong_gan = 0
         for r in ds:
             # uri trong SARIF chua ca ten khung: .../flask/testcode/benchmark_test_00116.py
-            m = BENCH_TEN_RE.search(r.get("uri") or r["file"])
-            if not m:
+            khoa = khoa_bench(r)
+            if khoa is None:
                 khong_gan += 1
                 continue
-            khung = None
-            for k in ("flask", "fastapi", "django"):
-                if f"/{k}/" in (r.get("uri") or "") or (r.get("uri") or "").startswith(k + "/"):
-                    khung = k
-                    break
-            khoa = f"{khung}/benchmark_test_{int(m.group(1)):05d}.py"
             t = tep.get(khoa)
             if not t:
                 khong_gan += 1
@@ -499,6 +572,38 @@ def cham_bench(cases: dict, tep: dict, ket_qua: dict[str, list[dict]]) -> dict:
         diem[cc] = d
         diem[cc]["__khong_gan__"] = khong_gan
     return diem
+
+
+def khoa_bench(r: dict) -> str | None:
+    """Khoa case cua mot canh bao bench: '<khung>/benchmark_test_NNNNN.py'.
+
+    Tach ra khoi cham_bench de cham_theo_rule_bench dung DUNG mot quy tac - hai
+    ban sao cua cung logic nay se lech nhau am tham khi mot ben duoc sua.
+    """
+    m = BENCH_TEN_RE.search(r.get("uri") or r["file"])
+    if not m:
+        return None
+    khung = None
+    for k in ("flask", "fastapi", "django"):
+        if f"/{k}/" in (r.get("uri") or "") or (r.get("uri") or "").startswith(k + "/"):
+            khung = k
+            break
+    return f"{khung}/benchmark_test_{int(m.group(1)):05d}.py"
+
+
+def cham_theo_rule_bench(cases: dict, tep: dict, ds: list[dict]) -> dict:
+    """rule -> {'tp': set(case_id), 'fp': set(case_id)} cho bo do dang bench."""
+    theo = defaultdict(lambda: {"tp": set(), "fp": set()})
+    for r in ds:
+        khoa = khoa_bench(r)
+        t = tep.get(khoa) if khoa else None
+        if not t:
+            continue
+        cid, co_loi = t
+        if not (r["cwes"] and ho_cua(cases[cid]["cwe"]) & set().union(*(ho_cua(c) for c in r["cwes"]))):
+            continue
+        theo[r["rule"]]["tp" if co_loi else "fp"].add(cid)
+    return theo
 
 
 def tong_hop_bench(cases: dict, diem: dict, theo: str) -> dict:
@@ -700,9 +805,18 @@ def lenh_juliet(a: argparse.Namespace) -> int:
     bang_cwe = tong_hop(cases, diem, "cwe")
     bang_flow = tong_hop(cases, diem, "nhom_flow")
     bang_nguon = tong_hop(cases, diem, "kieu_nguon")
+    theo_rule = {cc: cham_theo_rule(cases, tep, ket_qua[cc]) for cc in cong_cu}
 
+    rule_json = {}
+    for cc, theo in theo_rule.items():
+        rule_json[cc] = {}
+        for r, v in theo.items():
+            khac = set().union(*[w["tp"] for q, w in theo.items() if q != r]) if len(theo) > 1 else set()
+            rule_json[cc][r] = {"bat": len(v["tp"]), "nham": len(v["fp"]),
+                                "bat_rieng": len(v["tp"] - khac)}
     out = {"bo_do": a.ten_bo_do, "so_case": len(cases), "tong": tong,
            "theo_cwe": bang_cwe, "theo_flow": bang_flow, "theo_nguon": bang_nguon,
+           "theo_rule": rule_json,
            "case": {cid: {**info, "ket_qua": {cc: diem[cc][cid] for cc in cong_cu}} for cid, info in cases.items()}}
     if a.out:
         Path(a.out).parent.mkdir(parents=True, exist_ok=True)
@@ -726,6 +840,12 @@ def lenh_juliet(a: argparse.Namespace) -> int:
     md.append(md_bang("Theo CWE", bang_cwe, cong_cu))
     md.append(md_bang("Theo đường đi của dữ liệu (flow variant)", bang_flow, cong_cu))
     md.append(md_bang("Theo loại nguồn dữ liệu", bang_nguon, cong_cu))
+    # Nhom chan truoc, roi cong cu goc: cot "bo rule nay thi cong con" chi co
+    # nghia trong mot tap canh bao thuc su dang chan.
+    for cc in sorted(cong_cu, key=lambda c: (c not in nhom, c)):
+        if len(theo_rule.get(cc, {})) > 1:
+            md.append(md_bang_rule(f"Tách báo nhầm theo rule — {cc}",
+                                   theo_rule[cc], len(cases)))
     if getattr(a, "do_nguong", False):
         ht = nhan_dang_chay(a.chan)
         bang = quet_nguong(cases, tep, {k: v for k, v in ket_qua.items() if k in TRUC_NGUONG}, ht)
@@ -801,6 +921,11 @@ def lenh_bench(a: argparse.Namespace) -> int:
            "không có dấu vết nhãn nào.", ""]
     md.append(md_bang_bench("Theo CWE", tong_hop_bench(cases, diem, "cwe"), cong_cu))
     md.append(md_bang_bench("Theo khung web", tong_hop_bench(cases, diem, "khung"), cong_cu))
+    theo_rule = {cc: cham_theo_rule_bench(cases, tep, ket_qua[cc]) for cc in cong_cu}
+    for cc in sorted(cong_cu, key=lambda c: (c not in nhom, c)):
+        if len(theo_rule.get(cc, {})) > 1:
+            md.append(md_bang_rule(f"Tách báo nhầm theo rule — {cc}",
+                                   theo_rule[cc], len(cases)))
 
     if getattr(a, "do_nguong", False):
         ht = nhan_dang_chay(a.chan)

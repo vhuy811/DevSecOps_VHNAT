@@ -197,6 +197,37 @@ jobs:
           set -o pipefail
           python tools/kiem_thu_bypass.py | tee -a "$GITHUB_STEP_SUMMARY"
 
+  bo-cham:
+    # G6.1: KIEM CHINH BO CHAM. Moi con so trong bao cao di qua tools/cham_diem.py
+    # - ti le bat, ti le bao nham, bang theo CWE, bang do nguong - va cho den gio
+    # bo cham do khong he co phep kiem nao. Mot loi gan vai tro trong do khong
+    # lam chuong trinh chet va khong in canh bao, chi lam con so sai: da gap hai
+    # lan (sig_re thieu nhanh "throws" -> doc 0/5 ham; thieu tien to "Servlet_"
+    # -> 1332 case khong phan loai duoc). Ca hai chi lo ra khi co nguoi ngoi doc
+    # bang. Job nay bien viec doc do thanh phep kiem tu dong.
+    #
+    # Hai buoc, buoc thu hai moi quan trong (giong job bypass): kiem_thu chay
+    # tren corpus do day co dap an biet truoc; kiem_thu_pha PHA bo cham theo 7
+    # cach roi doi hoi phep kiem phai hong. Lan dau chay buoc 2 da bat duoc mot
+    # lo that trong buoc 1 (khong co case nao kiem ham long nhau) va mot ham
+    # chet (ham_chua) van con trong ma nhu the dang duoc dung.
+    #
+    # Khong can Semgrep, CodeQL hay docker: SARIF duoc sinh tai cho.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false   # khong de GITHUB_TOKEN lai trong .git/config
+      - name: Bo cham gan vai tro va tach rule co dung khong
+        run: |
+          set -o pipefail
+          python tools/kiem_thu_cham_diem.py | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Pha bo cham - phep kiem co bat duoc khong
+        run: |
+          set -o pipefail
+          python tools/kiem_thu_pha_cham_diem.py | tee -a "$GITHUB_STEP_SUMMARY"
+
   sca:
     # G5.2: DO TANG THU VIEN. Tang nay la tang duy nhat tung khong co bo do nao,
     # nen cau "bo sot bao nhieu" khong tra loi duoc. Fixture duoc SINH RA LUC
