@@ -19,6 +19,7 @@ biet truoc. Moi phep kiem khang dinh mot tinh chat ma neu vo thi mot con so cu
 the trong bao cao se sai, va noi ro con so nao.
 """
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -365,6 +366,72 @@ def main() -> int:
         kiem(r.get("taint-sqli", {}).get("bat_rieng") == 1,
              "taint-sqli co 'bat rieng' = 1 (case 02 chi no bat)",
              "neu ra 0 thi se ket luan sai rang bo taint-sqli khong mat gi")
+
+        print("8. Bo do dang bench: bang chinh va bang do nguong phai KHOP mau so")
+        bench = t / "bench"
+        for khung in ("flask",):
+            td = bench / khung / "testcode"
+            td.mkdir(parents=True, exist_ok=True)
+            dong_csv = ["# test name,category,real vulnerability,CWE"]
+            for i in range(1, 9):
+                co_loi = i <= 4
+                (td / f"benchmark_test_{i:05d}.py").write_text(
+                    "import sqlite3\n"
+                    + ("q = 'SELECT * FROM t WHERE a=' + x\n" if co_loi
+                       else "q = 'SELECT * FROM t WHERE a=?'\n"),
+                    encoding="utf-8")
+                dong_csv.append(f"BenchmarkTest{i:05d},sqli,"
+                                f"{'true' if co_loi else 'false'},89")
+            (bench / khung / "expectedresults-2026.01.01.csv").write_text(
+                "\n".join(dong_csv) + "\n", encoding="utf-8")
+
+        # Canh bao: dung tren 2/4 case co loi va 1/4 case sach
+        # -> bang chinh phai ra bat 50%, nham 25% (mau so 4 va 4)
+        # -> neu dung mau so kieu Juliet (8) se ra 25% va 12%, tuc MOT NUA.
+        canh = []
+        for i in (1, 2, 5):
+            canh.append({"rule": "taint-sqli", "cwe": 89, "level": "error",
+                         "sev": 9.8, "file": f"benchmark_test_{i:05d}.py",
+                         "line": 2})
+        sb = sarif(canh)
+        for r in sb["runs"][0]["results"]:
+            ten = Path(r["locations"][0]["physicalLocation"]
+                       ["artifactLocation"]["uri"]).name
+            r["locations"][0]["physicalLocation"]["artifactLocation"]["uri"] = \
+                f"bench/flask/testcode/{ten}"
+        s8 = t / "h.sarif"
+        s8.write_text(json.dumps(sb), encoding="utf-8")
+        md8 = t / "h.md"
+        r8 = subprocess.run(
+            [sys.executable, str(CHAM), "bench-csv",
+             "--bo", f"flask={bench / 'flask'}",
+             "--sarif", f"semgrep-du-an={s8}",
+             "--chan", "pipeline-hien-tai=semgrep-du-an:level=error",
+             "--do-nguong", "--out", str(t / "h.json"), "--md", str(md8)],
+            capture_output=True, text=True)
+        if r8.returncode != 0:
+            kiem(False, "lenh bench-csv chay duoc",
+                 f"khong chay duoc thi khong kiem duoc mau so\n{r8.stdout[-600:]}\n{r8.stderr[-600:]}")
+        else:
+            txt = md8.read_text(encoding="utf-8")
+            # bang chinh: dong cua nhom chan "cong"
+            m_chinh = re.search(r"^\| pipeline-hien-tai \| ([\d.]+)% \| ([\d.]+)%",
+                                txt, re.M)
+            # bang do nguong: dong co nhan "dang dung"
+            m_sweep = re.search(r"\|\s*([\d.]+)%\s*\|\s*([\d.]+)%\s*\|[^|\n]*đang dùng", txt)
+            kiem(bool(m_chinh and m_sweep),
+                 "doc duoc ca hai bang (chinh + do nguong)",
+                 "khong doc duoc thi khong so sanh duoc hai mau so")
+            if m_chinh and m_sweep:
+                c = (float(m_chinh.group(1)), float(m_chinh.group(2)))
+                w = (float(m_sweep.group(1)), float(m_sweep.group(2)))
+                kiem(abs(c[0] - w[0]) < 0.6 and abs(c[1] - w[1]) < 0.6,
+                     f"hai bang khop nhau: bang chinh {c[0]}%/{c[1]}% "
+                     f"vs do nguong {w[0]}%/{w[1]}%",
+                     "bang do nguong dung mau so kieu Juliet (toan bo case) "
+                     "trong khi bang chinh tach co_loi/sach -> hai bang canh "
+                     "nhau trong CUNG mot bao cao lech nhau dung GAP DOI. Da "
+                     "xay ra that o lan chay Phong do Python #2.")
 
     print()
     if LOI:

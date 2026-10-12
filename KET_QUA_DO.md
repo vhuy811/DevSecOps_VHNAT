@@ -107,7 +107,62 @@ cạnh "61.6% trên 6611 case" là so sánh hai thứ khác loại.
 
 ---
 
-## 4. Hai thay đổi đã làm sau lần đo, chưa có số mới
+## 4. Bộ rule Python — BenchProctor quicktest, 18.300 test case
+
+Chạy `Phong do Python #2` ngày 9/10/2026 trên commit `0d3b8cc`, 10 phút 6 giây.
+9.150 case có lỗi / 9.150 case sạch, 61 category, 3 khung (flask, fastapi, django).
+
+Khác Juliet ở **mẫu số**: Juliet mỗi case có cả hàm `bad` lẫn hàm `good` nên mẫu số
+của cả hai tỉ lệ là toàn bộ case; BenchProctor mỗi case là một tệp *hoặc* có lỗi
+*hoặc* sạch, nên tỉ lệ bắt tính trên 9.150 case có lỗi và tỉ lệ báo nhầm trên 9.150
+case sạch.
+
+| Công cụ | Bắt | Báo nhầm | Youden |
+|---|---|---|---|
+| Rule đồ án (Semgrep) | 7,2% | 4,4% | +0,03 |
+| Semgrep cộng đồng | 21,2% | 10,3% | +0,11 |
+| CodeQL | 13,3% | 3,3% | +0,10 |
+| CodeQL (threat model local) | 14,1% | 4,0% | +0,10 |
+| **Cổng chặn** | **18,2%** | **7,4%** | **+0,11** |
+
+Theo khung web, rule đồ án: flask 10%/7%, fastapi 7%/4%, django 4%/2%.
+
+**7,2% phải đọc kèm trần của nó.** Bộ rule Python chỉ nhắm tới 8 họ CWE trong 61
+category của bộ đo — tức **2.250/9.150 case có lỗi (24,6%)**. 6.900 case còn lại
+thuộc các loại đồ án **cố ý không phủ** (`authzfailure`, `hardcodedcreds`,
+`loginjection`, `sessionfixation`…), vì quyền chặn chỉ dành cho CWE mà ZAP có
+active scan tương ứng. Nên đặt 7,2% cạnh "61,6% trên Juliet C#" là so sánh sai:
+Juliet C# chỉ chứa đúng những CWE mà rule nhắm tới.
+
+**Ba điều lần đo này xác nhận, và cả ba đều đã có bản sửa đang chờ đẩy:**
+
+| Phát hiện | Số liệu | Bản sửa |
+|---|---|---|
+| NoSQL injection không công cụ nào thấy | CWE-943: **0% / 0%** cho *cả 4* công cụ | rule `dso-py-taint-nosqli` (G6.2) |
+| SSTI bị bỏ khi chấm do gán nhãn sai họ CWE | CWE-1336: rule đồ án **0%**, cộng đồng 35% | rule `dso-py-taint-ssti` với `cwe: CWE-1336` (G6.2) |
+| Nguồn quá hẹp | bắt 7,2% so với trần cấu trúc 33,6% | mở 10 hình dạng nguồn (G6.2) |
+
+**Báo nhầm 4,4% là con số gộp, và nó che mất vấn đề thật.** Trên toàn bộ 9.150 case
+sạch thì thấp, nhưng báo nhầm **dồn hết vào đúng các CWE mà rule nhắm tới**:
+CWE-22 36%, CWE-95 33%, CWE-78 32%, CWE-88 30%, CWE-918 26%. Hai nhóm thậm chí
+**báo nhầm nhiều hơn bắt được**: CWE-918 (22% bắt / 26% nhầm) và CWE-601 (13% / 17%).
+Đây đúng là sàn báo nhầm đã dự đoán trong `PHAT_HIEN_BENCHPROCTOR.md`: bản sạch của
+BenchProctor khử độc bằng `if không hợp lệ thì return 400`, giá trị tới đích không
+đổi, mà `pattern-sanitizers` của Semgrep chỉ khớp biểu thức *làm đổi giá trị*.
+
+Điểm sáng duy nhất của rule đồ án: **CWE-611 (XXE) bắt 100% với 0% báo nhầm** —
+vì rule đó không dùng taint mà khớp trực tiếp cấu hình `resolve_entities=True`.
+
+> **Không dùng bảng dò ngưỡng của lần chạy này.** Bảng đó in tỉ lệ bằng **đúng một
+> nửa** sự thật: `quet_nguong()` dùng mẫu số kiểu Juliet (toàn bộ 18.300 case) trong
+> khi bảng chính tách 9.150/9.150. Cùng một cấu hình mà bảng chính ghi 18,2%/7,4%
+> còn bảng dò ngưỡng ghi 9,1%/3,7%. Đã sửa và đã có phép kiểm khẳng định hai bảng
+> phải khớp nhau. Thứ hạng trong bảng đó vẫn đúng (cả hai tỉ lệ cùng chia cho một
+> hằng số), chỉ con số là sai.
+
+---
+
+## 5. Hai thay đổi đã làm sau lần đo, chưa có số mới
 
 Ghi ở đây để lần đo sau đối chiếu được. **Chưa có số** nghĩa là chưa chạy, không
 phải đã cải thiện.
@@ -123,18 +178,18 @@ thấp hơn ~46% nhiều thì nguyên nhân không còn là thiếu nguồn và 
 
 ---
 
-## 5. Chưa có bộ đo
+## 6. Chưa có bộ đo
 
 | Tầng | Trạng thái |
 |---|---|
-| Python (SAST) | bộ đo đã dựng (BenchProctor 18.300 case), chưa chạy xong |
+| ~~Python (SAST)~~ | **đã có số — xem mục 4** |
 | SCA — thư viện đã có | đáp án đã dựng (15 gói, 4 hệ sinh thái), chưa chạy xong |
 | Secret (Gitleaks) | đáp án đã dựng (14 tệp, 7 dạng secret + 4 mồi, fixture sinh lúc chạy), chưa chạy xong |
 | Hạ tầng (Trivy config) | **chưa có đáp án** |
 
 ---
 
-## 6. Vì sao không có một con số cho cả năm tầng
+## 7. Vì sao không có một con số cho cả năm tầng
 
 Năm tầng không cùng mẫu số. Juliet đếm lỗi tiêm ở mức mã nguồn; SCA đếm phiên
 bản thư viện dính CVE; DAST đếm endpoint chạy thật; Gitleaks đếm credential bị

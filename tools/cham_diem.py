@@ -690,12 +690,22 @@ def nhan_dang_chay(chan: list[str]) -> dict:
 
 
 def quet_nguong(cases: dict, tep: dict, ket_qua: dict[str, list[dict]],
-                hien_tai: dict | None = None, cham_fn=None) -> str:
+                hien_tai: dict | None = None, cham_fn=None, ti_le_fn=None) -> str:
     """Do MOI to hop nguong va xep hang theo Youden.
 
     tp cua mot to hop = co canh bao nao cua to hop do roi vao ham bad; fp =
     roi vao ham good. Vi to hop la HOP cua cac tap canh bao, khong the suy ra
     bang cong tru tu so cua tung cong cu - nen moi to hop duoc cham lai that.
+
+    ti_le_fn PHAI di kem cham_fn. Juliet va BenchProctor co MAU SO KHAC NHAU:
+    Juliet moi case co ca ham bad lan ham good nen mau so cua ca hai ti le la
+    toan bo case; BenchProctor moi case la mot tep HOAC co loi HOAC sach, nen
+    ti le bat tinh tren so case co loi va ti le bao nham tren so case sach.
+    Dung nham thi bang do nguong in ra ti le bang DUNG MOT NUA bang chinh
+    trong cung mot bao cao - da xay ra o lan chay Phong do Python #2: bang
+    chinh ghi 18.2%/7.4% con dong "dang dung" cua bang do nguong ghi 9.1%/3.7%
+    cho CUNG mot cau hinh. Thu hang khong sai (ca hai ti le cung chia cho mot
+    hang so) nhung con so thi sai, va hai bang canh nhau mau thuan nhau.
     """
     truc = {k: v for k, v in TRUC_NGUONG.items() if k in ket_qua}
     if not truc:
@@ -715,8 +725,10 @@ def quet_nguong(cases: dict, tep: dict, ket_qua: dict[str, list[dict]],
         d = (cham_fn or cham)(cases, tep, {"x": canh_bao})["x"]
         d.pop("__khong_gan__", None)
         o = {"n": len(cases), "tp": sum(v["tp"] for v in d.values()),
-             "fp": sum(v["fp"] for v in d.values())}
-        tpr, fpr, j = ti_le(o)
+             "fp": sum(v["fp"] for v in d.values()),
+             "co_loi": sum(1 for c in cases.values() if c.get("co_loi")),
+             "sach": sum(1 for c in cases.values() if c.get("co_loi") is False)}
+        tpr, fpr, j = (ti_le_fn or ti_le)(o)
         ds.append({"nhan": nhan, "bat": tpr, "nham": fpr, "youden": j,
                    "canh_bao": len(canh_bao)})
 
@@ -930,7 +942,7 @@ def lenh_bench(a: argparse.Namespace) -> int:
     if getattr(a, "do_nguong", False):
         ht = nhan_dang_chay(a.chan)
         bang = quet_nguong(cases, tep, {k: v for k, v in ket_qua.items() if k in TRUC_NGUONG},
-                           ht, cham_fn=cham_bench)
+                           ht, cham_fn=cham_bench, ti_le_fn=ti_le_bench)
         if bang:
             md.append(bang)
 
