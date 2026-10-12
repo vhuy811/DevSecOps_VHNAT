@@ -1234,6 +1234,13 @@ rules:
       - pattern: Convert.ToInt32(...)
       - pattern: Convert.ToInt64(...)
     pattern-sinks:
+      # Sink 1 - DIEM THUC THI: noi cau SQL duoc dua vao cong cu chay. Day la
+      # sink dung ve mat an toan, nhung Semgrep gan canh bao vao DONG NAY, ma
+      # trong mot PR thuc te dong `cmd.CommandText = sql` thuong KHONG doi -
+      # chi dong ghep chuoi moi doi. Cong code-scanning cua GitHub chi chan
+      # canh bao nam TREN DONG PR sua, nen canh bao gan o day lot qua cong du
+      # no that. Da do duoc tren PR #18 cua VulnShop-App: canh bao #198 co
+      # that o Data/Db.cs nhung cong van xanh vi no gan o dong sink khong doi.
       - patterns:
           - pattern-either:
               - pattern: $CMD.CommandText = $X
@@ -1246,6 +1253,21 @@ rules:
               - pattern: new SqlDataAdapter($X, ...)
               - pattern: $CTX.$T2.FromSqlRaw($X, ...)
               - pattern: $CTX.Database.ExecuteSqlRaw($X, ...)
+          - focus-metavariable: $X
+      # Sink 2 - DIEM GHEP CHUOI: ngay cho tham so bi noi vao bien SQL. Trong
+      # tang truy cap du lieu, DAY moi la dong PR sua (vi du
+      # `sql += " AND Name LIKE '%" + tuKhoa + "%'"`), nen gan canh bao o day
+      # thi cong code-scanning cua GitHub chan duoc. Ban an toan ghep HANG
+      # CHUOI (`sql += " AND Name LIKE @p"`) khong co tham so nhiem di vao nen
+      # taint khong toi - khong chan oan. Ten bien phai giong sql/query/cmd de
+      # khong bat nham chuoi khac.
+      - patterns:
+          - pattern-either:
+              - pattern: $SQL += $X
+              - pattern: $SQL = $SQL + $X
+          - metavariable-regex:
+              metavariable: $SQL
+              regex: (?i).*(sql|query|cmd|command).*
           - focus-metavariable: $X
 
   - id: dso-taint-sqli
