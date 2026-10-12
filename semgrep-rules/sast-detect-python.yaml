@@ -654,10 +654,15 @@ rules:
               # lam Semgrep tu choi ca tep rule (xem ghi chu trong
               # chay_kiem_thu.py). Chi de ... o dau - do la dang Semgrep
               # ghi trong tai lieu cho dict cua Python.
-              - pattern: {..., "$where": $X}
-              - pattern: {..., "$expr": $X}
-              - pattern: {..., '$where': $X}
-              - pattern: {..., '$expr': $X}
+              # PHAI boc nhay: `{...}` trong YAML la cu phap DICT, nen
+              # `pattern: {..., "$where": $X}` bi YAML doc thanh mapping
+              # {'...': None, '$where': '$X'} - mot gia tri null ma Semgrep
+              # tu choi, lam HONG CA TEP RULE. yaml.safe_load van chay tron
+              # tru nen kiem YAML o may khong bat duoc; da mat mot vong CI.
+              - pattern: '{..., "$where": $X}'
+              - pattern: "{..., '$where': $X}"
+              - pattern: '{..., "$expr": $X}'
+              - pattern: "{..., '$expr': $X}"
           - focus-metavariable: $X
 
   # ===========================================================================

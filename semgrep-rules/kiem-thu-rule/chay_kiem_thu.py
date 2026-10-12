@@ -76,6 +76,38 @@ KHOI_RULE_RE = re.compile(r"^  - id: (\S+)$", re.M)
 PATTERN_RE = re.compile(r"^\s*- pattern:\s*(.+?)\s*$", re.M)
 
 
+def pattern_khong_phai_chuoi(tep: Path) -> list[str]:
+    """Tim gia tri cua `pattern:` (va ho hang) KHONG duoc boc nhay.
+
+    VI SAO CAN CHOT NAY - mot cai bay da lam hong mot vong CI:
+        - pattern: {..., "$where": $X}
+    `{` va `[` la cu phap DICT/LIST cua YAML, nen dong tren bi doc thanh
+    mapping {'...': None, '$where': '$X'}. Semgrep tu choi vi "null values are
+    prohibited", va no tu choi CA TEP RULE - tuc 10 rule Python mat sach, roi
+    lan quet tra ve 0 ket qua cho MOI rule cua MOI tep.
+
+    Cai bay o cho: yaml.safe_load chay HOAN TOAN tron tru. Kiem "YAML co hop le
+    khong" o may KHONG bat duoc loi nay - vi no hop le, chi khong phai thu minh
+    dinh viet. Chot nay kiem dung cai can kiem: gia tri co duoc boc nhay khong.
+
+    Dung regex chu khong dung PyYAML: cac job phong do khong cai PyYAML, va mot
+    chot an toan thi khong duoc them phu thuoc moi.
+    """
+    KHOA = (r"pattern|pattern-not|pattern-inside|pattern-not-inside"
+            r"|pattern-regex|pattern-not-regex|focus-metavariable")
+    rx = re.compile(rf"^\s*-?\s*({KHOA}):\s*([\{{\[].*)$")
+    van_de: list[str] = []
+    for i, dong in enumerate(tep.read_text(encoding="utf-8").splitlines(), 1):
+        m = rx.match(dong)
+        if m:
+            van_de.append(
+                f"{tep.name}:{i}: `{m.group(1)}:` bat dau bang "
+                f"{m.group(2)[0]!r} nen YAML doc thanh dict/list, khong phai "
+                f"chuoi -> Semgrep tu choi CA TEP. Boc nhay: "
+                f"{m.group(1)}: '{m.group(2)[:40]}...'")
+    return van_de
+
+
 def nguon_sink_trung(tep: Path) -> list[str]:
     """Tim rule taint co mot pattern vua la NGUON vua la SINK.
 
@@ -198,6 +230,16 @@ def main() -> int:
         # nham hai rule khac nhau thanh mot.
         print(f"  HONG    id rule bi trung giua cac tep: {', '.join(sorted(trung_lap))}")
         return 1
+    # Tien kiem khong can Semgrep: gia tri pattern phai la CHUOI.
+    sai_kieu = [x for pth in list(ds_phat_hien) + [RULES / TEN_TEP_SANITIZER]
+                for x in pattern_khong_phai_chuoi(pth)]
+    if sai_kieu:
+        print(f"  HONG    {len(sai_kieu)} pattern khong phai chuoi "
+              f"(Semgrep se tu choi CA TEP RULE):")
+        for x in sai_kieu:
+            print(f"            - {x}")
+        return 1
+
     # Tien kiem khong can Semgrep: bay nguon/sink trung nhau.
     bay = [x for pth in ds_phat_hien for x in nguon_sink_trung(pth)]
     if bay:
