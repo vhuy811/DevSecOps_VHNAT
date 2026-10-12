@@ -197,7 +197,7 @@ Theo khung web, rule đồ án lần #2: flask 10%/7%, fastapi 7%/4%, django 4%/
 
 **Lần #9 là lần đo sau khi mở rộng nguồn + 3 đích (G6.2), và nó nói một điều khó
 nghe: mở rộng đó gần như chỉ thêm tiếng ồn.** Bắt gần gấp đôi (7,2% → 13,7%)
-nhưng báo nhầm cũng tăng gấp hơn hai (4,4% → 10,5%), nên Youden chỉ nhích từ
+nhưng báo nhầm cũng tăng gấp hơn hai (4,4% → 9,9%), nên Youden chỉ nhích từ
 +0,03 lên **+0,04** — tức bộ rule Python của đồ án vẫn **chỉ hơn đoán mò một
 chút**, và kém bộ rule cộng đồng (+0,11) rõ rệt trên bộ đo này.
 
