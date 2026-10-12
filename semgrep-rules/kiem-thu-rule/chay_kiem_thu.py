@@ -39,6 +39,17 @@ import tempfile
 from pathlib import Path
 
 THU_MUC = Path(__file__).resolve().parent
+# Thu muc con PHAI loai khoi lan quet fixture. logic-nghiep-vu/ la corpus "ma
+# DUNG ma trong nhu loi" - no co bo cham rieng (tools/kiem_thu_logic_nghiepvu.py)
+# va dap an rieng (0 canh bao muc chan). De lan vao day thi hong hai chieu:
+#   - DIEU KIEN 1 nhan canh bao tren corpus lam "bang chung rule bat duoc loi",
+#     trong khi corpus do dang le phai SACH. Lan chay CI #6 cho thay dung the:
+#     dso-weak-hash va dso-weak-random "DAT" mot phan nho ban vao
+#     LogicNghiepVu.cs. Mot rule chi bat duoc corpus se qua dieu kien 1 bang
+#     chinh bao nham cua no.
+#   - va corpus khong duoc kiem o dieu kien 2 (chi xet tep ten Da_Khu_Doc.*),
+#     nen bao nham o do khong bi bat.
+LOAI_KHOI_FIXTURE = ("logic-nghiep-vu", "thu-vien-js")
 RULES = THU_MUC.parent
 
 # Moi tep rule PHAT HIEN. Tep khong ton tai thi bo qua, de ban bo cong cu cu
@@ -168,7 +179,8 @@ def chay_semgrep(out: Path) -> None:
     if shutil.which("semgrep"):
         cau_hinh = [f"--config={p}" for p in ds_phat_hien]
         cau_hinh.append(f"--config={RULES / TEN_TEP_SANITIZER}")
-        lenh = ["semgrep", "scan", *cau_hinh, str(THU_MUC),
+        loai = [f"--exclude={x}" for x in LOAI_KHOI_FIXTURE]
+        lenh = ["semgrep", "scan", *cau_hinh, *loai, str(THU_MUC),
                 "--json", "--output", str(out), "--metrics=off", "--quiet"]
         kq = subprocess.run(lenh, capture_output=True, text=True,
                             encoding="utf-8", errors="replace")
@@ -194,6 +206,7 @@ def chay_semgrep(out: Path) -> None:
         "-v", f"{out.parent}:/out",
         "-w", "/fixture", "semgrep/semgrep", "semgrep", "scan",
         *cau_hinh,
+        *[f"--exclude={x}" for x in LOAI_KHOI_FIXTURE],
         ".", "--json", "--output", f"/out/{out.name}",
         "--metrics=off", "--quiet",
     ]

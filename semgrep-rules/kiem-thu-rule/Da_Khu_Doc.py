@@ -19,7 +19,7 @@ import requests
 from flask import (redirect, render_template, render_template_string,
                    request, url_for)
 from lxml import etree
-from markupsafe import escape
+from markupsafe import Markup, escape
 from werkzeug.utils import secure_filename
 
 
@@ -43,10 +43,19 @@ def path_cat_thu_muc():
         return fh.read()
 
 
-# CWE-79: ma hoa HTML truoc khi ghep
+# CWE-79: ma hoa HTML truoc khi ghep.
+# KHONG dung render_template_string o day. Ban truoc viet:
+#     render_template_string("<p>" + escape(loi_nhan) + "</p>")
+# va rule SSTI moi (dso-py-taint-ssti) da bao - BAO DUNG, khong phai bao nham:
+# escape() doi < > & thanh thuc the HTML nhung KHONG dung toi `{{` va `{%`.
+# Nguoi dung gui "{{7*7}}" thi Jinja2 van tinh ra 49; gui
+# "{{''.__class__.__mro__...}}" thi thanh thuc thi ma. Tuc doan do an toan voi
+# XSS nhung CO LO SSTI, trong khi tep nay ghi nhan la "da khu doc".
+# Mot rule moi them vao da tim ra lo hong that trong chinh ma ma du an tu
+# chung nhan la sach.
 def xss_ma_hoa_html():
     loi_nhan = request.args.get("loi_nhan")
-    return render_template_string("<p>" + escape(loi_nhan) + "</p>")
+    return Markup("<p>" + escape(loi_nhan) + "</p>")
 
 
 # CWE-94: doc du lieu co cau truc, khong chay ma
@@ -111,10 +120,13 @@ def moi_truong_vao_danh_sach_doi_so():
     subprocess.run(["rsync", "-a", "/var/data", dich])
 
 
-# Nguon request.get_data nhung ma hoa HTML truoc khi ghep
+# Nguon request.get_data nhung ma hoa HTML truoc khi ghep.
+# Cung ly do nhu tren: khong dua du lieu vao CHUOI MAU, chi dua vao noi dung
+# da ma hoa. Markup() danh dau chuoi la HTML an toan, va escape() da lam no
+# an toan that truoc do.
 def get_data_vao_xss_da_ma_hoa():
     du_lieu = request.get_data(as_text=True)
-    return render_template_string("<p>" + escape(du_lieu) + "</p>")
+    return Markup("<p>" + escape(du_lieu) + "</p>")
 
 
 # Nguon request.COOKIES.get nhung cat bo thu muc truoc khi ghep
