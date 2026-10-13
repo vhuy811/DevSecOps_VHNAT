@@ -608,7 +608,7 @@ hết thì ghi là chưa có, không viết chữ "đạt".
 | 3 · Bản đồ route | `gen_routes_map.py` | `kiem_thu_banto.py`, 6 endpoint đáp án gài sẵn | 6/6 phân loại đúng | **3/3** |
 | 4 · Hạ tầng | Trivy config | `kiem_thu_hatang.py` (Dockerfile có lỗi + bản đã sửa) | bắt DS-0002, im trên bản sửa | **5/5** |
 | 5 · DAST — lớp URL | error-based SQLite | `kiem_thu_dast_sqlite.py` | bắt `/Product/Filter`, `/Product/Search` | — |
-| 5 · DAST — lớp POST | error-based qua form | `kiem_thu_dast_post.py` | 8/8 ca | **3/3** |
+| 5 · DAST — lớp POST | error-based qua form | `kiem_thu_dast_post.py` | 8/8 ca | **4/4** |
 | 5 · DAST — runtime | rule header/cookie | `kiem_thu_runtime.py` | 5 phát hiện | **2/2** |
 | 5 · DAST — IDOR | `idor.py` | `kiem_thu_idor.py` | 2 phát hiện + 4 ca rào cùng gốc | **3/3** |
 | Cổng | `gate.py` | `kiem_thu_gate.py` | 10 phép kiểm | **3/3** |
