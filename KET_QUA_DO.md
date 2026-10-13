@@ -263,13 +263,25 @@ từ bảng trắng.
 tính là sai, vì đó là lựa chọn có chủ đích: báo cho người review đọc, không
 chặn merge.
 
-**Hạn chế phải ghi:** lần đo này chạy ở commit `4f964df`, **trước** khi thêm
-`dso-sqli-tham-so-ham-noi-chuoi`. Rule đó ở mức chặn và lấy nguồn là tham số
-chuỗi của bất kỳ hàm nào, nên nó *có khả năng* chạm vào `DemDonHang(string
-cotSapXep)` — hàm dùng tham số làm khoá tra bảng trắng. Đọc rule thì nó không
-khớp (thứ đi vào SQL là giá trị đã lọc, không phải tham số), nhưng **đọc không
-thay được chạy**. Con số 0-chặn-oan chỉ được trích cho bộ rule hiện tại sau khi
-chạy lại phép đo này.
+**Đã chạy lại trên bộ rule hiện tại.** Lần đo trước là commit `4f964df`,
+*trước* khi thêm `dso-sqli-tham-so-ham-noi-chuoi` — rule ở mức chặn, lấy nguồn
+là tham số chuỗi của bất kỳ hàm nào, nên nó *có khả năng* chạm vào
+`DemDonHang(string cotSapXep)`, hàm dùng tham số làm khoá tra bảng trắng. Đọc
+rule thì nó không khớp, nhưng đọc không thay được chạy. Nên phép đo được chạy
+lại: **Phòng đo logic nghiệp vụ #14**, commit `1bf920b` trên `main`, 41 giây,
+kết luận Success.
+
+| Lần đo | Commit | Có rule tầng truy cập dữ liệu? | Chặn oan | Mức chỉ báo |
+|---|---|---|---|---|
+| #13 | `4f964df` | không | 0 | 7 |
+| **#14** | `1bf920b` | **có** (`dso-sqli-tham-so-ham-noi-chuoi`, ERROR) | **0** | **7** |
+
+Hai lần đo cho kết quả giống nhau từng con số, nên **con số 0-chặn-oan áp dụng
+cho bộ rule đang dùng thật**, không còn kèm điều kiện. Bảy cảnh báo mức chỉ báo
+vẫn là bảy cảnh báo cũ, do `dso-weak-hash` (3), `dso-weak-random` (1),
+`dso-xpathi-select-concat` (1), `dso-sqli-sqlcommand-ctor-concat` (1) và
+`dso-sqli-commandtext-concat` (1) — **rule mới không sinh thêm cảnh báo nào**,
+kể cả ở mức chỉ báo. Cảnh báo ngoài thư mục corpus: 0.
 
 ---
 
@@ -638,7 +650,6 @@ răng, nó còn chỉ ra chỗ phép đo **còn thiếu** răng.
 |---|---|
 | ZAP active scan (ngoài lớp error-based) | Chưa có corpus nào đo riêng phần ZAP gốc đóng góp; con số 3/6 ở mục 3 là của một lần chạy, không phải tỉ lệ |
 | Tầng ký image / SBOM | Có workflow, chưa có phép đo nào kiểm chữ ký bị giả thì có bị phát hiện không |
-| Corpus logic nghiệp vụ sau khi thêm Sink 2 | Lần đo gần nhất là commit `4f964df`, **trước** khi thêm `dso-sqli-tham-so-ham-noi-chuoi`. Phải chạy lại mới được trích số 0-chặn-oan cho rule hiện tại |
 
 ---
 
