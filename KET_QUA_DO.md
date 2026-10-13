@@ -653,6 +653,44 @@ răng, nó còn chỉ ra chỗ phép đo **còn thiếu** răng.
 
 ---
 
+## 7c. Một cổng báo hỏng mà không chặn — job canh giữ ruleset tự chứng minh
+
+Lần đầu job `Canh giu ruleset` chạy đối chiếu thật trên kho ứng dụng (PR #23,
+sau khi thêm `ruleset_mong_doi.json`), nó báo lệch ngay:
+
+```
+[LECH] ruleset that khong khop ruleset_mong_doi.json:
+    kiem tra bat buoc bi go: security / Cong xac nhan (DAST da chung minh)
+```
+
+Đối chiếu Settings → Rules → main xác nhận: Required status checks chỉ có
+`security / scan` và `security / dependency-review`. Cổng xác nhận chưa bao giờ
+được thêm, dù chú thích trong `devsecops-reusable.yml` đã ghi rõ đó là điều kiện
+để nó chặn được merge.
+
+Hệ quả đo trên PR #21:
+
+| Kiểm tra | Kết quả | Bắt buộc | Khoá merge |
+|---|---|---|---|
+| `security / Cong xac nhan (DAST da chung minh)` | hỏng | **không** | **không** |
+| `security / scan` | đạt | có | — |
+| `security / dependency-review` | đạt | có | — |
+| Code scanning (CodeQL, ZAP, Semgrep ×2) | hỏng | — | **có** |
+
+GitHub nói thẳng lý do chặn: *"CodeQL has detected 1 security relevant alert
+blocking this code from being merged."*
+
+**Đây là luận điểm trung tâm của đồ án lặp lại lần thứ hai.** Lần một: cảnh báo
+đúng nhưng neo sai dòng nên không chặn (mục 3c). Lần hai: cổng chạy đúng, báo
+hỏng đúng, nhưng chưa khai báo bắt buộc nên cũng không chặn. Cả hai đều là
+**màu đỏ trông như đã chặn**.
+
+Cách vá: thêm `security / Cong xac nhan (DAST da chung minh)` vào Required
+status checks của nhánh `main`, rồi chạy lại PR #21 để lấy bằng chứng. Chưa chạy
+lại thì **chưa được trích** câu "hai cổng độc lập cùng khoá merge".
+
+---
+
 ## 8. Vì sao không có một con số cho cả năm tầng
 
 Năm tầng không cùng mẫu số. Juliet đếm lỗi tiêm ở mức mã nguồn; SCA đếm phiên
