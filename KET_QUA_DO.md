@@ -347,6 +347,68 @@ Bằng chứng: `H01_PR21-cong-xac-nhan-chan.jpg`,
 
 ---
 
+## 3e. Lớp POST — chạy lại cùng một commit, trước và sau khi sửa
+
+PR #21 được chạy **hai lần trên đúng commit `5b85e36`**, chỉ khác bộ công cụ.
+
+| Chỉ số | Lần 1 (lớp POST còn lỗi) | Lần 2 (sau khi sửa) |
+|---|---|---|
+| Độ phủ tầng động | 4/16 | **9/16** (4 URL + 5 biểu mẫu) |
+| DAST mức High | 2 | **3** |
+| Cổng xác nhận chặn | 1 | **2** |
+| Tổng vấn đề phải sửa | 4 | **5** |
+| Lớp POST đóng góp | **0** | **1 — tham số `term`** |
+
+Lỗi đã sửa: lớp POST đặt mọi trường của biểu mẫu bằng seed, nên ô chọn `sortBy`
+thành `ORDER BY a` và sinh lỗi CSDL ngay với đầu vào lành → bước so sánh mốc kết
+luận "endpoint luôn lỗi" → bỏ qua cả biểu mẫu.
+
+Hai dòng DAST của lần 2 bắt **hai tham số khác nhau của cùng một endpoint, bằng
+hai kỹ thuật khác nhau**: ZAP bắt `sortBy` (payload `;`), lớp POST bắt `term`
+(payload `a'`).
+
+**Dạng hỏng này đáng ghi nhớ:** lần 1 không báo sai điều gì, nó chỉ *im lặng* —
+và im lặng không phân biệt được với "đã quét, không có gì".
+
+Bằng chứng: `J01_PR21-lop-POST-bat-duoc-term.jpg`.
+
+---
+
+## 3f. Độ phủ ngoài SQL injection — PR #22
+
+Ba PR trước đều gieo SQLi. PR #22 gieo **6 lỗ hổng thuộc 5 nhóm OWASP, không có
+SQLi nào**. Sáu rule được dự đoán trước khi chạy:
+
+| Lỗ hổng | OWASP | Rule | Dự đoán | Thực tế |
+|---|---|---|---|---|
+| XSS qua `Html.Raw` | A03 | `dso-xss-html-raw-razor` | chặn | **High ✔** |
+| Path traversal | A01 | `dso-pathtraversal-physicalfile` | chặn | **High ✔** |
+| SSRF | A10 | `dso-ssrf-http-client-concat` | chặn | **High ✔** |
+| Mật khẩu cứng | A07 | `dso-hardcoded-password` | chặn | **High ✔** |
+| Băm yếu MD5 | A02 | `dso-weak-hash` | chỉ báo | **Medium ✔** |
+| Open redirect | A01 | `dso-openredirect-parameter` | chỉ báo | **Medium ✔** |
+| — ngoài dự đoán | A01 | `dso-taint-path-traversal` | — | **High** |
+
+**6/6 đúng**, cộng một rule ngoài dự đoán (lớp taint bắt path traversal độc lập
+với rule hình dạng, cùng một dòng).
+
+### Tầng động xếp nặng hơn tầng tĩnh ở đúng một chỗ
+
+ZAP ra 4 cảnh báo High: XSS phản xạ, **External Redirect**, path traversal ×2.
+
+Open redirect được phân tích tĩnh xếp **chỉ báo** (hình dạng trùng nhiều trường
+hợp chuyển hướng hợp lệ), nhưng ZAP xếp **High** — vì ZAP không suy đoán từ hình
+dạng mà gửi URL ngoài rồi quan sát ứng dụng chuyển hướng thật.
+
+Đây là minh hoạ cụ thể cho lý do hai tầng không thay thế nhau: tĩnh thấy *mọi*
+chỗ đáng ngờ nhưng không biết chỗ nào khai thác được; động chỉ thấy chỗ nó với
+tới nhưng biết chắc. Open redirect rơi đúng khoảng cách đó.
+
+Bằng chứng: `I01_PR22-SAST-7-rule-5-nhom-owasp.jpg`,
+`I02_PR22-ZAP-xss-openredirect-pathtraversal.jpg`.
+
+---
+
 ## 4. Bộ rule Python — BenchProctor quicktest, 18.300 test case
 
 Chạy `Phong do Python #2` ngày 9/10/2026 trên commit `0d3b8cc`, 10 phút 6 giây.
