@@ -685,9 +685,39 @@ blocking this code from being merged."*
 hỏng đúng, nhưng chưa khai báo bắt buộc nên cũng không chặn. Cả hai đều là
 **màu đỏ trông như đã chặn**.
 
-Cách vá: thêm `security / Cong xac nhan (DAST da chung minh)` vào Required
-status checks của nhánh `main`, rồi chạy lại PR #21 để lấy bằng chứng. Chưa chạy
-lại thì **chưa được trích** câu "hai cổng độc lập cùng khoá merge".
+### Kết quả sau khi vá
+
+Kiểm tra đã được thêm vào Required status checks, cả hai pull request chạy lại:
+
+| | PR #21 (gieo lỗ hổng) | **PR #23 (chỉ thêm tệp JSON)** |
+|---|---|---|
+| Kiểm tra hỏng | 5 | **1** |
+| Kiểm tra đạt | 12 | 16 |
+| Cổng quét mã nguồn | hỏng — 4 công cụ | **đạt sạch** |
+| Cổng xác nhận | hỏng, nhãn `Required` | hỏng, nhãn `Required` |
+| Canh giữ ruleset | **đạt** | **đạt** |
+| Nút merge | vô hiệu | **vô hiệu** |
+
+**PR #23 là phép thử cô lập.** Nó chỉ thêm một tệp cấu hình, không đụng mã
+nguồn, nên cổng quét mã nguồn đạt sạch. Trong 17 kiểm tra chỉ 1 hỏng — cổng xác
+nhận — và merge vẫn bị khoá. Đây là chứng minh **một mình nó chặn được**, điều
+PR #21 không tách ra được vì ở đó hai cổng cùng hỏng.
+
+### Hệ quả lộ ra ngay khi cổng có hiệu lực
+
+Lỗ hổng mà cổng chặn trên PR #23 **không do PR đó tạo ra**: đó là SQL injection
+đã nằm sẵn trên `main` tại endpoint tìm kiếm, bằng chứng khai thác `ZAP AND 1=1 --`,
+vân tay `zap|89|/Product|q`.
+
+Cổng cố ý xét mọi phát hiện động đã chứng minh, bất kể có nằm trong diff hay
+không — phát hiện động không gán được vào dòng mã nào. Hệ quả: **khi `main` còn
+một lỗ hổng động chưa sửa thì không PR nào merge được**, kể cả PR vô can. Đây là
+fail-closed có chủ đích, không phải lỗi.
+
+Cơ chế đi kèm: `.devsecops/baseline-confirmed.json` khai báo vân tay các phát
+hiện ĐÃ BIẾT trên `main`; vân tay nào có trong đó thì bỏ qua, nên cổng chỉ còn
+chặn phát hiện MỚI. Tệp được đọc từ bản checkout của chính PR, nên một PR thêm
+tệp đó sẽ tự qua được cổng — không có thế kẹt.
 
 ---
 
