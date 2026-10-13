@@ -305,6 +305,48 @@ khiển sẽ kết luận pipeline đang bảo vệ. Thực tế là merge vẫn
 
 ---
 
+## 3d. Pull request thứ ba — cùng loại lỗ hổng, CodeQL cho kết quả ngược lại
+
+PR #21 gieo SQL injection qua **biểu mẫu POST**: `Db.FindProducts(string term,
+string? sortBy)` nối cả hai tham số vào câu lệnh, `sortBy` đi thẳng vào
+`ORDER BY`.
+
+| | PR #18 (tham số URL) | PR #21 (biểu mẫu POST) |
+|---|---|---|
+| Rule đồ án | 2 cảnh báo (94, 97) | 3 cảnh báo (114, 116, 117) |
+| Rule cộng đồng | 1 (dòng 97) | 1 (dòng 117) |
+| **CodeQL csharp** | **không thấy SQLi** (chỉ `cs/web/missing-token-validation`) | **thấy** — `cs/sql-injection`, 8.8 |
+| Tầng động | ZAP: SQL Injection | ZAP: SQL Injection, **đã khai thác được** |
+| Kết quả merge | bị chặn (sau khi vá) | **bị chặn** |
+
+Hai lỗ hổng cùng hình dạng: tham số chuỗi của một hàm ở tầng truy cập dữ liệu,
+nối vào câu lệnh, gọi từ một action nhận dữ liệu HTTP. **Nguyên nhân chênh lệch
+chưa xác định được** và không được suy đoán ở đây.
+
+Điều rút ra được: phân tích liên thủ tục của CodeQL **có** bắt loại này nhưng
+**không ổn định**. Một cổng chỉ dựa vào CodeQL sẽ để lọt trường hợp thứ nhất.
+
+### Tầng động chặn merge thật
+
+Đây là lần đầu tầng động chặn merge trong pipeline thật, không phải trong phòng
+đo. Cổng xác nhận thoát mã 1 vì một phát hiện **đã được chứng minh bằng tương
+tác thật** — khác với suy đoán tĩnh, nên nó chặn bất kể dòng mã có nằm trong
+thay đổi của PR hay không.
+
+Bằng chứng: `H01_PR21-cong-xac-nhan-chan.jpg`,
+`H02_PR21-DAST-bat-sqli-qua-form-POST.jpg`, `H03_PR21-codeql-bat-duoc-lan-nay.jpg`.
+
+### Hai chỗ lần chạy này làm lộ ra
+
+1. **Dòng độ phủ trong bảng tóm tắt chỉ đếm `testable`** nên ghi 4/16 trong khi
+   tầng động đo được 8. Đã sửa để cộng cả `post_param`.
+2. **Job canh giữ ruleset báo "chưa kiểm được"** trên VulnShop, vì
+   `ruleset_mong_doi.json` nằm ở kho bộ công cụ chứ không ở kho ứng dụng — mà
+   job chạy trong ngữ cảnh kho gọi. Nghĩa là ruleset của VulnShop **vẫn chưa
+   được canh giữ**. Phải thêm tệp đặc tả vào kho ứng dụng.
+
+---
+
 ## 4. Bộ rule Python — BenchProctor quicktest, 18.300 test case
 
 Chạy `Phong do Python #2` ngày 9/10/2026 trên commit `0d3b8cc`, 10 phút 6 giây.

@@ -666,7 +666,14 @@ jobs:
               print(f"| 2b. Ha tang | {ht} loi cau hinh (Trivy config tren Dockerfile) |")
           rm = j("routes_map.json")
           if rm:
-              s = rm.get("summary", {}); print(f"| 3. Pham vi | {s.get('testable',0)}/{sum(s.values())} endpoint DAST toi duoc |")
+              # Do phu = HAI lop: tham so tren URL (testable) + form POST
+              # (post_param). Truoc G6.8 dong nay chi dem `testable`, nen bao
+              # cao ghi 4/16 trong khi tang dong do duoc 8 - va phan bi bo quen
+              # dung la cho SQLi hay nam nhat (form dang nhap, form dat hang).
+              s = rm.get("summary", {})
+              _url, _post = s.get("testable", 0), s.get("post_param", 0)
+              print(f"| 3. Pham vi | {_url + _post}/{sum(s.values())} endpoint DAST toi duoc "
+                    f"({_url} qua URL + {_post} qua form POST) |")
           z = j("reports/zap-alerts.json")
           if z:
               al = z.get("alerts", []); print(f"| 4. DAST | High {sum(1 for x in al if x['risk']=='High')} · Medium {sum(1 for x in al if x['risk']=='Medium')} · Low/Info {sum(1 for x in al if x['risk'] in ('Low','Informational'))} |")
