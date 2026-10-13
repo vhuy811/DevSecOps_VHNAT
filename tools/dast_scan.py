@@ -216,6 +216,7 @@ class _DocForm(HTMLParser):
         super().__init__(convert_charrefs=True)
         self.forms: list[dict] = []
         self._cur: dict | None = None
+        self._sel: str | None = None     # ten <select> dang mo, de doc <option>
 
     def handle_starttag(self, tag, attrs):
         t = tag.lower()
@@ -223,7 +224,15 @@ class _DocForm(HTMLParser):
         if t == "form":
             self._cur = {"action": a.get("action", ""),
                          "method": a.get("method", "get").lower(),
-                         "an": {}, "chen": []}
+                         "an": {}, "chen": [], "mac_dinh": {}}
+            self._sel = None
+            return
+        if t == "option" and self._cur is not None and self._sel:
+            # Gia tri mac dinh cua mot <select> la option DAU TIEN (hoac option
+            # co thuoc tinh selected).
+            gt = a.get("value", "")
+            if "selected" in a or self._sel not in self._cur["mac_dinh"]:
+                self._cur["mac_dinh"][self._sel] = gt
             return
         if self._cur is None:
             return
@@ -236,10 +245,17 @@ class _DocForm(HTMLParser):
                 self._cur["an"][ten] = a.get("value", "")
             elif kieu not in KIEU_BO_QUA:
                 self._cur["chen"].append(ten)
-        elif t in ("textarea", "select"):
+                if a.get("value"):
+                    self._cur["mac_dinh"][ten] = a["value"]
+        elif t == "textarea":
             self._cur["chen"].append(ten)
+        elif t == "select":
+            self._cur["chen"].append(ten)
+            self._sel = ten
 
     def handle_endtag(self, tag):
+        if tag.lower() == "select":
+            self._sel = None
         if tag.lower() == "form" and self._cur is not None:
             self.forms.append(self._cur)
             self._cur = None
@@ -308,6 +324,7 @@ def thu_thap_form(base: str, urls: list[str], timeout: float = 8.0) -> list[dict
                 continue
             da_thay.add(khoa)
             ra.append({"action": action, "an": f["an"], "chen": f["chen"],
+                       "mac_dinh": f.get("mac_dinh", {}),
                        "cookie": cookie, "tu_trang": u})
     return ra
 
@@ -324,10 +341,24 @@ def quet_loi_sqlite_post(base: str, urls: list[str], seed: str = "a",
     ra: list[dict] = []
     for f in thu_thap_form(base, urls, moi_timeout):
         hd = _header_token(f["an"], f["cookie"], None)
+        mac_dinh = f.get("mac_dinh", {})
         for p in f["chen"]:
+            # Cac truong KHAC phai mang GIA TRI MAC DINH cua chinh form, khong
+            # phai seed.
+            #
+            # VI SAO: form tim kiem nang cao cua VulnShop co them o chon thu tu
+            # sap xep. Dat moi truong bang seed "a" thi cau lenh thanh
+            # "ORDER BY a" -> SQLite bao "no such column: a" ngay voi dau vao
+            # LANH -> buoc so sanh moc ket luan "endpoint nay luon loi" va BO
+            # QUA ca form. Lop se bao "khong thay gi" tren dung cai form co lo
+            # hong that.
+            #
+            # Lay mac dinh tu chinh HTML (option dau tien cua <select>, thuoc
+            # tinh value cua <input>) nen khong phai doan.
             goc = dict(f["an"])
             for k in f["chen"]:
-                goc[k] = seed
+                goc[k] = mac_dinh.get(k, seed)
+            goc[p] = seed
             _, body_lanh = _gui_post(f["action"], base, goc, f["cookie"], hd, moi_timeout)
             if co_loi_sqlite(body_lanh):
                 continue

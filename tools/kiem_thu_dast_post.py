@@ -70,6 +70,20 @@ class _App(http.server.BaseHTTPRequestHandler):
                              cookie=True)
         if p == "/Safe/Form":
             return self._tra(_trang("/Safe/Submit", ["note"]), cookie=True)
+        if p == "/Sort/Form":
+            # Tai hien dung form tim kiem nang cao cua VulnShop: mot o chu +
+            # mot o chon thu tu sap xep. Neu lop POST dat MOI truong bang seed
+            # thi sortBy="a" lam cau lenh thanh "ORDER BY a" -> loi CSDL ngay
+            # voi dau vao lanh -> ca form bi bo qua.
+            return self._tra(
+                '<html><body><form method="post" action="/Sort/Find">'
+                f'<input type="hidden" name="__RequestVerificationToken" value="{TOKEN}">'
+                '<input type="text" name="term">'
+                '<select name="sortBy">'
+                '<option value="Id">Lien quan</option>'
+                '<option value="Price">Gia</option>'
+                '</select>'
+                '<input type="submit" value="Tim"></form></body></html>', cookie=True)
         if p == "/Broken/Form":
             # Bay BAO NHAM: endpoint nay LUON bao loi CSDL, ke ca dau vao lanh.
             return self._tra(_trang("/Broken/Submit", ["bat_ky"]), cookie=True)
@@ -105,6 +119,14 @@ class _App(http.server.BaseHTTPRequestHandler):
             if le(lay("username")):
                 return self._tra("SqliteException: SQL logic error")
             return self._tra("<html>sai tai khoan</html>")
+        if p == "/Sort/Find":
+            # sortBy di thang vao ORDER BY: gia tri ngoai bang trang -> loi CSDL.
+            if lay("sortBy") not in ("Id", "Price"):
+                return self._tra("SQLite Error 1: 'no such column: "
+                                 + lay("sortBy") + "'")
+            if le(lay("term")):
+                return self._tra("SQLite Error 1: 'unrecognized token'")
+            return self._tra("<html>ket qua</html>")
         if p == "/Broken/Submit":
             # Luon loi, ke ca dau vao lanh -> KHONG duoc ke la SQLi.
             return self._tra("SQLite Error 1: 'always broken'")
@@ -114,10 +136,14 @@ class _App(http.server.BaseHTTPRequestHandler):
 
 
 TRANG = ["/Order/Checkout", "/Account/Login", "/Safe/Form", "/Broken/Form",
-         "/Account/Profile", "/Home/Index"]
+         "/Sort/Form", "/Account/Profile", "/Home/Index"]
 
 # (url ket thuc bang, ten tham so) PHAI bat duoc
-PHAI_BAT = {("/Order/PlaceOrder", "customerName"), ("/Account/Login", "username")}
+PHAI_BAT = {("/Order/PlaceOrder", "customerName"), ("/Account/Login", "username"),
+            # Truong noi chuoi NAM CHUNG form voi mot o chon ma seed lam hong
+            # cau lenh. Day la ca da suyt lam lop POST im lang tren chinh form
+            # co lo hong cua VulnShop.
+            ("/Sort/Find", "term")}
 # PHAI im lang - moi cai la mot kieu bao nham khac nhau
 PHAI_IM = {
     ("/Order/PlaceOrder", "address"): "truong da tham so hoa trong form co loi",
@@ -126,6 +152,8 @@ PHAI_IM = {
     ("/Broken/Submit", "bat_ky"): "endpoint LUON loi - moc so sanh hong, khong ket luan duoc",
     ("/Account/Logout", "xac_nhan"): "form dang xuat - khong duoc gui",
     ("/Account/Search", "q"): "form method=GET - khong thuoc lop POST",
+    ("/Sort/Find", "sortBy"): "o chon chi nhan gia tri trong bang trang - khong "
+                              "phai lo hong chen chuoi",
 }
 
 
@@ -194,7 +222,35 @@ def main() -> int:
             sot.append("bo so sanh dau vao lanh ma phep do khong bat duoc bao nham")
             print("[SOT ] bo so sanh dau vao lanh ma phep do KHONG bat duoc bao nham")
 
-        # Dot bien 3: form method=GET va form dang xuat phai bi loai NGAY O
+        # Dot bien 3: dat MOI truong bang seed thay vi gia tri mac dinh cua
+        # form. Day la ban ma TRUOC KHI SUA, va no lam lop POST im lang tren
+        # dung form co lo hong cua VulnShop: o chon sap xep nhan seed "a" ->
+        # "ORDER BY a" -> loi CSDL ngay voi dau vao lanh -> bo qua ca form.
+        goc_quet = d.quet_loi_sqlite_post
+
+        def _khong_dung_mac_dinh(base_, urls, seed="a", moi_timeout=8.0):
+            that = d.thu_thap_form
+            def _bo_mac_dinh(b, u, t=8.0):
+                fs = that(b, u, t)
+                for f in fs:
+                    f["mac_dinh"] = {}
+                return fs
+            d.thu_thap_form = _bo_mac_dinh
+            try:
+                return goc_quet(base_, urls, seed, moi_timeout)
+            finally:
+                d.thu_thap_form = that
+
+        d.quet_loi_sqlite_post = _khong_dung_mac_dinh
+        _, l3 = do(base)
+        d.quet_loi_sqlite_post = goc_quet
+        if any("BO SOT" in x and "Sort/Find" in x for x in l3):
+            print("[DAT ] bo gia tri mac dinh cua form -> phep do bao bo sot /Sort/Find")
+        else:
+            sot.append("bo gia tri mac dinh ma phep do khong bat duoc")
+            print("[SOT ] bo gia tri mac dinh ma phep do KHONG bat duoc")
+
+        # Dot bien 4: form method=GET va form dang xuat phai bi loai NGAY O
         # KHAU THU THAP. Do thang tren thu_thap_form chu khong do qua phat
         # hien: POST vao mot form GET se bi app tra 400 (thieu token) nen
         # khong sinh phat hien nao - tuc la do qua phat hien se luon "dat" ke
@@ -209,7 +265,8 @@ def main() -> int:
             else:
                 print(f"[DAT ] {nhan} ({p_}) bi loai o khau thu thap")
         # ... va cac form POST that PHAI co mat, neu khong phep do tren vo nghia.
-        for p_ in ("/Order/PlaceOrder", "/Account/Login", "/Safe/Submit"):
+        for p_ in ("/Order/PlaceOrder", "/Account/Login", "/Safe/Submit",
+                   "/Sort/Find"):
             if p_ not in duong:
                 sot.append(f"{p_} khong duoc thu thap")
                 print(f"[SOT ] {p_} KHONG duoc thu thap")
@@ -230,7 +287,7 @@ def main() -> int:
             print(f"  - {x}")
         return 1
     tong = len(PHAI_BAT) + len(PHAI_IM)
-    print(f"DAT het {tong}/{tong} ca do, 3/3 dot bien deu bi bat.")
+    print(f"DAT het {tong}/{tong} ca do, 4/4 dot bien deu bi bat.")
     print(f"Lop POST bat {len(PHAI_BAT)} truong noi chuoi, im lang tren "
           f"{len(PHAI_IM)} truong an toan / khong thuoc pham vi.")
     return 0

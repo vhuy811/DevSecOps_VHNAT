@@ -496,25 +496,37 @@ hết thì ghi là chưa có, không viết chữ "đạt".
 
 | Tầng | Công cụ | Phép đo | Kết quả | Đột biến |
 |---|---|---|---|---|
-| 0 · Secret | Gitleaks | `kiem_thu_secret.py` (fixture 14 tệp, 7 dạng secret + 4 mồi) | 7/7 bắt, 0 báo nhầm | — |
-| 1 · Thư viện | Trivy fs | `kiem_thu_sca.py` (4 hệ sinh thái, phiên bản dính CVE biết trước) | 9/9 bắt, 0/6 mồi báo nhầm | — |
+| 0 · Secret | Gitleaks | `kiem_thu_secret.py` (fixture 14 tệp, 7 dạng secret + 4 mồi) | 7/7 bắt, 0 báo nhầm | **5/5** |
+| 1 · Thư viện | Trivy fs | `kiem_thu_sca.py` (4 hệ sinh thái, phiên bản dính CVE biết trước) | 9/9 bắt, 0/6 mồi báo nhầm | **5/5** |
 | 1b · JS nhúng | retire.js | job `retire` (jquery 1.8.1) | 7 CVE | — |
 | 2 · SAST C# | Semgrep + CodeQL | Juliet C# 1.3, 6611 case, lần #47 | 62.3% bắt / 4.3% nhầm | — |
 | 2 · SAST — chặn oan | Semgrep | Corpus logic nghiệp vụ, 40 hàm mã đúng | **0 chặn oan**, 7 mức chỉ báo | — |
-| 3 · Bản đồ route | `gen_routes_map.py` | `kiem_thu_banto.py`, 6 endpoint đáp án gài sẵn | 6/6 phân loại đúng | có |
-| 4 · Hạ tầng | Trivy config | `kiem_thu_hatang.py` (Dockerfile có lỗi + bản đã sửa) | bắt DS002, im trên bản sửa | có |
+| 3 · Bản đồ route | `gen_routes_map.py` | `kiem_thu_banto.py`, 6 endpoint đáp án gài sẵn | 6/6 phân loại đúng | **3/3** |
+| 4 · Hạ tầng | Trivy config | `kiem_thu_hatang.py` (Dockerfile có lỗi + bản đã sửa) | bắt DS-0002, im trên bản sửa | **5/5** |
 | 5 · DAST — lớp URL | error-based SQLite | `kiem_thu_dast_sqlite.py` | bắt `/Product/Filter`, `/Product/Search` | — |
 | 5 · DAST — lớp POST | error-based qua form | `kiem_thu_dast_post.py` | 8/8 ca | **3/3** |
-| 5 · DAST — runtime | rule header/cookie | `kiem_thu_runtime.py` | 5 phát hiện | — |
-| 5 · DAST — IDOR | `idor.py` | `kiem_thu_idor.py` | 2 phát hiện, 0 báo nhầm | — |
-| Cổng | `gate.py` | `kiem_thu_gate.py` | 10 phép kiểm | — |
+| 5 · DAST — runtime | rule header/cookie | `kiem_thu_runtime.py` | 5 phát hiện | **2/2** |
+| 5 · DAST — IDOR | `idor.py` | `kiem_thu_idor.py` | 2 phát hiện + 4 ca rào cùng gốc | **3/3** |
+| Cổng | `gate.py` | `kiem_thu_gate.py` | 10 phép kiểm | **3/3** |
 | Chống lách cổng | — | `kiem_bypass.py` + `kiem_thu_bypass.py` | 16 chốt | **16/16** |
 | Bước quyết định bỏ tầng | — | `kiem_thu_phamvi.py` | 10/10 ca | **3/3** |
-| Canh giữ ruleset | `kiem_ruleset.py` | `kiem_thu_ruleset.py` | 19/19 ca | — |
+| Canh giữ ruleset | `kiem_ruleset.py` | `kiem_thu_ruleset.py` | 19/19 ca | **4/4** |
 
-"Đột biến" = phép đo tự phá chính thứ nó đo để chứng minh nó có đo thật. Dòng
-để trống là phép đo chức năng chưa có bước tự phá — đó là việc còn thiếu, ghi
-ra chứ không lấp liếm.
+"Đột biến" = phép đo tự phá chính thứ nó đo để chứng minh nó có đo thật. Ba
+dòng còn để trống là ba phép đo phụ thuộc công cụ ngoài (retire.js, CodeQL,
+Semgrep trên corpus lớn) nên chưa dựng được bước tự phá rẻ — đó là việc còn
+thiếu, ghi ra chứ không lấp liếm.
+
+### Một ca đo thiếu, lộ ra nhờ chính bước đột biến
+
+Khi thêm đột biến cho lớp IDOR, phép thử "bỏ rào cùng gốc" **không bị bắt**.
+Điều tra ra nguyên nhân: bộ kiểm chưa bao giờ kiểm hàm `_cung_goc()`. Rào đó
+ngăn một cấu hình bị sửa trở thành bánh lái — công cụ mang cookie phiên **thật**
+đi gọi đích của kẻ tấn công (SSRF). Đã thêm 4 ca kiểm thẳng, và đột biến đó
+giờ bị bắt.
+
+Đây đúng là lý do bước đột biến tồn tại: nó không chỉ chứng minh phép đo có
+răng, nó còn chỉ ra chỗ phép đo **còn thiếu** răng.
 
 ### 7b. Vẫn chưa có bộ đo
 
