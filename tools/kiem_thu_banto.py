@@ -94,21 +94,90 @@ DAP_AN = {
 }
 
 
-def main() -> int:
+def _chay_ban_do(tool: Path) -> dict:
+    """Chay gen_routes_map.py (hoac mot ban da bi pha) tren fixture -> ban do."""
     with tempfile.TemporaryDirectory() as td:
         goc = Path(td)
         (goc / "Controllers").mkdir()
         (goc / "Controllers" / "MauController.cs").write_text(NGUON, encoding="utf-8")
         ra = goc / "routes.json"
         r = subprocess.run(
-            [sys.executable, str(GOC / "tools" / "gen_routes_map.py"),
-             "--root", str(goc), "--out", str(ra)],
+            [sys.executable, str(tool), "--root", str(goc), "--out", str(ra)],
             capture_output=True, text=True)
         if r.returncode != 0:
-            print("gen_routes_map.py that bai:")
-            print(r.stderr[-800:])
-            return 1
-        d = json.loads(ra.read_text(encoding="utf-8"))
+            raise RuntimeError(r.stderr[-800:])
+        return json.loads(ra.read_text(encoding="utf-8"))
+
+
+def _cham(d: dict) -> list[str]:
+    """Doi chieu ban do voi dap an -> danh sach loi (rong = dat). Khong in gi."""
+    thuc_te = {x["url_path"]: x for x in d.get("routes", [])}
+    hong: list[str] = []
+    for url, (st_mong, auth_mong, vi_sao) in DAP_AN.items():
+        r_ = thuc_te.get(url)
+        if r_ is None:
+            hong.append(f"{url}: khong co trong ban do")
+            continue
+        if r_.get("status") != st_mong or bool(r_.get("needs_auth")) != auth_mong:
+            hong.append(f"{url}: mong ({st_mong}, auth={auth_mong}) nhung duoc "
+                        f"({r_.get('status')}, auth={bool(r_.get('needs_auth'))})")
+    thua = sorted(set(thuc_te) - set(DAP_AN))
+    if thua:
+        hong.append(f"ban do sinh them endpoint ngoai dap an: {thua}")
+    return hong
+
+
+# Moi dot bien la mot cach gen_routes_map.py co the hong ma KHONG AI HAY: ban do
+# sai thi DAST quet nham cho roi bao "khong tim thay lo hong" - dung cai ket qua
+# ma mot lan quet sach cung cho ra. Dot bien thu hai la LOI DA XAY RA THAT
+# (phat hien khi chay tren eShopOnWeb).
+DOT_BIEN = [
+    ("bo xu ly [AllowAnonymous] - thuoc tinh ghi de bi lam ngo",
+     lambda s: s.replace("and not ATTR_ANONYMOUS.search(blob)", "")),
+    ("bo [Authorize] cap phuong thuc - DUNG LOI DA TUNG XAY RA THAT",
+     lambda s: s.replace("(class_auth or bool(ATTR_AUTHORIZE.search(blob)))",
+                         "class_auth")),
+    ("coi POST co tham so la testable - DAST se ban payload sai phuong thuc",
+     lambda s: s.replace('return "post_param" if r["params"] else "non_get"',
+                         'return "testable" if r["params"] else "non_get"')),
+]
+
+
+def _dot_bien() -> list[str]:
+    goc_tool = GOC / "tools" / "gen_routes_map.py"
+    nguon = goc_tool.read_text(encoding="utf-8")
+    sot: list[str] = []
+    print("\n### Dot bien - phep do nay co thuc su do khong?\n")
+    print("| Dot bien | Phep do bao |")
+    print("|---|---|")
+    with tempfile.TemporaryDirectory() as td:
+        for ten, sua in DOT_BIEN:
+            hong_nguon = sua(nguon)
+            if hong_nguon == nguon:
+                sot.append(f"{ten}: khong ap duoc vao ma nguon (ma da doi?)")
+                print(f"| {ten} | KHONG AP DUOC |")
+                continue
+            tam = Path(td) / "gen_hong.py"
+            tam.write_text(hong_nguon, encoding="utf-8")
+            try:
+                loi = _cham(_chay_ban_do(tam))
+            except RuntimeError:
+                loi = ["ban do pha lam tool chet"]
+            if loi:
+                print(f"| {ten} | HONG ({len(loi)} ca) - dung |")
+            else:
+                sot.append(f"{ten}: pha roi ma phep do van bao DAT")
+                print(f"| {ten} | **DAT - SAI** |")
+    return sot
+
+
+def main() -> int:
+    try:
+        d = _chay_ban_do(GOC / "tools" / "gen_routes_map.py")
+    except RuntimeError as e:
+        print("gen_routes_map.py that bai:")
+        print(e)
+        return 1
 
     thuc_te = {x["url_path"]: x for x in d.get("routes", [])}
 
@@ -142,7 +211,17 @@ def main() -> int:
             print(f"- {h}")
         print("\nBan do sai thi DAST quet nham cho roi bao 'khong tim thay lo hong'.")
         return 1
-    print(f"**DAT** - {len(DAP_AN)}/{len(DAP_AN)} endpoint phan loai dung.")
+
+    sot = _dot_bien()
+    print()
+    if sot:
+        print(f"**PHEP DO KHONG DANG TIN** - {len(sot)}/{len(DOT_BIEN)} dot bien "
+              f"khong bi bat:\n")
+        for x in sot:
+            print(f"- {x}")
+        return 1
+    print(f"**DAT** - {len(DAP_AN)}/{len(DAP_AN)} endpoint phan loai dung, "
+          f"{len(DOT_BIEN)}/{len(DOT_BIEN)} dot bien deu bi bat.")
     return 0
 
 

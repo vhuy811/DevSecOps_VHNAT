@@ -168,12 +168,69 @@ def doc_trivy(p: Path) -> list[tuple[str, str]]:
     return sorted(ra)
 
 
+# ---------------------------------------------------------------------------
+# TU KIEM: chinh ham cham diem co cham dung khong?
+# ---------------------------------------------------------------------------
+# Phep do nay phu thuoc vao Trivy va mang, nen o may lap trinh vien no khong
+# chay duoc - va mot ham cham hong se im lang cho tới khi co nguoi doc ky log
+# CI. --tu-kiem do RIENG phan logic bang SARIF dung san: khong Trivy, khong
+# mang, chay trong mot giay.
+def _sarif_gia(cap: list[tuple[str, str]]) -> dict:
+    """[(ten_goi, phien_ban)] -> SARIF dang Trivy."""
+    return {"version": "2.1.0", "runs": [{
+        "tool": {"driver": {"name": "Trivy", "rules": []}},
+        "results": [
+            {"ruleId": f"CVE-0000-{i}",
+             "message": {"text": f"Package: {g}\nInstalled Version: {v}"}}
+            for i, (g, v) in enumerate(cap)]}]}
+
+
+def _tu_kiem() -> int:
+    import io
+    import tempfile
+    from contextlib import redirect_stdout
+    co_loi = [(g, pb) for _he, g, pb, c in DAP_AN if c]
+    sach = [(g, pb) for _he, g, pb, c in DAP_AN if not c]
+
+    ca = [
+        ("Trivy bat dung het goi dinh lo hong, khong bao goi sach", co_loi, 0),
+        ("Trivy bo sot MOT goi dinh lo hong", co_loi[1:], 1),
+        ("Trivy bao nham MOT goi sach", co_loi + sach[:1], 1),
+        ("Trivy khong bao gi - tang SCA mu hoan toan", [], 1),
+        ("Trivy bao moi goi - cong cu bao bua", co_loi + sach, 1),
+    ]
+    print("### Tu kiem ham cham diem cua phong do SCA\n")
+    print("| Ca | Ma mong doi | Ma that | Ket qua |")
+    print("|---|---|---|---|")
+    hong = 0
+    with tempfile.TemporaryDirectory() as td:
+        for ten, cap, cho in ca:
+            f = Path(td) / "gia.sarif"
+            f.write_text(json.dumps(_sarif_gia(cap)), encoding="utf-8")
+            with redirect_stdout(io.StringIO()):     # bang chi tiet cua tung ca
+                ma = _cham(f, None)                  # khong can in ra, chi lay ma
+            dat = ma == cho
+            hong += 0 if dat else 1
+            print(f"| {ten} | {cho} | {ma} | {'DAT' if dat else 'HONG'} |")
+    print()
+    if hong:
+        print(f"**HONG** - {hong}/{len(ca)} ca tu kiem sai.")
+        return 1
+    print(f"**DAT** - {len(ca)}/{len(ca)} ca. Ham cham diem phan biet duoc bo sot, "
+          f"bao nham va mu hoan toan.")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--sinh", required=True, help="thu muc tam de sinh fixture")
+    ap.add_argument("--sinh", default="", help="thu muc tam de sinh fixture")
     ap.add_argument("--trivy-sarif", default="", help="SARIF cua trivy fs; co thi cham diem")
     ap.add_argument("--md", default="")
+    ap.add_argument("--tu-kiem", action="store_true",
+                    help="do rieng ham cham diem bang SARIF dung san")
     a = ap.parse_args()
+    if a.tu_kiem:
+        return _tu_kiem()
 
     goc = Path(a.sinh)
     sinh(goc)
@@ -187,6 +244,11 @@ def main() -> int:
               f"khong phai 'sach'.")
         return 1
 
+    return _cham(p, Path(a.md) if a.md else None)
+
+
+def _cham(p: Path, md_ra: Path | None) -> int:
+    """Doi chieu SARIF cua Trivy voi DAP_AN. Tra ve ma thoat (0 dat / 1 hong)."""
     bao = doc_trivy(p)
     bao_chuan = {(g.lower(), v) for g, v in bao}
 
@@ -222,12 +284,13 @@ def main() -> int:
            "khác biệt bản chất so với phòng đo SAST, nơi đáp án không đổi theo thời gian.", ""]
 
     text = "\n".join(md)
-    if a.md:
-        Path(a.md).write_text(text, encoding="utf-8")
+    if md_ra:
+        md_ra.write_text(text, encoding="utf-8")
     print()
     print(text)
     # Bo sot goi dinh lo hong da cong bo la that bai cua tang, khong phai canh bao.
-    return 1 if fn else 0
+    # Bao nham cung la that bai: mot cong cu bao moi goi deu "bat duoc" het.
+    return 1 if (fn or fp) else 0
 
 
 if __name__ == "__main__":

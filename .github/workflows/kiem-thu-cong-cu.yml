@@ -222,6 +222,11 @@ jobs:
         with:
           persist-credentials: false   # khong de GITHUB_TOKEN lai trong .git/config
 
+      - name: Tu kiem ham cham (khong can Gitleaks)
+        run: |
+          set -o pipefail
+          python tools/kiem_thu_secret.py --tu-kiem | tee -a "$GITHUB_STEP_SUMMARY"
+
       - name: Sinh fixture secret (ngoai cay lam viec, khong commit)
         run: |
           python tools/kiem_thu_secret.py --sinh "$RUNNER_TEMP/fixture-secret" \
@@ -383,6 +388,11 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false   # khong de GITHUB_TOKEN lai trong .git/config
+      - name: Tu kiem ham cham diem (khong can Trivy)
+        run: |
+          set -o pipefail
+          python tools/kiem_thu_sca.py --tu-kiem | tee -a "$GITHUB_STEP_SUMMARY"
+
       - name: Sinh fixture (khong commit tep nao trong nay)
         run: python tools/kiem_thu_sca.py --sinh fixture-sca
       - name: Trivy fs tren fixture

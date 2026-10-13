@@ -175,13 +175,72 @@ def doc_phat_hien(sarif: Path) -> dict[str, list[str]]:
     return ra
 
 
+# ---------------------------------------------------------------------------
+# TU KIEM: chinh ham cham diem co cham dung khong?
+# ---------------------------------------------------------------------------
+# Tang T0 bao "0 phat hien" tren ung dung that - va do la ket qua DUNG, vi kho
+# ma khong co secret nao. Nhung "0 phat hien" cung la ket qua cua mot tang MU
+# HOAN TOAN. Hai truong hop do khong phan biet duoc neu khong co fixture, va
+# ham cham diem hong thi ca fixture cung khong cuu duoc. --tu-kiem do rieng ham
+# do bang SARIF dung san: khong Gitleaks, khong mang.
+def _sarif_gia(tep: list[str]) -> dict:
+    return {"version": "2.1.0", "runs": [{
+        "tool": {"driver": {"name": "gitleaks", "rules": []}},
+        "results": [{"ruleId": "generic-api-key",
+                     "locations": [{"physicalLocation": {
+                         "artifactLocation": {"uri": t}}}]} for t in tep]}]}
+
+
+def _tu_kiem() -> int:
+    import io
+    import tempfile
+    from contextlib import redirect_stdout
+
+    ds = [(ten, pb, muc) for ten, _, pb, muc, _mo in dap_an()]
+    phai_bat = [t for t, pb, muc in ds if pb and muc != "can_do"]
+    khong_bat = [t for t, pb, muc in ds if not pb and muc != "can_do"]
+
+    ca = [
+        ("bat dung het secret, im tren tep moi", phai_bat, 0),
+        ("bo sot MOT secret", phai_bat[1:], 1),
+        ("bao nham MOT tep moi (vi du .env mau)", phai_bat + khong_bat[:1], 1),
+        ("khong bao gi - tang secret mu hoan toan", [], 1),
+        ("bao moi tep - cong cu bao bua", phai_bat + khong_bat, 1),
+    ]
+    print("### Tu kiem ham cham diem cua phong do secret\n")
+    print("| Ca | Ma mong doi | Ma that | Ket qua |")
+    print("|---|---|---|---|")
+    hong = 0
+    with tempfile.TemporaryDirectory() as td:
+        for ten, tep, cho in ca:
+            f = Path(td) / "gia.sarif"
+            f.write_text(json.dumps(_sarif_gia(tep)), encoding="utf-8")
+            with redirect_stdout(io.StringIO()):
+                ma = _cham(f, None)
+            dat = ma == cho
+            hong += 0 if dat else 1
+            print(f"| {ten} | {cho} | {ma} | {'DAT' if dat else 'HONG'} |")
+    print()
+    if hong:
+        print(f"**HONG** - {hong}/{len(ca)} ca tu kiem sai.")
+        return 1
+    print(f"**DAT** - {len(ca)}/{len(ca)} ca. Ham cham diem phan biet duoc bo sot, "
+          f"bao nham va mu hoan toan.")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--sinh", metavar="THU_MUC",
                     help="sinh fixture vao thu muc nay roi thoat")
     ap.add_argument("--sarif", help="SARIF cua Gitleaks sau khi quet fixture")
     ap.add_argument("--md", help="ghi bang ket qua dang Markdown")
+    ap.add_argument("--tu-kiem", action="store_true",
+                    help="do rieng ham cham diem bang SARIF dung san (khong can Gitleaks)")
     a = ap.parse_args()
+
+    if a.tu_kiem:
+        return _tu_kiem()
 
     if a.sinh:
         ds = sinh(Path(a.sinh))
@@ -194,8 +253,13 @@ def main() -> int:
         print("Can --sinh THU_MUC hoac --sarif TEP")
         return 2
 
+    return _cham(Path(a.sarif), Path(a.md) if a.md else None)
+
+
+def _cham(sarif: Path, md_ra: Path | None) -> int:
+    """Doi chieu SARIF cua Gitleaks voi dap an. Tra ve ma thoat."""
     ds = {ten: (pb, muc, mo) for ten, _, pb, muc, mo in dap_an()}
-    thay = doc_phat_hien(Path(a.sarif))
+    thay = doc_phat_hien(sarif)
 
     bat, sot, nham, sach, do_them = [], [], [], [], []
     for ten, (phai_bat, muc, mo_ta) in ds.items():
@@ -252,9 +316,9 @@ def main() -> int:
            "\"bao nhiêu phần trăm secret ngoài thực tế bị bắt\".", ""]
 
     text = "\n".join(md)
-    if a.md:
-        Path(a.md).parent.mkdir(parents=True, exist_ok=True)
-        Path(a.md).write_text(text, encoding="utf-8")
+    if md_ra:
+        md_ra.parent.mkdir(parents=True, exist_ok=True)
+        md_ra.write_text(text, encoding="utf-8")
     print(text)
 
     if sot or nham:

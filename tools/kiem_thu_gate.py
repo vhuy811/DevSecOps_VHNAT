@@ -28,9 +28,17 @@ import tempfile
 from pathlib import Path
 
 GATE = Path(__file__).resolve().parent / "gate.py"
+_GATE_HIEN = GATE          # dot bien thay bien nay bang mot ban gate.py da bi pha
 
 
 def main() -> int:
+    hong = _do()
+    if hong:
+        return 1
+    return _dot_bien()
+
+
+def _do(im_lang: bool = False) -> list[str]:
     work = Path(tempfile.mkdtemp())
 
     def ghi(ten: str, obj) -> str:
@@ -41,7 +49,7 @@ def main() -> int:
 
     def chay(*args: str) -> subprocess.CompletedProcess:
         # cwd = work: gate.py chay nhu trong CI, duong dan tuong doi so voi goc repo
-        return subprocess.run([sys.executable, str(GATE), *args],
+        return subprocess.run([sys.executable, str(_GATE_HIEN), *args],
                               cwd=work, capture_output=True, text=True,
                               encoding="utf-8", errors="replace")
 
@@ -120,19 +128,69 @@ def main() -> int:
     kiem("che do thuong -> luon ma 0",
          chay("--sast", sarif, "--zap", zp, "--out", "reports/thuong.json", "--summary", ""), 0)
 
-    print("### Phong do cong xac nhan (G6)\n")
-    print("| Phep kiem | Ma thoat | Ky vong | Ket qua |")
-    print("|---|---|---|---|")
-    for ten, duoc, muon in ket:
-        print(f"| {ten} | {duoc} | {muon} | {'✅' if duoc == muon else '❌'} |")
-    print()
+    if not im_lang:
+        print("### Phong do cong xac nhan (G6)\n")
+        print("| Phep kiem | Ma thoat | Ky vong | Ket qua |")
+        print("|---|---|---|---|")
+        for ten, duoc, muon in ket:
+            print(f"| {ten} | {duoc} | {muon} | {'✅' if duoc == muon else '❌'} |")
+        print()
+        if hong:
+            print("KIEM THU THAT BAI:")
+            for h in hong:
+                print("  -", h)
+        else:
+            print(f"KIEM THU DAT ({len(ket)} phep kiem)")
+    return hong
 
-    if hong:
-        print("KIEM THU THAT BAI:")
-        for h in hong:
-            print("  -", h)
+
+# Moi dot bien la mot cach cong xac nhan co the mat rang ma CI VAN XANH.
+# Cong nay la lop chan cuoi cho lo hong da bi khai thac thanh cong nhung neo
+# vao tep PR khong dong toi - no hong thi khong con gi do lai.
+DOT_BIEN = [
+    ("cong luon cho qua (bo quyen chan)",
+     lambda s: s.replace("return 1", "return 0")),
+    ("bo loc do tin cay - canh bao confidence Low cung bi chan",
+     lambda s: s.replace('("Low", "False Positive")', '("khong-khop-gi",)')),
+    ("coi moi ngoai le la con hieu luc (bo kiem het han)",
+     lambda s: s.replace("het_han", "het_han_khong_ton_tai")),
+]
+
+
+def _dot_bien() -> int:
+    nguon = GATE.read_text(encoding="utf-8")
+    sot: list[str] = []
+    print("\n### Dot bien - phep do nay co thuc su do khong?\n")
+    print("| Dot bien | Phep do bao |")
+    print("|---|---|")
+    global _GATE_HIEN
+    with tempfile.TemporaryDirectory() as td:
+        for ten, sua in DOT_BIEN:
+            hong_nguon = sua(nguon)
+            if hong_nguon == nguon:
+                sot.append(f"{ten}: khong ap duoc vao ma nguon")
+                print(f"| {ten} | KHONG AP DUOC |")
+                continue
+            tam = Path(td) / "gate_hong.py"
+            tam.write_text(hong_nguon, encoding="utf-8")
+            _GATE_HIEN = tam
+            try:
+                loi = _do(im_lang=True)
+            finally:
+                _GATE_HIEN = GATE
+            if loi:
+                print(f"| {ten} | HONG ({len(loi)} ca) - dung |")
+            else:
+                sot.append(f"{ten}: pha roi ma phep do van bao DAT")
+                print(f"| {ten} | **DAT - SAI** |")
+    print()
+    if sot:
+        print(f"**PHEP DO KHONG DANG TIN** - {len(sot)}/{len(DOT_BIEN)} dot bien "
+              f"khong bi bat:\n")
+        for x in sot:
+            print(f"- {x}")
         return 1
-    print(f"KIEM THU DAT ({len(ket)} phep kiem)")
+    print(f"**DAT** - {len(DOT_BIEN)}/{len(DOT_BIEN)} dot bien deu bi bat.")
     return 0
 
 

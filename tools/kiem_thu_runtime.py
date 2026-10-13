@@ -43,7 +43,7 @@ class _App(http.server.BaseHTTPRequestHandler):
         self.wfile.write(b"<html>ok</html>")
 
 
-def main() -> int:
+def _do(mod=d, im_lang: bool = False) -> list:
     # Cong 0 = he dieu hanh tu cap mot cong con ranh.
     # Truoc day ba bo kiem nay ghim cong co dinh va HAI trong so do (idor,
     # dast_sqlite) dung CUNG cong 5097, nen chay noi tiep tren cung mot may la
@@ -57,8 +57,8 @@ def main() -> int:
     time.sleep(0.4)
     base = f"http://127.0.0.1:{cong}"
 
-    rt = d.doc_chinh_sach().get("runtime", {})
-    got = d.quet_runtime(base, [base + "/", base + "/safe"], rt)
+    rt = mod.doc_chinh_sach().get("runtime", {})
+    got = mod.quet_runtime(base, [base + "/", base + "/safe"], rt)
     srv.shutdown()
     srv.server_close()
 
@@ -106,6 +106,8 @@ def main() -> int:
         loi.append(f"security-severity rule khoa phai 5.0 (Medium); got {sevs}")
 
     # Bang phong do
+    if im_lang:
+        return loi
     print("### Phong do rule runtime (G3.3)\n")
     print("| Rule | Muc | Bat tren `/` |")
     print("|---|---|---|")
@@ -122,9 +124,71 @@ def main() -> int:
         print("KIEM THU THAT BAI:")
         for x in loi:
             print("  -", x)
-        return 1
+        return loi
     print(f"KIEM THU DAT ({len(got)} phat hien)")
+    return loi
+
+
+# Moi dot bien la mot cach lop runtime co the hong ma bao cao VAN dep: no chi
+# doc header va cookie, nen hong kieu "khong bao gi" trong khong khac gi mot
+# ung dung da cau hinh dung.
+DOT_BIEN = [
+    ("quet_runtime() luon tra ve rong - lop mu hoan toan",
+     lambda s: s.replace("def quet_runtime(base: str, urls: list[str], rt: dict,"
+                         " moi_timeout: float = 8.0) -> list[dict]:",
+                         "def quet_runtime(base: str, urls: list[str], rt: dict,"
+                         " moi_timeout: float = 8.0) -> list[dict]:\n    return []")),
+    ("bo co chi_https - bao nham HSTS tren ket noi HTTP thuan",
+     lambda s: s.replace("chi_https", "chi_https_khong_ton_tai")),
+]
+
+
+def _dot_bien() -> int:
+    import importlib.util
+    import tempfile
+
+    goc = Path(__file__).resolve().parent / "dast_scan.py"
+    nguon = goc.read_text(encoding="utf-8")
+    sot: list[str] = []
+    print("\n### Dot bien - phep do nay co thuc su do khong?\n")
+    print("| Dot bien | Phep do bao |")
+    print("|---|---|")
+    with tempfile.TemporaryDirectory() as td:
+        for ten, sua in DOT_BIEN:
+            hong_nguon = sua(nguon)
+            if hong_nguon == nguon:
+                sot.append(f"{ten}: khong ap duoc vao ma nguon")
+                print(f"| {ten} | KHONG AP DUOC |")
+                continue
+            tam = Path(td) / "dast_scan_hong.py"
+            tam.write_text(hong_nguon, encoding="utf-8")
+            spec = importlib.util.spec_from_file_location("ds_hong", tam)
+            mod = importlib.util.module_from_spec(spec)
+            try:
+                spec.loader.exec_module(mod)
+                loi = _do(mod=mod, im_lang=True)
+            except Exception as e:
+                loi = [f"pha lam module chet: {e}"]
+            if loi:
+                print(f"| {ten} | HONG ({len(loi)} ca) - dung |")
+            else:
+                sot.append(f"{ten}: pha roi ma phep do van bao DAT")
+                print(f"| {ten} | **DAT - SAI** |")
+    print()
+    if sot:
+        print(f"**PHEP DO KHONG DANG TIN** - {len(sot)}/{len(DOT_BIEN)} dot bien "
+              f"khong bi bat:")
+        for x in sot:
+            print(f"- {x}")
+        return 1
+    print(f"**DAT** - {len(DOT_BIEN)}/{len(DOT_BIEN)} dot bien deu bi bat.")
     return 0
+
+
+def main() -> int:
+    if _do():
+        return 1
+    return _dot_bien()
 
 
 if __name__ == "__main__":

@@ -123,7 +123,7 @@ class _App(http.server.BaseHTTPRequestHandler):
         self.send_response(404); self.end_headers()
 
 
-def main() -> int:
+def _do(mod=d, im_lang: bool = False) -> list:
     # Cong 0 = he dieu hanh tu cap mot cong con ranh.
     # Truoc day ba bo kiem nay ghim cong co dinh va HAI trong so do (idor,
     # dast_sqlite) dung CUNG cong 5097, nen chay noi tiep tren cung mot may la
@@ -141,8 +141,23 @@ def main() -> int:
     nguoi_dung = [{"ten": "alice", "mat_khau": "alice123"}, {"ten": "bob", "mat_khau": "bob123"}]
 
     loi = []
+
+    # RAO CUNG GOC. Ban do route va cau hinh deu la DAU VAO, nen neu lop IDOR
+    # chiu di goi host khac thi mot cau hinh bi sua tro thanh banh lai (SSRF):
+    # cong cu mang theo cookie phien that di goi dich cua ke tan cong.
+    # Truoc day bo kiem KHONG he kiem rao nay - phat hien ra nho buoc dot bien
+    # ben duoi: pha han rao ma phep do van bao DAT.
+    for u_thu, mong, vi_sao in [
+        (base + "/Account/Login", True, "cung host cung cong - phai cho"),
+        ("http://evil.example.com/x", False, "host khac - phai chan"),
+        ("http://127.0.0.1:1/x", False, "cung host khac cong - phai chan"),
+        ("file:///etc/passwd", False, "khong phai http(s) - phai chan"),
+    ]:
+        if mod._cung_goc(u_thu, base) != mong:
+            loi.append(f"rao cung goc sai tren {u_thu}: {vi_sao}")
+
     # Dang nhap phai lay duoc cookie
-    ck = d.dang_nhap(base, login, nguoi_dung[0])
+    ck = mod.dang_nhap(base, login, nguoi_dung[0])
     if not ck or "sid=alice" not in ck:
         loi.append(f"dang_nhap khong lay duoc cookie dung: {ck!r}")
 
@@ -151,13 +166,13 @@ def main() -> int:
     cfg_safe = {"login": login, "nguoi_dung": nguoi_dung,
                 "tai_nguyen": [{"mau": "/safe/order?id={id}", "id_cua": {"alice": "1", "bob": "2"}}]}
 
-    vuln = d.quet_idor(base, cfg_vuln)
-    safe = d.quet_idor(base, cfg_safe)
+    vuln = mod.quet_idor(base, cfg_vuln)
+    safe = mod.quet_idor(base, cfg_safe)
 
     # ---- G3.5: dang nhap qua form CO chong CSRF -------------------------
     login_csrf = {"duong_dan": "/Account/LoginCsrf",
                   "truong_user": "username", "truong_pass": "password"}
-    ck_csrf = d.dang_nhap(base, login_csrf, nguoi_dung[0])
+    ck_csrf = mod.dang_nhap(base, login_csrf, nguoi_dung[0])
     if not ck_csrf or "sid=alice" not in ck_csrf:
         loi.append(f"dang_nhap KHONG vuot duoc form co chong CSRF: {ck_csrf!r}")
 
@@ -184,7 +199,7 @@ def main() -> int:
     # Va quet IDOR phai chay duoc KHI dang nhap qua form co token
     cfg_csrf = {"login": login_csrf, "nguoi_dung": nguoi_dung,
                 "tai_nguyen": [{"mau": "/vuln/order?id={id}", "id_cua": {"alice": "1", "bob": "2"}}]}
-    vuln_csrf = d.quet_idor(base, cfg_csrf)
+    vuln_csrf = mod.quet_idor(base, cfg_csrf)
     if not vuln_csrf:
         loi.append("qua form co chong CSRF: KHONG bat duoc IDOR (truoc day phai "
                    "co y bo token khoi app moi kiem duoc)")
@@ -215,6 +230,8 @@ def main() -> int:
     if sev != "8.0":
         loi.append(f"security-severity IDOR phai 8.0 (High); got {sev}")
 
+    if im_lang:
+        return loi
     print("### Phong do kiem IDOR/BOLA (G3.4)\n")
     print("| Endpoint | Ky vong | Ket qua |")
     print("|---|---|---|")
@@ -222,6 +239,8 @@ def main() -> int:
     print(f"| /safe/order (an toan) | khong bao | {'✅ sach' if not safe else '❌ bao nham'} |")
     print(f"| /Account/LoginCsrf (co token) | dang nhap duoc | "
           f"{'✅ ' + str(len(vuln_csrf)) + ' phat hien qua form co CSRF' if vuln_csrf else '❌ khong vuot duoc'} |")
+    print(f"| Rao cung goc (4 ca, chong SSRF) | chan host khac | "
+          f"{'✅' if not any('rao cung goc' in x for x in loi) else '❌'} |")
     print(f"| POST tran vao form co token | bi tu choi | "
           f"{'✅ bi tu choi' if tran_bi_tu_choi else '❌ duoc chap nhan'} |")
     print()
@@ -233,9 +252,82 @@ def main() -> int:
         print("KIEM THU THAT BAI:")
         for x in loi:
             print("  -", x)
-        return 1
+        return loi
     print(f"KIEM THU DAT ({len(vuln)} phat hien IDOR, 0 bao nham)")
+    return loi
+
+
+# Lop IDOR hong theo kieu nguy hiem nhat la hong IM LANG: no bao "khong thay
+# gi", ma ket qua do khong phan biet duoc voi "ung dung phan quyen dung".
+# Dot bien thu hai tai hien dung loi lop nay da tung mac: khong mang token
+# chong CSRF nen moi yeu cau bi tu choi, va lop bao khong thay gi.
+DOT_BIEN = [
+    ("quet_idor() luon tra ve rong - lop mu hoan toan",
+     lambda s: s.replace(
+         "def quet_idor(base: str, cfg: dict, moi_timeout: float = 8.0) -> list[dict]:",
+         "def quet_idor(base: str, cfg: dict, moi_timeout: float = 8.0) -> list[dict]:\n"
+         "    return []")),
+    ("khong gui token an trong form - dang nhap bi tu choi, lop im lang",
+     lambda s: s.replace("def _mo_trang_dang_nhap(url: str, base: str, timeout: float)"
+                         " -> tuple[dict[str, str], str]:",
+                         "def _mo_trang_dang_nhap(url: str, base: str, timeout: float)"
+                         " -> tuple[dict[str, str], str]:\n"
+                         "    return {}, _mo_trang_dang_nhap_goc(url, base, timeout)[1]\n\n\n"
+                         "def _mo_trang_dang_nhap_goc(url: str, base: str, timeout: float)"
+                         " -> tuple[dict[str, str], str]:")),
+    ("bo rao cung goc - lop co the bi lai di goi host khac (SSRF)",
+     lambda s: s.replace("    return u.scheme in (\"http\", \"https\") and u.scheme"
+                         " == b.scheme and u.netloc == b.netloc",
+                         "    return True")),
+]
+
+
+def _dot_bien() -> int:
+    import importlib.util
+    import tempfile
+
+    goc = Path(__file__).resolve().parent / "idor.py"
+    nguon = goc.read_text(encoding="utf-8")
+    sot: list[str] = []
+    print("\n### Dot bien - phep do nay co thuc su do khong?\n")
+    print("| Dot bien | Phep do bao |")
+    print("|---|---|")
+    with tempfile.TemporaryDirectory() as td:
+        for ten, sua in DOT_BIEN:
+            hong_nguon = sua(nguon)
+            if hong_nguon == nguon:
+                sot.append(f"{ten}: khong ap duoc vao ma nguon")
+                print(f"| {ten} | KHONG AP DUOC |")
+                continue
+            tam = Path(td) / "idor_hong.py"
+            tam.write_text(hong_nguon, encoding="utf-8")
+            spec = importlib.util.spec_from_file_location("idor_hong", tam)
+            mod = importlib.util.module_from_spec(spec)
+            try:
+                spec.loader.exec_module(mod)
+                loi = _do(mod=mod, im_lang=True)
+            except Exception as e:
+                loi = [f"pha lam module chet: {e}"]
+            if loi:
+                print(f"| {ten} | HONG ({len(loi)} ca) - dung |")
+            else:
+                sot.append(f"{ten}: pha roi ma phep do van bao DAT")
+                print(f"| {ten} | **DAT - SAI** |")
+    print()
+    if sot:
+        print(f"**PHEP DO KHONG DANG TIN** - {len(sot)}/{len(DOT_BIEN)} dot bien "
+              f"khong bi bat:")
+        for x in sot:
+            print(f"- {x}")
+        return 1
+    print(f"**DAT** - {len(DOT_BIEN)}/{len(DOT_BIEN)} dot bien deu bi bat.")
     return 0
+
+
+def main() -> int:
+    if _do():
+        return 1
+    return _dot_bien()
 
 
 if __name__ == "__main__":
