@@ -1200,7 +1200,7 @@ jobs:
           path: .devsecops-toolkit
 
       - name: Tai bao cao tu job scan
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: bao-cao-bao-mat
           path: reports
